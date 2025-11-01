@@ -1,0 +1,24 @@
+name: order_app
+description: "Order of Monich."
+
+publish_to: 'none' # Remove this line if you want to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=2.19.0 <3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.0.0 # Убедитесь, что версия актуальна
+  http: ^1.1.0 # Если используется HTTP-клиент
+  shared_preferences: ^2.2.0
+  intl: ^0.18.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
