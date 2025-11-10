@@ -22,3 +22,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+  -  assets/images/bg1.webp
+  -  assets/images/bg2.webp
+  -  assets/images/bg3.webp
