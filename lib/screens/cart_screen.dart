@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/cart_provider.dart';
-import '../providers/product_provider.dart';
+import '../providers/products_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/user.dart';
-import '../services/sheets_api_service.dart';
+import '../services/sheet_all_api_service.dart';
 
 class CartScreen extends StatelessWidget {
   const CartScreen({Key? key}) : super(key: key);
@@ -17,14 +17,17 @@ class CartScreen extends StatelessWidget {
     final productsProvider = Provider.of<ProductsProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    // Получаем данные клиента (если есть)
+    // Получаем данные клиента
     final client =
         authProvider.isClient ? authProvider.currentUser as Client : null;
-
-    // Рассчитываем скидку
     final clientDiscountPercent = client?.discount ?? 0;
     final discount = clientDiscountPercent / 100.0;
     final total = cartProvider.getTotal(productsProvider.products, discount);
+    final minOrderAmount = client?.minOrderAmount ?? 0.0;
+    final isOrderValid = total >= minOrderAmount;
+    // 🔍 Отладочный вывод
+    print(
+        'DEBUG CartScreen: total=$total, minOrderAmount=$minOrderAmount, isOrderValid=$isOrderValid');
 
     // 🔄 Загрузка товаров
     if (productsProvider.isLoading) {
@@ -119,7 +122,7 @@ class CartScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                // Скидка (если есть)
+                // Скидка (только если > 0)
                 if (clientDiscountPercent > 0)
                   Text(
                     'Скидка: ${clientDiscountPercent}%',
@@ -134,8 +137,10 @@ class CartScreen extends StatelessWidget {
                 SizedBox(height: 16),
                 // Кнопка отправки
                 ElevatedButton(
-                  onPressed: (cartProvider.cartItems.isEmpty || client == null)
-                      ? null
+                  onPressed: (cartProvider.cartItems.isEmpty ||
+                          client == null ||
+                          !isOrderValid)
+                      ? null // деактивирована, если сумма < minOrderAmount
                       : () async {
                           final success = await _submitOrder(
                             context,
@@ -156,7 +161,17 @@ class CartScreen extends StatelessWidget {
                             );
                           }
                         },
-                  child: Text('Отправить заказ'),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Отправить заказ'),
+                      if (minOrderAmount > 0 && !isOrderValid)
+                        Text(
+                          'Мин. сумма: ${minOrderAmount.toStringAsFixed(2)} ₽',
+                          style: TextStyle(fontSize: 12, color: Colors.orange),
+                        ),
+                    ],
+                  ),
                   style: ElevatedButton.styleFrom(
                     minimumSize: Size(double.infinity, 48),
                   ),
@@ -179,34 +194,30 @@ class CartScreen extends StatelessWidget {
     final now = DateTime.now();
     final formatter = DateFormat('dd.MM.yyyy');
     final orderDate = formatter.format(now);
-
     final sheetsService = SheetsApiService();
 
-    // 🔁 Помечаем старые позиции как "Изменено клиентом"
-    await sheetsService.updateOrderStatus(
+    // 🔁 1. Удаляем ВСЕ старые заказы для этого клиента и адреса
+    await sheetsService.deleteOrdersByPhoneAndClient(
       phone: client.phone,
-      date: orderDate,
-      newStatus: 'Изменено клиентом',
+      clientName: client.name,
     );
 
-    // ➕ Формируем новые позиции
+    // ➕ 2. Добавляем новые позиции для этого клиента и адреса
+    final newOrders =
+        cartProvider.getOrderItemsForClient(client, productsProvider.products);
     final ordersRows = <List<dynamic>>[];
-    cartProvider.cartItems.forEach((productId, quantity) {
-      final product = productsProvider.getProductById(productId);
-      if (product != null) {
-        ordersRows.add([
-          'Новый', // Статус
-          client.phone, // Телефон клиента
-          product.name, // Наименование товара
-          quantity, // Количество
-          product.price, // Цена за единицу
-          product.price * quantity, // Сумма позиции
-          orderDate, // Дата заказа
-          '', // TG ID (оставляем пустым)
-          client.name, // Клиент
-        ]);
-      }
-    });
+
+    for (var order in newOrders) {
+      ordersRows.add([
+        order.status,
+        order.productName,
+        order.quantity,
+        order.totalPrice,
+        orderDate,
+        order.clientPhone,
+        order.clientName,
+      ]);
+    }
 
     if (ordersRows.isEmpty) return false;
     return await sheetsService.appendOrders(ordersRows);

@@ -1,5 +1,6 @@
 // lib/providers/products_provider.dart
 import 'package:flutter/foundation.dart';
+import 'package:collection/collection.dart';
 import '../models/product.dart';
 import '../services/google_sheets_service.dart';
 
@@ -12,6 +13,7 @@ class ProductsProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  // Загружает товары, если они ещё не загружены
   Future<void> loadProducts() async {
     if (_isLoading) return;
     _isLoading = true;
@@ -28,11 +30,16 @@ class ProductsProvider with ChangeNotifier {
     }
   }
 
-  // Безопасный поиск без firstWhere
-  Product? getProductById(String id) {
-    for (final product in _products) {
-      if (product.id == id) return product;
+  // Возвращает Future<List<Product>> — для использования в FutureBuilder
+  Future<List<Product>> loadProductsFuture() async {
+    if (_products.isEmpty && !_isLoading) {
+      await loadProducts();
     }
-    return null;
+    return _products;
+  }
+
+  // Безопасный поиск товара по ID
+  Product? getProductById(String id) {
+    return _products.firstWhereOrNull((p) => p.id == id);
   }
 }

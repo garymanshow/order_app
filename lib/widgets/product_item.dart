@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'dart:convert';
 import '../models/product.dart';
 import '../providers/cart_provider.dart';
-import '../providers/product_provider.dart';
+import '../providers/products_provider.dart';
 
 class ProductItem extends StatelessWidget {
   final Product product;
@@ -134,10 +134,6 @@ class ProductItem extends StatelessWidget {
                       onPressed: (currentQuantity > 0 &&
                               !productsProvider.isLoading)
                           ? () {
-                              // 🔍 Отладка: какой ID добавляется
-                              print(
-                                  '🛒 ДОБАВЛЕНО В КОРЗИНУ | ID: "${product.id}" | Кол-во: $currentQuantity | Название: "${product.name}"');
-
                               cartProvider.addItem(product.id, currentQuantity);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(

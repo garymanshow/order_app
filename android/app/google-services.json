@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1057035080793",
+    "project_id": "my-push-server-81823",
+    "storage_bucket": "my-push-server-81823.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1057035080793:android:bc3ff2f5a868b31a0f4d48",
+        "android_client_info": {
+          "package_name": "com.example.order_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyArRCOixBUjRbYEdEBsDizK7dP7btQjuws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

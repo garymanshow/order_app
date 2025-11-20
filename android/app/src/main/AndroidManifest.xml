@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- ✅ Добавлено разрешение для интернета -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="order_app"
         android:name="${applicationName}"

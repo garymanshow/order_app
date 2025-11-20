@@ -90,7 +90,6 @@ class GoogleSheetsService {
           // Используем:
           final price = _parsePrice(priceStr);
           final multiplicity = int.tryParse(multiplicityStr) ?? 1;
-          // print('DEBUG: priceStr = "$priceStr" → parsed = $price');
 
           products.add(Product(
             id: id,
@@ -100,8 +99,6 @@ class GoogleSheetsService {
             price: price,
             multiplicity: multiplicity,
           ));
-          print(
-              '✅ ЗАГРУЖЕН ТОВАР | ID: "$id" | Название: "$name" | Цена: $price ₽');
         }
         return products;
       } else {

@@ -1,7 +1,7 @@
 // lib/screens/price_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/product_provider.dart';
+import '../providers/products_provider.dart';
 import '../screens/cart_screen.dart';
 import '../widgets/product_item.dart';
 
