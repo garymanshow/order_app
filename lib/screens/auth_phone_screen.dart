@@ -93,7 +93,9 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
       // 🔑 Загружаем клиентов по телефону
       final clientsRaw = await SheetAllApiService().read(
         sheetName: 'Клиенты',
-        filters: {'Телефон': phone},
+        filters: [
+          {'column': 'Телефон', 'value': phone}
+        ],
       );
 
       // 🔄 Преобразуем в List<Client>

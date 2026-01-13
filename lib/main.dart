@@ -1,13 +1,19 @@
 // lib/main.dart
 import 'dart:io';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+
+// Models
+import 'models/user.dart';
+
+// Screens
 import 'screens/auth_or_home_router.dart';
+import 'screens/price_list_screen.dart';
 import 'screens/cart_screen.dart';
+
+// Providers
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
 import 'providers/products_provider.dart';
@@ -21,7 +27,7 @@ void main() async {
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS ||
           defaultTargetPlatform == TargetPlatform.macOS)) {
-    await Firebase.initializeApp();
+    // await Firebase.initializeApp();
   }
 
   // 🔑 Правильная загрузка .env — с полным путём
@@ -67,6 +73,13 @@ class MyAppContent extends StatelessWidget {
           home: AuthOrHomeRouter(),
           debugShowCheckedModeBanner: false,
           routes: {
+            // ✅ Маршрут для выбора адреса доставки → передаём Client в PriceListScreen
+            '/price': (context) {
+              final Client client =
+                  ModalRoute.of(context)!.settings.arguments as Client;
+              return PriceListScreen(client: client);
+            },
+            // ✅ Корзина — без аргументов (использует ProductsProvider и CartProvider)
             '/cart': (context) => CartScreen(),
           },
         );

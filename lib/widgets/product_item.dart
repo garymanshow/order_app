@@ -131,19 +131,23 @@ class ProductItem extends StatelessWidget {
                     ),
                     SizedBox(width: 12),
                     ElevatedButton(
-                      onPressed: (currentQuantity > 0 &&
-                              !productsProvider.isLoading)
-                          ? () {
-                              cartProvider.addItem(product.id, currentQuantity);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Добавлено ${currentQuantity} шт. "${product.name}"',
-                                  ),
-                                ),
-                              );
-                            }
-                          : null,
+                      onPressed:
+                          (currentQuantity > 0 && !productsProvider.isLoading)
+                              ? () {
+                                  cartProvider.addItem(
+                                    product.id,
+                                    currentQuantity,
+                                    productsProvider.products,
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Добавлено ${currentQuantity} шт. "${product.name}"',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              : null,
                       child: Text('Добавить'),
                     ),
                   ],

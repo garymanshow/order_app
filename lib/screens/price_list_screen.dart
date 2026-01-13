@@ -19,98 +19,42 @@ class PriceListScreen extends StatefulWidget {
 }
 
 class _PriceListScreenState extends State<PriceListScreen> {
-  late Future<List<Product>> _productsFuture;
   late PriceListMode _currentMode;
   late String _modeLabel;
+//  bool _ordersLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    // 1. Загружаем сохранённый режим
     _currentMode = _loadSavedMode(widget.client.phone);
     _modeLabel = _currentMode.label;
 
-    // 2. Загружаем товары
-    _productsFuture = _loadProductsByMode(_currentMode);
-
-    // 3. Загружаем заказы и инициализируем корзину
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadOrdersForClient(widget.client);
-    });
+    // Инициализируем CartProvider с клиентом и сервисом
+    final cartProvider = Provider.of<CartProvider>(context, listen: false);
+    cartProvider.initialize(SheetAllApiService(), widget.client);
   }
 
-  // Сохраняет и загружает режим из кэша (в реальности — из SharedPreferences)
   PriceListMode _loadSavedMode(String phone) {
-    // В реальном приложении:
-    // final prefs = await SharedPreferences.getInstance();
-    // final modeStr = prefs.getString('price_mode_$phone') ?? 'full';
-    // return PriceListModeExtension.fromString(modeStr);
-    return PriceListMode.full; // временно
+    return PriceListMode.full;
   }
 
-  void _saveMode(String phone, PriceListMode mode) {
-    // В реальном приложении:
-    // final prefs = await SharedPreferences.getInstance();
-    // prefs.setString('price_mode_$phone', mode.name);
-  }
+  void _saveMode(String phone, PriceListMode mode) {}
 
-  Future<List<Product>> _loadProductsByMode(PriceListMode mode) async {
+  Future<void> _loadOrdersForClient(
+      Client client, List<Product> products) async {
     final service = SheetAllApiService();
-    List<dynamic> rawData = [];
-
-    switch (mode) {
-      case PriceListMode.full:
-        rawData = await service.read(sheetName: 'Прайс-лист');
-        break;
-      case PriceListMode.byCategory:
-        // Загружаем категории и фильтруем товары
-        final categories = await service.read(sheetName: 'Категория прайса');
-        // Пример: фильтрация по ID категорий (можно расширить)
-        rawData = await service.read(
-          sheetName: 'Прайс-лист',
-          filters: {'Категория': '1'}, // пример фильтра
-        );
-        break;
-      case PriceListMode.contractOnly:
-        rawData = await service.read(
-          sheetName: 'Прайс-лист',
-          filters: {'Договорные': 'да'}, // условный столбец
-        );
-        break;
-    }
-
-    // Преобразуем rawData в List<Product>
-    return rawData.map((item) {
-      final row = item as Map<String, dynamic>;
-      return Product(
-        id: row['ID']?.toString() ?? '',
-        name: row['Наименование']?.toString() ?? '',
-        price: double.tryParse(row['Цена закупа']?.toString() ?? '0') ?? 0.0,
-        // ... остальные поля
-        categoryName: row['Категория']?.toString() ?? '',
-      );
-    }).toList();
-  }
-
-  Future<void> _loadOrdersForClient(Client client) async {
-    final service = SheetAllApiService();
-    final orders = await service.read(
-      sheetName: 'Заказы',
-      filters: {
-        'Телефон': client.phone,
-        'Статус': 'заказ',
-      },
-    );
+    final orders = await service.read(sheetName: 'Заказы', filters: [
+      {'column': 'Телефон', 'value': client.phone},
+      {'column': 'Клиент', 'value': client.name},
+      {'column': 'Статус', 'value': 'заказ'}
+    ]);
 
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
-    final productsProvider =
-        Provider.of<ProductsProvider>(context, listen: false);
-    final products = productsProvider.products;
-
     cartProvider.clearAll();
+
     for (var order in orders) {
       final product = products.firstWhereOrNull(
-        (p) => p.name == (order as Map)['Наименование'],
+        (p) => p.name == (order as Map)['Название'],
       );
       if (product != null) {
         cartProvider.setTemporaryQuantity(
@@ -125,70 +69,170 @@ class _PriceListScreenState extends State<PriceListScreen> {
     setState(() {
       _currentMode = newMode;
       _modeLabel = newMode.label;
-      _productsFuture = _loadProductsByMode(newMode);
     });
     _saveMode(widget.client.phone, newMode);
   }
 
   @override
   Widget build(BuildContext context) {
-    String title = 'Прайс-лист';
-    if (widget.client.name.isNotEmpty) {
-      title = 'Заказ для: ${widget.client.name}';
-      if (widget.client.address.isNotEmpty) {
-        title += ' — ${widget.client.address}';
-      }
+    final cartProvider = Provider.of<CartProvider>(context);
+    final productsProvider = Provider.of<ProductsProvider>(context);
+
+    if (productsProvider.isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: Text('Загрузка прайса...')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
+
+    if (productsProvider.error != null) {
+      return Scaffold(
+        appBar: AppBar(title: Text('Ошибка')),
+        body: Center(child: Text(productsProvider.error!)),
+      );
+    }
+
+    final products = productsProvider.products;
+    final client = widget.client;
+
+    // Загружаем заказы один раз после загрузки товаров
+    //if (!_ordersLoaded && products.isNotEmpty) {
+    //  _ordersLoaded = true;
+    //  _loadOrdersForClient(client, products);
+    //}
+
+    // Рассчитываем итоговую сумму
+    final discount = (client.discount ?? 0) / 100.0;
+    final total = cartProvider.getTotal(products, discount);
+
+    // Формируем заголовок
+    String title = 'Заказ для: ${client.name}';
+    if (client.address.isNotEmpty) {
+      title += ' — ${client.address}';
+    }
+    title += '  Итого: ${total.toStringAsFixed(2)} ₽';
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 80,
         title: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: TextStyle(fontSize: 16)),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
             TextButton(
               onPressed: () => _showModeSelection(context),
               child: Text(
                 'Режим: $_modeLabel',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.shopping_cart),
+            icon: const Icon(Icons.shopping_cart),
             onPressed: () {
               Navigator.pushNamed(context, '/cart');
             },
           ),
         ],
       ),
-      body: FutureBuilder<List<Product>>(
-        future: _productsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Ошибка: ${snapshot.error}'));
-          }
-          final products = snapshot.data!;
-          return ListView.builder(
-            itemCount: products.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                title: Text(products[index].name),
-                subtitle: Text('${products[index].price} ₽'),
-                trailing: Icon(Icons.add),
-                onTap: () {
-                  // Добавление в корзину
-                },
-              );
-            },
-          );
-        },
-      ),
+      body: products.isEmpty
+          ? const Center(child: Text('Прайс-лист пуст'))
+          : ListView.builder(
+              itemCount: products.length,
+              itemBuilder: (context, index) {
+                final product = products[index];
+                final cartQty = cartProvider.getTemporaryQuantity(product.id);
+                final totalForItem = product.price * cartQty;
+
+                return Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      if (product.hasImageUrl)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            product.imageUrl!,
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      else
+                        Container(
+                          width: 60,
+                          height: 60,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.cake, color: Colors.grey),
+                        ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(product.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Цена: ${product.price.toStringAsFixed(2)} ₽ '
+                              '× $cartQty шт = '
+                              'Сумма: ${totalForItem.toStringAsFixed(2)} ₽',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Кратность: ${product.multiplicity} шт',
+                              style: const TextStyle(
+                                  fontSize: 11, color: Colors.blue),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          if (cartQty > 0)
+                            IconButton(
+                              icon: const Icon(Icons.remove, color: Colors.red),
+                              onPressed: () {
+                                cartProvider.setQuantity(
+                                  product.id,
+                                  cartQty - product.multiplicity,
+                                  product.multiplicity,
+                                  products,
+                                );
+                              },
+                            ),
+                          Text('$cartQty',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          IconButton(
+                            icon: const Icon(Icons.add, color: Colors.green),
+                            onPressed: () {
+                              cartProvider.setQuantity(
+                                product.id,
+                                cartQty + product.multiplicity,
+                                product.multiplicity,
+                                products,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
     );
   }
 

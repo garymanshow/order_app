@@ -1,8 +1,7 @@
 // lib/providers/products_provider.dart
 import 'package:flutter/foundation.dart';
-import 'package:collection/collection.dart';
 import '../models/product.dart';
-import '../services/google_sheets_service.dart';
+import '../services/sheet_all_api_service.dart';
 
 class ProductsProvider with ChangeNotifier {
   List<Product> _products = [];
@@ -13,33 +12,39 @@ class ProductsProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  // Загружает товары, если они ещё не загружены
   Future<void> loadProducts() async {
-    if (_isLoading) return;
+    print('🔄 ProductsProvider.loadProducts() вызван');
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      _products = await GoogleSheetsService().fetchProducts();
-    } catch (e) {
-      _error = 'Не удалось загрузить товары: $e';
+      print('📋 Создаем SheetAllApiService...');
+      final service = SheetAllApiService();
+      print('📋 Запрашиваем прайс-лист из Google Sheets...');
+      final rawData = await service.read(sheetName: 'Прайс-лист');
+      print('✅ Получено ${rawData.length} записей прайса');
+      _products = rawData.map((item) {
+        final row = item as Map<String, dynamic>;
+        final name = row['Название']?.toString() ?? '';
+        final price = double.tryParse(row['Цена']?.toString() ?? '0') ?? 0.0;
+        print('📦 Товар: "$name", Цена: $price');
+        return Product(
+          id: name,
+          name: name,
+          price: price,
+          multiplicity: int.tryParse(row['Кратность']?.toString() ?? '1') ?? 1,
+        );
+      }).toList();
+      print('✅ Прайс загружен: ${_products.length} товаров');
+    } catch (e, stackTrace) {
+      print('❌ Ошибка загрузки прайса: $e');
+      print('Stack trace: $stackTrace');
+      _error = e.toString();
     } finally {
       _isLoading = false;
       notifyListeners();
+      print('🔄 ProductsProvider загрузка завершена');
     }
-  }
-
-  // Возвращает Future<List<Product>> — для использования в FutureBuilder
-  Future<List<Product>> loadProductsFuture() async {
-    if (_products.isEmpty && !_isLoading) {
-      await loadProducts();
-    }
-    return _products;
-  }
-
-  // Безопасный поиск товара по ID
-  Product? getProductById(String id) {
-    return _products.firstWhereOrNull((p) => p.id == id);
   }
 }

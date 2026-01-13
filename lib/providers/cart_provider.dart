@@ -1,12 +1,14 @@
 // lib/providers/cart_provider.dart
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
 import '../models/user.dart';
+import '../services/sheet_all_api_service.dart';
 
 class CartProvider with ChangeNotifier {
+  // Хранит актуальное количество товаров в корзине
   final Map<String, int> _cartItems = {};
+  // Хранит временное количество (для UI)
   final Map<String, int> _temporaryQuantities = {};
 
   Map<String, int> get cartItems => Map.unmodifiable(_cartItems);
@@ -19,16 +21,118 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void addItem(String productId, int quantity) {
+  late SheetAllApiService _sheetService;
+  late Client _client;
+
+  void initialize(SheetAllApiService service, Client client) {
+    _sheetService = service;
+    _client = client;
+  }
+
+  // Загрузка заказов клиента в корзину при инициализации
+  Future<void> loadFromOrders(List<Product> products) async {
+    final orders = await _sheetService.read(sheetName: 'Заказы', filters: [
+      {'column': 'Телефон', 'value': _client.phone},
+      {'column': 'Клиент', 'value': _client.name},
+      {'column': 'Статус', 'value': 'заказ'}
+    ]);
+
+    _cartItems.clear();
+    _temporaryQuantities.clear();
+
+    for (var order in orders) {
+      final product = products.firstWhere(
+        (p) => p.name == (order as Map)['Название'],
+        orElse: () => Product(
+            id: '', name: 'Товар недоступен', price: 0, multiplicity: 1),
+      );
+      if (product != null) {
+        final quantity = (order['Количество'] as int?) ?? 0;
+        _cartItems[product.id] = quantity;
+        _temporaryQuantities[product.id] = quantity;
+      }
+    }
+
+    //notifyListeners();
+  }
+
+  Future<void> addItem(
+      String productId, int quantity, List<Product> products) async {
     if (quantity <= 0) return;
-    _cartItems.update(productId, (v) => v + quantity, ifAbsent: () => quantity);
-    _temporaryQuantities[productId] = _cartItems[productId]!;
+
+    final currentQty = _cartItems[productId] ?? 0;
+    final newQty = currentQty + quantity;
+    _cartItems[productId] = newQty;
+    _temporaryQuantities[productId] = newQty;
+
+    final product = products.firstWhere((p) => p.id == productId);
+    await _saveToSheet(product, newQty);
+
     notifyListeners();
   }
 
-  void removeItem(String productId) {
-    _cartItems.remove(productId);
+  Future<void> setQuantity(String productId, int quantity, int multiplicity,
+      List<Product> products) async {
+    if (quantity < 0) quantity = 0;
+    if (quantity > 0 && quantity % multiplicity != 0) {
+      quantity = ((quantity ~/ multiplicity) + 1) * multiplicity;
+    }
+
+    _cartItems[productId] = quantity;
+    _temporaryQuantities[productId] = quantity;
+
+    final product = products.firstWhere((p) => p.id == productId);
+    if (quantity == 0) {
+      await _deleteFromSheet(product);
+    } else {
+      await _saveToSheet(product, quantity);
+    }
+
     notifyListeners();
+  }
+
+  Future<void> removeItem(String productId, List<Product> products) async {
+    final product = products.firstWhere((p) => p.id == productId);
+    await _deleteFromSheet(product);
+
+    _cartItems.remove(productId);
+    _temporaryQuantities.remove(productId);
+    notifyListeners();
+  }
+
+  Future<void> _saveToSheet(Product product, int quantity) async {
+    await _sheetService.delete(sheetName: 'Заказы', filters: [
+      {'column': 'Телефон', 'value': _client.phone},
+      {'column': 'Название', 'value': product.name},
+      {'column': 'Клиент', 'value': _client.name},
+      {'column': 'Статус', 'value': 'заказ'}
+    ]);
+
+    if (quantity > 0) {
+      await _sheetService.create(
+        sheetName: 'Заказы',
+        data: [
+          [
+            'заказ',
+            product.name,
+            quantity,
+            product.price * quantity,
+            '',
+            _client.phone,
+            _client.name,
+          ]
+        ],
+      );
+    }
+  }
+
+  Future<void> _deleteFromSheet(Product product) async {
+    await _sheetService.delete(sheetName: 'Заказы', filters: [
+      {'column': 'Телефон', 'value': _client.phone},
+      {'column': 'Название', 'value': product.name},
+      {'column': 'Клиент', 'value': _client.name},
+      {'column': 'Статус', 'value': 'заказ'}
+    ]);
   }
 
   void clearAll() {
@@ -37,37 +141,7 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void loadFromOrders(List<OrderItem> orders) {
-    _cartItems.clear();
-    _temporaryQuantities.clear();
-    for (var order in orders) {
-      // Ищем productId по имени товара (нужен ProductsProvider)
-      // Но для упрощения — пока храним имя как ID
-      _cartItems[order.productName] = order.quantity;
-      _temporaryQuantities[order.productName] = order.quantity;
-    }
-    notifyListeners();
-  }
-
-  // Новый метод: загрузка корзины из OrderItem
-  void loadFromOrderItems(List<OrderItem> orders, List<Product> products) {
-    _cartItems.clear();
-    _temporaryQuantities.clear();
-
-    for (var order in orders) {
-      final product =
-          products.firstWhereOrNull((p) => p.name == order.productName);
-      if (product != null) {
-        _cartItems[product.id] = order.quantity;
-        _temporaryQuantities[product.id] = order.quantity;
-      }
-    }
-    notifyListeners();
-  }
-
-  // Новый метод: получение OrderItem для отправки
-  List<OrderItem> getOrderItemsForClient(
-      Client client, List<Product> products) {
+  List<OrderItem> getOrderItemsForClient(List<Product> products) {
     final List<OrderItem> items = [];
     _cartItems.forEach((productId, quantity) {
       final product = products.firstWhere((p) => p.id == productId);
@@ -76,9 +150,9 @@ class CartProvider with ChangeNotifier {
         productName: product.name,
         quantity: quantity,
         totalPrice: product.price * quantity,
-        date: '', // будет установлен при отправке
-        clientPhone: client.phone,
-        clientName: client.name, // или client.address
+        date: '',
+        clientPhone: _client.phone,
+        clientName: _client.name,
       ));
     });
     return items;

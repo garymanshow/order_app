@@ -3,8 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/cart_provider.dart';
 import '../providers/products_provider.dart';
-import '../providers/auth_provider.dart';
-import '../models/user.dart';
+import '../providers/auth_provider.dart'; // ← ДОБАВЛЕН ИМПОРТ AuthProvider
+import '../models/product.dart'; // ← ДОБАВЛЕН ИМПОРТ Product
+import '../models/user.dart'; // Убедитесь, что Client доступен отсюда
 import '../services/sheet_all_api_service.dart';
 
 class CartScreen extends StatefulWidget {
@@ -24,7 +25,7 @@ class _CartScreenState extends State<CartScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     final client =
-        authProvider.isClient ? authProvider.currentUser as Client : null;
+        authProvider.isClient ? authProvider.currentUser as Client? : null;
     final clientDiscountPercent = client?.discount ?? 0;
     final discount = clientDiscountPercent / 100.0;
     final total = cartProvider.getTotal(productsProvider.products, discount);
@@ -58,6 +59,8 @@ class _CartScreenState extends State<CartScreen> {
       );
     }
 
+    final products = productsProvider.products;
+
     return Scaffold(
       appBar: AppBar(title: Text('Корзина')),
       body: Column(
@@ -73,16 +76,24 @@ class _CartScreenState extends State<CartScreen> {
                       final productId =
                           cartProvider.cartItems.keys.elementAt(index);
                       final quantity = cartProvider.cartItems[productId]!;
-                      final product =
-                          productsProvider.getProductById(productId);
+                      final product = products.firstWhere(
+                        (p) => p.id == productId,
+                        orElse: () => Product(
+                          id: '',
+                          name: 'Товар недоступен',
+                          price: 0.0,
+                          multiplicity: 1,
+                        ),
+                      );
 
                       return ListTile(
-                        title: Text(product?.name ?? 'Товар недоступен'),
+                        title: Text(product.name),
                         subtitle: Text(
-                            '${product?.price.toStringAsFixed(2) ?? '0.00'} ₽ × $quantity'),
+                            '${product.price.toStringAsFixed(2)} ₽ × $quantity'),
                         trailing: IconButton(
                           icon: Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => cartProvider.removeItem(productId),
+                          onPressed: () =>
+                              cartProvider.removeItem(productId, products),
                         ),
                       );
                     },
@@ -104,21 +115,11 @@ class _CartScreenState extends State<CartScreen> {
                   onPressed: (client == null || !isOrderValid || _isSubmitting)
                       ? null
                       : () => _submitOrder(
-                          context, cartProvider, productsProvider, client),
+                          context, cartProvider, products, client!),
                   child: _isSubmitting
                       ? CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation(Colors.white))
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('Отправить заказ'),
-                            if (minOrderAmount > 0 && !isOrderValid)
-                              Text(
-                                  'Мин. сумма: ${minOrderAmount.toStringAsFixed(2)} ₽',
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.orange)),
-                          ],
-                        ),
+                      : Text('Оформить заказ'),
                   style: ElevatedButton.styleFrom(
                       minimumSize: Size(double.infinity, 48)),
                 ),
@@ -133,7 +134,7 @@ class _CartScreenState extends State<CartScreen> {
   Future<void> _submitOrder(
     BuildContext context,
     CartProvider cartProvider,
-    ProductsProvider productsProvider,
+    List<Product> products,
     Client client,
   ) async {
     setState(() => _isSubmitting = true);
@@ -142,39 +143,33 @@ class _CartScreenState extends State<CartScreen> {
     final orderDate = DateFormat('dd.MM.yyyy').format(now);
 
     try {
-      // 🔁 Удаляем старые заказы: статус = "заказ"
-      final deleteSuccess = await sheetsService.delete(
-        sheetName: 'Заказы',
-        filters: {
-          'Телефон': client.phone,
-          'Клиент': client.name,
-          'Статус': 'заказ',
-        },
-      );
+      final deleteSuccess =
+          await sheetsService.delete(sheetName: 'Заказы', filters: [
+        {'column': 'Телефон', 'value': client.phone},
+        {'column': 'Клиент', 'value': client.name},
+        {'column': 'Статус', 'value': 'заказ'}
+      ]);
 
       if (!deleteSuccess) {
         throw Exception('Не удалось удалить старые заказы');
       }
 
-      // ➕ Формируем новые заказы со статусом "оформлен"
       final ordersRows = <List<dynamic>>[];
       cartProvider.cartItems.forEach((productId, quantity) {
-        final product =
-            productsProvider.products.firstWhere((p) => p.id == productId);
+        final product = products.firstWhere((p) => p.id == productId);
         ordersRows.add([
-          'оформлен', // Статус
-          product.name, // Наименование
-          quantity, // Количество
-          product.price * quantity, // Итоговая цена
-          orderDate, // Дата
-          client.phone, // Телефон
-          client.name, // Клиент
+          'оформлен',
+          product.name,
+          quantity,
+          product.price * quantity,
+          orderDate,
+          client.phone,
+          client.name,
         ]);
       });
 
       if (ordersRows.isEmpty) return;
 
-      // ➕ Создаём новые заказы
       final createSuccess = await sheetsService.create(
         sheetName: 'Заказы',
         data: ordersRows,

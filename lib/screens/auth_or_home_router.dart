@@ -5,7 +5,7 @@ import '../models/user.dart';
 import '../providers/auth_provider.dart';
 import '../services/clients_service.dart';
 import '../screens/price_list_screen.dart';
-import '../screens/delivery_address_screen.dart';
+import '../screens/client_selection_screen.dart';
 import 'auth_phone_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'driver_screen.dart'; // ← добавлено
@@ -106,7 +106,12 @@ class _ClientAddressOrPriceListScreenState
           return PriceListScreen(client: clients.first);
         } else if (clients.length > 1) {
           // Несколько адресов — выбор
-          return DeliveryAddressScreen(clients: clients);
+          return ClientSelectionScreen(
+            phone: (Provider.of<AuthProvider>(context, listen: false)
+                    .currentUser as Client)
+                .phone,
+            clients: clients,
+          );
         } else {
           return Scaffold(body: Center(child: Text('Клиент не найден')));
         }

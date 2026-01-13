@@ -11,10 +11,9 @@ class AuthService {
   Future<User?> authenticate(String phone) async {
     // 🔍 1. Поиск в "Сотрудники"
     try {
-      final employees = await _service.read(
-        sheetName: 'Сотрудники',
-        filters: {'Телефон': phone},
-      );
+      final employees = await _service.read(sheetName: 'Сотрудники', filters: [
+        {'column': 'Телефон', 'value': phone}
+      ]);
 
       if (employees.isNotEmpty) {
         final row = employees.first as Map<String, dynamic>;
@@ -31,10 +30,9 @@ class AuthService {
 
     // 🔍 2. Поиск в "Клиенты"
     try {
-      final clients = await _service.read(
-        sheetName: 'Клиенты',
-        filters: {'Телефон': phone},
-      );
+      final clients = await _service.read(sheetName: 'Клиенты', filters: [
+        {'column': 'Телефон', 'value': phone}
+      ]);
 
       if (clients.isNotEmpty) {
         final row = clients.first as Map<String, dynamic>;
