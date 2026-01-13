@@ -1,4 +1,3 @@
-// lib/screens/cart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -8,8 +7,15 @@ import '../providers/auth_provider.dart';
 import '../models/user.dart';
 import '../services/sheet_all_api_service.dart';
 
-class CartScreen extends StatelessWidget {
+class CartScreen extends StatefulWidget {
   const CartScreen({Key? key}) : super(key: key);
+
+  @override
+  _CartScreenState createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> {
+  bool _isSubmitting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -17,36 +23,24 @@ class CartScreen extends StatelessWidget {
     final productsProvider = Provider.of<ProductsProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    // Получаем данные клиента
     final client =
         authProvider.isClient ? authProvider.currentUser as Client : null;
     final clientDiscountPercent = client?.discount ?? 0;
     final discount = clientDiscountPercent / 100.0;
     final total = cartProvider.getTotal(productsProvider.products, discount);
     final minOrderAmount = client?.minOrderAmount ?? 0.0;
-    final isOrderValid = total >= minOrderAmount;
-    // 🔍 Отладочный вывод
+    final isOrderValid = total >= minOrderAmount && total > 0;
+
     print(
         'DEBUG CartScreen: total=$total, minOrderAmount=$minOrderAmount, isOrderValid=$isOrderValid');
 
-    // 🔄 Загрузка товаров
     if (productsProvider.isLoading) {
       return Scaffold(
         appBar: AppBar(title: Text('Корзина')),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Загрузка прайс-листа...'),
-            ],
-          ),
-        ),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    // ❌ Ошибка загрузки
     if (productsProvider.error != null) {
       return Scaffold(
         appBar: AppBar(title: Text('Корзина')),
@@ -56,19 +50,8 @@ class CartScreen extends StatelessWidget {
             children: [
               Icon(Icons.error, color: Colors.red, size: 48),
               SizedBox(height: 16),
-              Text(
-                'Не удалось загрузить товары',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
+              Text('Ошибка загрузки товаров', style: TextStyle(fontSize: 18)),
               Text(productsProvider.error!),
-              SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () {
-                  productsProvider.loadProducts();
-                },
-                child: Text('Повторить'),
-              ),
             ],
           ),
         ),
@@ -82,11 +65,8 @@ class CartScreen extends StatelessWidget {
           Expanded(
             child: cartProvider.cartItems.isEmpty
                 ? Center(
-                    child: Text(
-                      'Корзина пуста',
-                      style: TextStyle(fontSize: 18),
-                    ),
-                  )
+                    child:
+                        Text('Корзина пуста', style: TextStyle(fontSize: 18)))
                 : ListView.builder(
                     itemCount: cartProvider.cartItems.length,
                     itemBuilder: (context, index) {
@@ -97,19 +77,9 @@ class CartScreen extends StatelessWidget {
                           productsProvider.getProductById(productId);
 
                       return ListTile(
-                        title: Text(
-                          product?.name ?? 'Товар недоступен (ID: $productId)',
-                          style: product != null
-                              ? null
-                              : TextStyle(
-                                  color: Colors.red,
-                                  fontStyle: FontStyle.italic),
-                        ),
+                        title: Text(product?.name ?? 'Товар недоступен'),
                         subtitle: Text(
-                          product != null
-                              ? '${product.price.toStringAsFixed(2)} ₽ × $quantity'
-                              : 'Товар удалён из прайс-листа',
-                        ),
+                            '${product?.price.toStringAsFixed(2) ?? '0.00'} ₽ × $quantity'),
                         trailing: IconButton(
                           icon: Icon(Icons.delete, color: Colors.red),
                           onPressed: () => cartProvider.removeItem(productId),
@@ -122,59 +92,35 @@ class CartScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                // Скидка (только если > 0)
                 if (clientDiscountPercent > 0)
-                  Text(
-                    'Скидка: ${clientDiscountPercent}%',
-                    style: TextStyle(fontSize: 16, color: Colors.green),
-                  ),
+                  Text('Скидка: ${clientDiscountPercent}%',
+                      style: TextStyle(color: Colors.green)),
                 SizedBox(height: 4),
-                // Итог
-                Text(
-                  'Итого: ${total.toStringAsFixed(2)} ₽',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
+                Text('Итого: ${total.toStringAsFixed(2)} ₽',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 SizedBox(height: 16),
-                // Кнопка отправки
                 ElevatedButton(
-                  onPressed: (cartProvider.cartItems.isEmpty ||
-                          client == null ||
-                          !isOrderValid)
-                      ? null // деактивирована, если сумма < minOrderAmount
-                      : () async {
-                          final success = await _submitOrder(
-                            context,
-                            cartProvider,
-                            productsProvider,
-                            client,
-                          );
-                          if (success) {
-                            cartProvider.clearAll();
-                            Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content: Text('Заказ успешно отправлен!')),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Ошибка отправки заказа')),
-                            );
-                          }
-                        },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('Отправить заказ'),
-                      if (minOrderAmount > 0 && !isOrderValid)
-                        Text(
-                          'Мин. сумма: ${minOrderAmount.toStringAsFixed(2)} ₽',
-                          style: TextStyle(fontSize: 12, color: Colors.orange),
+                  onPressed: (client == null || !isOrderValid || _isSubmitting)
+                      ? null
+                      : () => _submitOrder(
+                          context, cartProvider, productsProvider, client),
+                  child: _isSubmitting
+                      ? CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation(Colors.white))
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Отправить заказ'),
+                            if (minOrderAmount > 0 && !isOrderValid)
+                              Text(
+                                  'Мин. сумма: ${minOrderAmount.toStringAsFixed(2)} ₽',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.orange)),
+                          ],
                         ),
-                    ],
-                  ),
                   style: ElevatedButton.styleFrom(
-                    minimumSize: Size(double.infinity, 48),
-                  ),
+                      minimumSize: Size(double.infinity, 48)),
                 ),
               ],
             ),
@@ -184,42 +130,69 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  /// Отправка заказа в Google Sheets
-  Future<bool> _submitOrder(
+  Future<void> _submitOrder(
     BuildContext context,
     CartProvider cartProvider,
     ProductsProvider productsProvider,
     Client client,
   ) async {
+    setState(() => _isSubmitting = true);
+    final sheetsService = SheetAllApiService();
     final now = DateTime.now();
-    final formatter = DateFormat('dd.MM.yyyy');
-    final orderDate = formatter.format(now);
-    final sheetsService = SheetsApiService();
+    final orderDate = DateFormat('dd.MM.yyyy').format(now);
 
-    // 🔁 1. Удаляем ВСЕ старые заказы для этого клиента и адреса
-    await sheetsService.deleteOrdersByPhoneAndClient(
-      phone: client.phone,
-      clientName: client.name,
-    );
+    try {
+      // 🔁 Удаляем старые заказы: статус = "заказ"
+      final deleteSuccess = await sheetsService.delete(
+        sheetName: 'Заказы',
+        filters: {
+          'Телефон': client.phone,
+          'Клиент': client.name,
+          'Статус': 'заказ',
+        },
+      );
 
-    // ➕ 2. Добавляем новые позиции для этого клиента и адреса
-    final newOrders =
-        cartProvider.getOrderItemsForClient(client, productsProvider.products);
-    final ordersRows = <List<dynamic>>[];
+      if (!deleteSuccess) {
+        throw Exception('Не удалось удалить старые заказы');
+      }
 
-    for (var order in newOrders) {
-      ordersRows.add([
-        order.status,
-        order.productName,
-        order.quantity,
-        order.totalPrice,
-        orderDate,
-        order.clientPhone,
-        order.clientName,
-      ]);
+      // ➕ Формируем новые заказы со статусом "оформлен"
+      final ordersRows = <List<dynamic>>[];
+      cartProvider.cartItems.forEach((productId, quantity) {
+        final product =
+            productsProvider.products.firstWhere((p) => p.id == productId);
+        ordersRows.add([
+          'оформлен', // Статус
+          product.name, // Наименование
+          quantity, // Количество
+          product.price * quantity, // Итоговая цена
+          orderDate, // Дата
+          client.phone, // Телефон
+          client.name, // Клиент
+        ]);
+      });
+
+      if (ordersRows.isEmpty) return;
+
+      // ➕ Создаём новые заказы
+      final createSuccess = await sheetsService.create(
+        sheetName: 'Заказы',
+        data: ordersRows,
+      );
+
+      if (createSuccess) {
+        cartProvider.clearAll();
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Заказ успешно отправлен!')));
+      } else {
+        throw Exception('Не удалось создать заказ');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+    } finally {
+      setState(() => _isSubmitting = false);
     }
-
-    if (ordersRows.isEmpty) return false;
-    return await sheetsService.appendOrders(ordersRows);
   }
 }

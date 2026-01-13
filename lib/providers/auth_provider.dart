@@ -5,11 +5,6 @@ import '../models/user.dart';
 import '../services/auth_service.dart';
 
 class AuthProvider with ChangeNotifier {
-  static const _phoneKey = 'auth_phone';
-  static const _nameKey = 'auth_name';
-  static const _roleKey = 'auth_role';
-  static const _discountKey = 'auth_discount';
-
   User? _currentUser;
   bool _isLoading = false;
   String? _error;
@@ -20,23 +15,43 @@ class AuthProvider with ChangeNotifier {
   bool get isAuthenticated => _currentUser != null;
   bool get isEmployee => _currentUser is Employee;
   bool get isClient => _currentUser is Client;
+  void setLoading(bool value) {
+    _isLoading = value;
+    notifyListeners();
+  }
+
+  void setError(String message) {
+    _error = message;
+    notifyListeners();
+  }
+
+  void clearError() {
+    _error = null;
+    notifyListeners();
+  }
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    final phone = prefs.getString(_phoneKey);
+    final phone = prefs.getString('auth_phone');
     if (phone == null) return;
 
-    final name = prefs.getString(_nameKey) ?? '';
-    final role = prefs.getString(_roleKey);
-    final discountStr = prefs.getString(_discountKey);
+    final name = prefs.getString('auth_name') ?? '';
+    final type = prefs.getString('auth_type') ?? 'client';
 
-    if (role != null) {
-      _currentUser = Employee(phone: phone, name: name, role: role);
-    } else if (discountStr != null) {
-      final discount = int.tryParse(discountStr);
-      _currentUser = Client(phone: phone, name: name, discount: discount);
+    if (type == 'client') {
+      final discountStr = prefs.getString('auth_discount');
+      final discount = discountStr != null ? int.tryParse(discountStr) : null;
+      final minOrderAmount = prefs.getDouble('auth_min_order') ?? 0.0;
+      _currentUser = Client(
+        phone: phone,
+        name: name,
+        discount: discount,
+        minOrderAmount: minOrderAmount,
+        transportCost: null,
+      );
     } else {
-      _currentUser = Client(phone: phone, name: name, discount: null);
+      final role = prefs.getString('auth_role') ?? 'Employee';
+      _currentUser = Employee(phone: phone, name: name, role: role);
     }
     notifyListeners();
   }
@@ -62,21 +77,29 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Сохраняет сессию клиента
+  Future<void> setClientSession(Client client) async {
+    _currentUser = client;
+    await _saveToPrefs(client);
+    notifyListeners();
+  }
+
+  /// Вспомогательный метод сохранения в SharedPreferences
   Future<void> _saveToPrefs(User user) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_phoneKey, user.phone);
-    await prefs.setString(_nameKey, user.name);
+    await prefs.setString('auth_phone', user.phone);
+    await prefs.setString('auth_name', user.name);
 
-    if (user is Employee) {
-      await prefs.setString(_roleKey, user.role);
-      await prefs.remove(_discountKey);
-    } else if (user is Client) {
-      await prefs.remove(_roleKey);
-      if (user.discount != null) {
-        await prefs.setString(_discountKey, user.discount.toString());
-      } else {
-        await prefs.remove(_discountKey);
-      }
+    if (user is Client) {
+      await prefs.setString('auth_type', 'client');
+      await prefs.setString('auth_discount', user.discount?.toString() ?? '');
+      await prefs.setDouble('auth_min_order', user.minOrderAmount);
+      await prefs.remove('auth_role');
+    } else if (user is Employee) {
+      await prefs.setString('auth_type', 'employee');
+      await prefs.setString('auth_role', user.role);
+      await prefs.remove('auth_discount');
+      await prefs.remove('auth_min_order');
     }
   }
 

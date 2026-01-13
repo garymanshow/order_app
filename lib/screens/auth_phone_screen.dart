@@ -1,12 +1,10 @@
-// lib/screens/auth_phone_screen.dart
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/sheet_all_api_service.dart';
-import '../screens/price_list_screen.dart';
-import '../screens/client_selection_screen.dart';
 import '../models/user.dart';
-import '../providers/theme_provider.dart';
+import '../providers/auth_provider.dart';
+import '../services/sheet_all_api_service.dart';
+import 'client_selection_screen.dart';
+import 'price_list_screen.dart';
 
 class AuthPhoneScreen extends StatefulWidget {
   @override
@@ -16,216 +14,108 @@ class AuthPhoneScreen extends StatefulWidget {
 class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
-  late final List<String> _backgrounds = [
-    'assets/images/bg1.webp',
-    'assets/images/bg2.webp',
-    'assets/images/bg3.webp',
-  ];
-  int _currentIndex = 0;
-  late Timer _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(Duration(seconds: 5), (timer) {
-      setState(() {
-        _currentIndex = (_currentIndex + 1) % _backgrounds.length;
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    _phoneController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    final nextIndex = (_currentIndex + 1) % _backgrounds.length;
+    final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // 🔁 Анимированный фон
-          AnimatedCrossFade(
-            duration: Duration(seconds: 1),
-            firstChild: _buildBackground(_backgrounds[_currentIndex]),
-            secondChild: _buildBackground(_backgrounds[nextIndex]),
-            crossFadeState: CrossFadeState.showFirst,
-          ),
-          // Затемнение
-          Container(color: Colors.black.withOpacity(0.4)),
-          // Контент
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Введите ваш номер телефона',
-                      style: TextStyle(fontSize: 24, color: Colors.white),
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: 30),
-                    TextFormField(
-                      controller: _phoneController,
-                      style: TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'Телефон (+79023456789)',
-                        labelStyle: TextStyle(color: Colors.white70),
-                        prefixIcon: Icon(Icons.phone, color: Colors.white),
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white70),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white70),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Введите номер';
-                        }
-                        if (!value.startsWith('+7') || value.length != 12) {
-                          return 'Формат: +79023456789';
-                        }
-                        return null;
-                      },
-                    ),
-                    SizedBox(height: 30),
-                    ElevatedButton(
-                      onPressed: () async {
-                        if (_formKey.currentState!.validate()) {
-                          final phone = _phoneController.text;
-                          await _authenticateAndNavigate(context, phone);
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: Size(double.infinity, 48),
-                        backgroundColor: Colors.blue.shade900,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: Text('Войти'),
-                    ),
-                  ],
-                ),
+      appBar: AppBar(title: Text('Авторизация')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Введите ваш номер телефона',
+                style: TextStyle(fontSize: 18),
+                textAlign: TextAlign.center,
               ),
-            ),
+              SizedBox(height: 20),
+              TextFormField(
+                controller: _phoneController,
+                decoration: InputDecoration(
+                  labelText: 'Телефон (+79023456789)',
+                  prefixIcon: Icon(Icons.phone),
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Введите номер';
+                  }
+                  if (!value.startsWith('+7') || value.length != 12) {
+                    return 'Формат: +79023456789';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: authProvider.isLoading
+                    ? null
+                    : () {
+                        if (_formKey.currentState!.validate()) {
+                          _login(_phoneController.text, context, authProvider);
+                        }
+                      },
+                child: authProvider.isLoading
+                    ? CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      )
+                    : Text('Войти'),
+              ),
+              if (authProvider.error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Text(
+                    authProvider.error!,
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+            ],
           ),
-        ],
-      ),
-      // Кнопка выбора темы
-      floatingActionButton: FloatingActionButton.small(
-        heroTag: 'theme_toggle',
-        onPressed: () {
-          _showThemeDialog(context);
-        },
-        tooltip: 'Выбрать тему',
-        child: Icon(Icons.brightness_6),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
-    );
-  }
-
-  Widget _buildBackground(String imagePath) {
-    return Container(
-      decoration: BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage(imagePath),
-          fit: BoxFit.cover,
         ),
       ),
     );
   }
 
-  void _showThemeDialog(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Выберите тему'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(Icons.light_mode),
-              title: Text('Светлая'),
-              onTap: () {
-                themeProvider.setThemeMode(ThemeMode.light);
-                Navigator.of(ctx).pop();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.dark_mode),
-              title: Text('Тёмная'),
-              onTap: () {
-                themeProvider.setThemeMode(ThemeMode.dark);
-                Navigator.of(ctx).pop();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.settings),
-              title: Text('Как в системе'),
-              onTap: () {
-                themeProvider.setThemeMode(ThemeMode.system);
-                Navigator.of(ctx).pop();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _authenticateAndNavigate(BuildContext context, String phone) async {
-    final service = SheetAllApiService();
+  Future<void> _login(
+    String phone,
+    BuildContext context,
+    AuthProvider authProvider,
+  ) async {
     try {
-      final clients = await service.read(
+      authProvider.setLoading(true);
+      authProvider.clearError();
+
+      // 🔑 Загружаем клиентов по телефону
+      final clientsRaw = await SheetAllApiService().read(
         sheetName: 'Клиенты',
         filters: {'Телефон': phone},
       );
 
+      // 🔄 Преобразуем в List<Client>
+      final List<Client> clients = clientsRaw
+          .where((item) => item is Map<String, dynamic>)
+          .map((item) => _parseClient(item as Map<String, dynamic>))
+          .toList();
+
       if (clients.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Клиент не найден')),
-        );
+        authProvider.setError('Клиент не найден');
         return;
       }
 
-      if (clients.length == 1) {
-        final clientData = clients[0] as Map<String, dynamic>;
-        final client = Client(
-          phone: phone,
-          name: clientData['Клиент']?.toString() ?? 'Клиент',
-          discount: int.tryParse(
-                clientData['Скидка']?.toString().replaceAll(',', '.') ??
-                    '0',
-              ) ??
-              null,
-          minOrderAmount: double.tryParse(
-                clientData['Сумма миним.заказа']
-                        ?.toString()
-                        .replaceAll(' ', '') ??
-                    '0',
-              ) ??
-              0.0,
-          address: clientData['Адрес доставки']?.toString() ?? '',
-        );
+      // 🚀 Сохраняем сессию
+      await authProvider.setClientSession(clients.first);
 
+      // ➡️ Навигация
+      if (clients.length == 1) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => PriceListScreen(
-              client: client,
-//              mode: PriceListMode.full,
-            ),
+            builder: (context) => PriceListScreen(client: clients.first),
           ),
         );
       } else {
@@ -234,15 +124,40 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
           MaterialPageRoute(
             builder: (context) => ClientSelectionScreen(
               phone: phone,
-              clients: clients,
+              clients: clients, // ✅ Теперь List<Client>
             ),
           ),
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка авторизации: $e')),
-      );
+      authProvider.setError('Ошибка авторизации: $e');
+    } finally {
+      authProvider.setLoading(false);
+    }
+  }
+
+  // 🔧 Вспомогательный метод парсинга
+  Client _parseClient(Map<String, dynamic> row) {
+    return Client(
+      phone: row['Телефон']?.toString() ?? '',
+      name: row['Клиент']?.toString() ?? '',
+      address: row['Адрес доставки']?.toString() ?? '',
+      discount: _parseDiscount(row['Скидка']?.toString() ?? ''),
+      minOrderAmount:
+          double.tryParse(row['Сумма миним.заказа']?.toString() ?? '0') ?? 0.0,
+      transportCost: null,
+    );
+  }
+
+  int? _parseDiscount(String raw) {
+    if (raw.isEmpty) return null;
+    final cleaned = raw.replaceAll(RegExp(r'[^\d,]'), '');
+    if (cleaned.isEmpty) return null;
+    final normalized = cleaned.replaceAll(',', '.');
+    try {
+      return double.parse(normalized).toInt();
+    } catch (e) {
+      return null;
     }
   }
 }

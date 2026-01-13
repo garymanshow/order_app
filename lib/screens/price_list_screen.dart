@@ -1,4 +1,5 @@
 // lib/screens/price_list_screen.dart
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/price_list_mode.dart';
@@ -40,7 +41,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
 
   // Сохраняет и загружает режим из кэша (в реальности — из SharedPreferences)
   PriceListMode _loadSavedMode(String phone) {
-    // В реальном приложении: 
+    // В реальном приложении:
     // final prefs = await SharedPreferences.getInstance();
     // final modeStr = prefs.getString('price_mode_$phone') ?? 'full';
     // return PriceListModeExtension.fromString(modeStr);
@@ -102,17 +103,20 @@ class _PriceListScreenState extends State<PriceListScreen> {
     );
 
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
-    final productsProvider = Provider.of<ProductsProvider>(context, listen: false);
+    final productsProvider =
+        Provider.of<ProductsProvider>(context, listen: false);
     final products = productsProvider.products;
 
     cartProvider.clearAll();
     for (var order in orders) {
-      final product = products.firstWhere(
+      final product = products.firstWhereOrNull(
         (p) => p.name == (order as Map)['Наименование'],
-        orElse: () => null,
       );
       if (product != null) {
-        cartProvider.setTemporaryQuantity(product.id, (order['Количество'] as int?) ?? 0);
+        cartProvider.setTemporaryQuantity(
+          product.id,
+          (order['Количество'] as int?) ?? 0,
+        );
       }
     }
   }
