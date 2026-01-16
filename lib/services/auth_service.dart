@@ -1,22 +1,26 @@
-// lib/services/auth_service.dart
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/user.dart';
-import './sheet_all_api_service.dart';
+import './google_sheets_service.dart'; // ← новый сервис
 
 class AuthService {
-  final SheetAllApiService _service = SheetAllApiService();
-
   /// Аутентификация по телефону:
   /// 1. Сначала ищем в листе "Сотрудники"
   /// 2. Если не найдено — ищем в листе "Клиенты"
   Future<User?> authenticate(String phone) async {
+    final service = GoogleSheetsService(dotenv.env['SPREADSHEET_ID']!);
+    await service.init();
+
     // 🔍 1. Поиск в "Сотрудники"
     try {
-      final employees = await _service.read(sheetName: 'Сотрудники', filters: [
-        {'column': 'Телефон', 'value': phone}
-      ]);
+      final employees = await service.read(
+        sheetName: 'Сотрудники',
+        filters: [
+          {'column': 'Телефон', 'value': phone}
+        ],
+      );
 
       if (employees.isNotEmpty) {
-        final row = employees.first as Map<String, dynamic>;
+        final row = employees.first;
         return Employee(
           phone: row['Телефон']?.toString() ?? phone,
           name: row['Сотрудник']?.toString() ?? 'Сотрудник',
@@ -24,18 +28,21 @@ class AuthService {
         );
       }
     } catch (e) {
-      // Игнорируем ошибку — возможно, лист "Сотрудники" не существует или нет доступа
-      // Но продолжаем поиск в "Клиентах"
+      print('Ошибка поиска сотрудника: $e');
+      // Продолжаем поиск в "Клиентах"
     }
 
     // 🔍 2. Поиск в "Клиенты"
     try {
-      final clients = await _service.read(sheetName: 'Клиенты', filters: [
-        {'column': 'Телефон', 'value': phone}
-      ]);
+      final clients = await service.read(
+        sheetName: 'Клиенты',
+        filters: [
+          {'column': 'Телефон', 'value': phone}
+        ],
+      );
 
       if (clients.isNotEmpty) {
-        final row = clients.first as Map<String, dynamic>;
+        final row = clients.first;
         return Client(
           phone: row['Телефон']?.toString() ?? phone,
           name: row['Клиент']?.toString() ?? 'Клиент',
@@ -48,9 +55,9 @@ class AuthService {
         );
       }
     } catch (e) {
-      // Логируем ошибку, но не прерываем
       print('Ошибка поиска клиента: $e');
     }
+
     return null;
   }
 

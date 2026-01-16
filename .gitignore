@@ -28,6 +28,7 @@ confectionery_app/
 
 # Secret Key
 .env
+credentials.json
 
 # Flutter/Dart/Pub related
 **/doc/api/

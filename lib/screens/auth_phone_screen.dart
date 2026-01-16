@@ -1,10 +1,10 @@
+// lib/screens/auth_phone_screen.dart
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/user.dart';
+import '../services/google_drive_service.dart';
 import '../providers/auth_provider.dart';
-import '../services/sheet_all_api_service.dart';
-import 'client_selection_screen.dart';
-import 'price_list_screen.dart';
+import 'dart:math';
 
 class AuthPhoneScreen extends StatefulWidget {
   @override
@@ -12,154 +12,131 @@ class AuthPhoneScreen extends StatefulWidget {
 }
 
 class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _phoneController = TextEditingController();
+  late Future<String?> _backgroundImageUrl;
+  final TextEditingController _phoneController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _backgroundImageUrl = _loadRandomBackgroundImage();
+  }
+
+  Future<String?> _loadRandomBackgroundImage() async {
+    try {
+      final driveService = GoogleDriveService();
+      await driveService.init();
+
+      // Замените на ID вашей папки в Google Drive
+      final folderId = dotenv.env['GOOGLE_DRIVE_IMAGES_FOLDER_ID']!;
+      final imageIds = await driveService.getWebPImageFileIds(folderId);
+
+      if (imageIds.isEmpty) return null;
+
+      final random = Random();
+      final randomId = imageIds[random.nextInt(imageIds.length)];
+      return driveService.getDownloadUrl(randomId);
+    } catch (e) {
+      print('Ошибка загрузки фона: $e');
+      return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
-
     return Scaffold(
-      appBar: AppBar(title: Text('Авторизация')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+      body: FutureBuilder<String?>(
+        future: _backgroundImageUrl,
+        builder: (context, snapshot) {
+          Widget background = Container(color: Colors.blue[50]); // fallback
+
+          if (snapshot.hasData && snapshot.data != null) {
+            background = Image.network(
+              snapshot.data!,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return Container(color: Colors.blue[50]);
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return Container(color: Colors.blue[50]);
+              },
+            );
+          }
+
+          return Stack(
             children: [
-              Text(
-                'Введите ваш номер телефона',
-                style: TextStyle(fontSize: 18),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 20),
-              TextFormField(
-                controller: _phoneController,
-                decoration: InputDecoration(
-                  labelText: 'Телефон (+79023456789)',
-                  prefixIcon: Icon(Icons.phone),
-                  border: OutlineInputBorder(),
+              // Фоновое изображение
+              Positioned.fill(child: background),
+
+              // Полупрозрачный оверлей для читаемости текста
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withOpacity(0.3),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Введите номер';
-                  }
-                  if (!value.startsWith('+7') || value.length != 12) {
-                    return 'Формат: +79023456789';
-                  }
-                  return null;
-                },
               ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: authProvider.isLoading
-                    ? null
-                    : () {
-                        if (_formKey.currentState!.validate()) {
-                          _login(_phoneController.text, context, authProvider);
-                        }
-                      },
-                child: authProvider.isLoading
-                    ? CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      )
-                    : Text('Войти'),
-              ),
-              if (authProvider.error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Text(
-                    authProvider.error!,
-                    style: TextStyle(color: Colors.red),
+
+              // Основной контент
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Добро пожаловать!',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 32),
+                      TextField(
+                        controller: _phoneController,
+                        decoration: InputDecoration(
+                          hintText: '+79123456789',
+                          hintStyle: TextStyle(color: Colors.white70),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.2),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.white),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                BorderSide(color: Colors.white, width: 2),
+                          ),
+                        ),
+                        style: TextStyle(color: Colors.white, fontSize: 18),
+                        keyboardType: TextInputType.phone,
+                      ),
+                      SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () {
+                          final phone = _phoneController.text.trim();
+                          if (phone.isNotEmpty) {
+                            Provider.of<AuthProvider>(context, listen: false)
+                                .login(phone);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          minimumSize: Size(200, 50),
+                        ),
+                        child: Text(
+                          'Войти',
+                          style: TextStyle(color: Colors.white, fontSize: 18),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
-  }
-
-  Future<void> _login(
-    String phone,
-    BuildContext context,
-    AuthProvider authProvider,
-  ) async {
-    try {
-      authProvider.setLoading(true);
-      authProvider.clearError();
-
-      // 🔑 Загружаем клиентов по телефону
-      final clientsRaw = await SheetAllApiService().read(
-        sheetName: 'Клиенты',
-        filters: [
-          {'column': 'Телефон', 'value': phone}
-        ],
-      );
-
-      // 🔄 Преобразуем в List<Client>
-      final List<Client> clients = clientsRaw
-          .where((item) => item is Map<String, dynamic>)
-          .map((item) => _parseClient(item as Map<String, dynamic>))
-          .toList();
-
-      if (clients.isEmpty) {
-        authProvider.setError('Клиент не найден');
-        return;
-      }
-
-      // 🚀 Сохраняем сессию
-      await authProvider.setClientSession(clients.first);
-
-      // ➡️ Навигация
-      if (clients.length == 1) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PriceListScreen(client: clients.first),
-          ),
-        );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ClientSelectionScreen(
-              phone: phone,
-              clients: clients, // ✅ Теперь List<Client>
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      authProvider.setError('Ошибка авторизации: $e');
-    } finally {
-      authProvider.setLoading(false);
-    }
-  }
-
-  // 🔧 Вспомогательный метод парсинга
-  Client _parseClient(Map<String, dynamic> row) {
-    return Client(
-      phone: row['Телефон']?.toString() ?? '',
-      name: row['Клиент']?.toString() ?? '',
-      address: row['Адрес доставки']?.toString() ?? '',
-      discount: _parseDiscount(row['Скидка']?.toString() ?? ''),
-      minOrderAmount:
-          double.tryParse(row['Сумма миним.заказа']?.toString() ?? '0') ?? 0.0,
-      transportCost: null,
-    );
-  }
-
-  int? _parseDiscount(String raw) {
-    if (raw.isEmpty) return null;
-    final cleaned = raw.replaceAll(RegExp(r'[^\d,]'), '');
-    if (cleaned.isEmpty) return null;
-    final normalized = cleaned.replaceAll(',', '.');
-    try {
-      return double.parse(normalized).toInt();
-    } catch (e) {
-      return null;
-    }
   }
 }

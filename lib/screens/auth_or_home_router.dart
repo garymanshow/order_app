@@ -72,6 +72,10 @@ class _GenericEmployeeScreen extends StatelessWidget {
 }
 
 // Новый экран-посредник
+// ... остальные импорты и классы AuthOrHomeRouter, _GenericEmployeeScreen ...
+
+// Новый экран-посредник
+// Новый экран-посредник
 class ClientAddressOrPriceListScreen extends StatefulWidget {
   @override
   _ClientAddressOrPriceListScreenState createState() =>
@@ -80,40 +84,43 @@ class ClientAddressOrPriceListScreen extends StatefulWidget {
 
 class _ClientAddressOrPriceListScreenState
     extends State<ClientAddressOrPriceListScreen> {
-  late Future<List<Client>> _clientsFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    final phone = (Provider.of<AuthProvider>(context, listen: false).currentUser
-            as Client)
-        .phone;
-    _clientsFuture = ClientsService().fetchClientsByPhone(phone);
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Получаем телефон из AuthProvider
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final phone = (authProvider.currentUser as Client).phone;
+
+    // Создаём Future прямо в build
+    final clientsFuture = ClientsService().fetchClientsByPhone(phone);
+
     return FutureBuilder<List<Client>>(
-      future: _clientsFuture,
+      future: clientsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
+        if (snapshot.hasError) {
+          print('❌ Ошибка загрузки клиентов: ${snapshot.error}');
+          return Scaffold(
+            body: Center(child: Text('Ошибка загрузки: ${snapshot.error}')),
+          );
+        }
+
         final clients = snapshot.data ?? [];
+        print('👥 Получено клиентов: ${clients.length}');
+
+        if (clients.isEmpty) {
+          return Scaffold(body: Center(child: Text('Клиент не найден')));
+        }
+
         if (clients.length == 1) {
-          // Один адрес — сразу в прайс-лист
           return PriceListScreen(client: clients.first);
-        } else if (clients.length > 1) {
-          // Несколько адресов — выбор
+        } else {
           return ClientSelectionScreen(
-            phone: (Provider.of<AuthProvider>(context, listen: false)
-                    .currentUser as Client)
-                .phone,
+            phone: clients.first.phone,
             clients: clients,
           );
-        } else {
-          return Scaffold(body: Center(child: Text('Клиент не найден')));
         }
       },
     );

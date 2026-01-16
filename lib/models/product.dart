@@ -1,9 +1,10 @@
 // lib/models/product.dart
+
 class Product {
   final String id;
   final String name;
-  final String? imageUrl;
-  final String? imageBase64;
+  final String? imageUrl; // ← nullable
+  final String? imageBase64; // ← nullable
   final String composition;
   final String weight;
   final double price;
@@ -16,7 +17,7 @@ class Product {
   Product({
     required this.id,
     required this.name,
-    this.imageUrl,
+    this.imageUrl, // ← НЕ required!
     this.imageBase64,
     this.composition = '',
     this.weight = '',
@@ -28,6 +29,28 @@ class Product {
     this.categoryName = '',
   });
 
+  // Геттеры для удобства
   bool get hasImageUrl => imageUrl != null && imageUrl!.isNotEmpty;
   bool get hasImageBase64 => imageBase64 != null && imageBase64!.isNotEmpty;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'imageUrl': imageUrl,
+      'price': price,
+      'multiplicity': multiplicity,
+    };
+  }
+
+  // конструктор fromJson (для восстановления из кэша)
+  factory Product.fromJson(Map<String, dynamic> json) {
+    return Product(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      imageUrl: json['imageUrl'] as String,
+      price: (json['price'] as num).toDouble(),
+      multiplicity: json['multiplicity'] as int,
+    );
+  }
 }

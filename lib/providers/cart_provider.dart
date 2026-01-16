@@ -1,73 +1,82 @@
 // lib/providers/cart_provider.dart
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
 import '../models/user.dart';
-import '../services/sheet_all_api_service.dart';
+import '../services/google_sheets_service.dart'; // ← новый сервис
 
 class CartProvider with ChangeNotifier {
-  // Хранит актуальное количество товаров в корзине
   final Map<String, int> _cartItems = {};
-  // Хранит временное количество (для UI)
   final Map<String, int> _temporaryQuantities = {};
 
   Map<String, int> get cartItems => Map.unmodifiable(_cartItems);
   int getTemporaryQuantity(String productId) =>
       _temporaryQuantities[productId] ?? 0;
 
+  late GoogleSheetsService _sheetService;
+  Client? _client;
+
+  void initialize(GoogleSheetsService service, Client client) {
+    _sheetService = service;
+    _client = client;
+    _loadFromSharedPreferences();
+  }
+
+  // Сохраняет корзину в shared_preferences
+  void _saveToSharedPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _getCartKey();
+    final json = jsonEncode(_cartItems);
+    await prefs.setString(key, json);
+  }
+
+  // Загружает корзину из shared_preferences
+  void _loadFromSharedPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _getCartKey();
+    final json = prefs.getString(key);
+    if (json != null) {
+      final Map<String, dynamic> map = jsonDecode(json);
+      _cartItems.clear();
+      _temporaryQuantities.clear();
+      map.forEach((k, v) {
+        _cartItems[k] = v as int;
+        _temporaryQuantities[k] = v as int;
+      });
+      notifyListeners();
+    }
+  }
+
+  String _getCartKey() {
+    if (_client == null) {
+      throw Exception('CartProvider не инициализирован');
+    }
+    // Уникальный ключ: телефон + имя (нормализованное)
+    final normalizedClientName = _client!.name.replaceAll(RegExp(r'\s+'), '_');
+    return 'cart_${_client!.phone}_$normalizedClientName';
+  }
+
   void setTemporaryQuantity(String productId, int quantity) {
     if (quantity < 0) quantity = 0;
     _temporaryQuantities[productId] = quantity;
+
+    // Синхронизируем с основной корзиной и сохраняем
+    _cartItems[productId] = quantity;
+    _saveToSharedPreferences(); // ← добавлено!
+
     notifyListeners();
-  }
-
-  late SheetAllApiService _sheetService;
-  late Client _client;
-
-  void initialize(SheetAllApiService service, Client client) {
-    _sheetService = service;
-    _client = client;
-  }
-
-  // Загрузка заказов клиента в корзину при инициализации
-  Future<void> loadFromOrders(List<Product> products) async {
-    final orders = await _sheetService.read(sheetName: 'Заказы', filters: [
-      {'column': 'Телефон', 'value': _client.phone},
-      {'column': 'Клиент', 'value': _client.name},
-      {'column': 'Статус', 'value': 'заказ'}
-    ]);
-
-    _cartItems.clear();
-    _temporaryQuantities.clear();
-
-    for (var order in orders) {
-      final product = products.firstWhere(
-        (p) => p.name == (order as Map)['Название'],
-        orElse: () => Product(
-            id: '', name: 'Товар недоступен', price: 0, multiplicity: 1),
-      );
-      if (product != null) {
-        final quantity = (order['Количество'] as int?) ?? 0;
-        _cartItems[product.id] = quantity;
-        _temporaryQuantities[product.id] = quantity;
-      }
-    }
-
-    //notifyListeners();
   }
 
   Future<void> addItem(
       String productId, int quantity, List<Product> products) async {
     if (quantity <= 0) return;
-
     final currentQty = _cartItems[productId] ?? 0;
     final newQty = currentQty + quantity;
     _cartItems[productId] = newQty;
     _temporaryQuantities[productId] = newQty;
-
-    final product = products.firstWhere((p) => p.id == productId);
-    await _saveToSheet(product, newQty);
-
+    _saveToSharedPreferences(); // ← сохраняем локально
     notifyListeners();
   }
 
@@ -77,68 +86,71 @@ class CartProvider with ChangeNotifier {
     if (quantity > 0 && quantity % multiplicity != 0) {
       quantity = ((quantity ~/ multiplicity) + 1) * multiplicity;
     }
-
     _cartItems[productId] = quantity;
-    _temporaryQuantities[productId] = quantity;
-
-    final product = products.firstWhere((p) => p.id == productId);
-    if (quantity == 0) {
-      await _deleteFromSheet(product);
-    } else {
-      await _saveToSheet(product, quantity);
-    }
-
+    _temporaryQuantities[productId] = quantity; // ← убедитесь, что есть
+    _saveToSharedPreferences();
     notifyListeners();
   }
 
   Future<void> removeItem(String productId, List<Product> products) async {
-    final product = products.firstWhere((p) => p.id == productId);
-    await _deleteFromSheet(product);
-
     _cartItems.remove(productId);
     _temporaryQuantities.remove(productId);
+    _saveToSharedPreferences(); // ← сохраняем локально
     notifyListeners();
   }
 
-  Future<void> _saveToSheet(Product product, int quantity) async {
-    await _sheetService.delete(sheetName: 'Заказы', filters: [
-      {'column': 'Телефон', 'value': _client.phone},
-      {'column': 'Название', 'value': product.name},
-      {'column': 'Клиент', 'value': _client.name},
-      {'column': 'Статус', 'value': 'заказ'}
-    ]);
-
-    if (quantity > 0) {
-      await _sheetService.create(
-        sheetName: 'Заказы',
-        data: [
-          [
-            'заказ',
-            product.name,
-            quantity,
-            product.price * quantity,
-            '',
-            _client.phone,
-            _client.name,
-          ]
-        ],
-      );
-    }
-  }
-
-  Future<void> _deleteFromSheet(Product product) async {
-    await _sheetService.delete(sheetName: 'Заказы', filters: [
-      {'column': 'Телефон', 'value': _client.phone},
-      {'column': 'Название', 'value': product.name},
-      {'column': 'Клиент', 'value': _client.name},
-      {'column': 'Статус', 'value': 'заказ'}
-    ]);
+  void reset() {
+    _client = null;
+    clearAll(); // теперь безопасно
   }
 
   void clearAll() {
     _cartItems.clear();
     _temporaryQuantities.clear();
+    _clearFromSharedPreferences();
     notifyListeners();
+  }
+
+  Future<void> _clearFromSharedPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_getCartKey());
+  }
+
+  // Отправка заказа в Google Таблицу
+  Future<void> submitOrder(List<Product> products) async {
+    print('📤 Отправка заказа...');
+
+    // Убедимся, что телефон начинается с '+'
+    String formattedPhone = _client!.phone;
+    if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+$formattedPhone';
+    }
+
+    final now = DateTime.now();
+    final formattedDate = '${now.day}.${now.month}.${now.year}';
+
+    final items = getOrderItemsForClient(products);
+    final rows = items
+        .map((item) => [
+              'оформлен',
+              item.productName,
+              item.quantity,
+              item.totalPrice,
+              formattedDate,
+              formattedPhone, // ← всегда с '+'
+              _client!.name,
+              0,
+            ])
+        .toList();
+
+    try {
+      await _sheetService.create(sheetName: 'Заказы', records: rows);
+      print('✅ Заказ отправлен успешно');
+      clearAll();
+    } catch (e) {
+      print('❌ Ошибка отправки заказа: $e');
+      rethrow;
+    }
   }
 
   List<OrderItem> getOrderItemsForClient(List<Product> products) {
@@ -146,13 +158,13 @@ class CartProvider with ChangeNotifier {
     _cartItems.forEach((productId, quantity) {
       final product = products.firstWhere((p) => p.id == productId);
       items.add(OrderItem(
-        status: 'заказ',
+        status: 'оформлен', // ← теперь всегда "оформлен"
         productName: product.name,
         quantity: quantity,
         totalPrice: product.price * quantity,
         date: '',
-        clientPhone: _client.phone,
-        clientName: _client.name,
+        clientPhone: _client!.phone,
+        clientName: _client!.name,
       ));
     });
     return items;

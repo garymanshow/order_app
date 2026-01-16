@@ -15,6 +15,7 @@ class AuthProvider with ChangeNotifier {
   bool get isAuthenticated => _currentUser != null;
   bool get isEmployee => _currentUser is Employee;
   bool get isClient => _currentUser is Client;
+
   void setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
@@ -56,6 +57,7 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // ✅ ОСНОВНОЙ МЕТОД АВТОРИЗАЦИИ
   Future<void> login(String phone) async {
     _isLoading = true;
     _error = null;
@@ -77,14 +79,12 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// Сохраняет сессию клиента
   Future<void> setClientSession(Client client) async {
     _currentUser = client;
     await _saveToPrefs(client);
     notifyListeners();
   }
 
-  /// Вспомогательный метод сохранения в SharedPreferences
   Future<void> _saveToPrefs(User user) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_phone', user.phone);

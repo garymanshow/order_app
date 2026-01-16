@@ -1,12 +1,11 @@
+// lib/screens/cart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../providers/cart_provider.dart';
 import '../providers/products_provider.dart';
-import '../providers/auth_provider.dart'; // ← ДОБАВЛЕН ИМПОРТ AuthProvider
-import '../models/product.dart'; // ← ДОБАВЛЕН ИМПОРТ Product
-import '../models/user.dart'; // Убедитесь, что Client доступен отсюда
-import '../services/sheet_all_api_service.dart';
+import '../providers/auth_provider.dart';
+import '../models/product.dart';
+import '../models/user.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({Key? key}) : super(key: key);
@@ -31,9 +30,6 @@ class _CartScreenState extends State<CartScreen> {
     final total = cartProvider.getTotal(productsProvider.products, discount);
     final minOrderAmount = client?.minOrderAmount ?? 0.0;
     final isOrderValid = total >= minOrderAmount && total > 0;
-
-    print(
-        'DEBUG CartScreen: total=$total, minOrderAmount=$minOrderAmount, isOrderValid=$isOrderValid');
 
     if (productsProvider.isLoading) {
       return Scaffold(
@@ -138,54 +134,17 @@ class _CartScreenState extends State<CartScreen> {
     Client client,
   ) async {
     setState(() => _isSubmitting = true);
-    final sheetsService = SheetAllApiService();
-    final now = DateTime.now();
-    final orderDate = DateFormat('dd.MM.yyyy').format(now);
 
     try {
-      final deleteSuccess =
-          await sheetsService.delete(sheetName: 'Заказы', filters: [
-        {'column': 'Телефон', 'value': client.phone},
-        {'column': 'Клиент', 'value': client.name},
-        {'column': 'Статус', 'value': 'заказ'}
-      ]);
+      // ✅ Используем метод из CartProvider
+      await cartProvider.submitOrder(products);
 
-      if (!deleteSuccess) {
-        throw Exception('Не удалось удалить старые заказы');
-      }
-
-      final ordersRows = <List<dynamic>>[];
-      cartProvider.cartItems.forEach((productId, quantity) {
-        final product = products.firstWhere((p) => p.id == productId);
-        ordersRows.add([
-          'оформлен',
-          product.name,
-          quantity,
-          product.price * quantity,
-          orderDate,
-          client.phone,
-          client.name,
-        ]);
-      });
-
-      if (ordersRows.isEmpty) return;
-
-      final createSuccess = await sheetsService.create(
-        sheetName: 'Заказы',
-        data: ordersRows,
-      );
-
-      if (createSuccess) {
-        cartProvider.clearAll();
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Заказ успешно отправлен!')));
-      } else {
-        throw Exception('Не удалось создать заказ');
-      }
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Заказ успешно оформлен!')));
     } catch (e) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+          .showSnackBar(SnackBar(content: Text('Ошибка оформления: $e')));
     } finally {
       setState(() => _isSubmitting = false);
     }
