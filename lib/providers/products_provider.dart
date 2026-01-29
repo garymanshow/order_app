@@ -91,4 +91,35 @@ class ProductsProvider with ChangeNotifier {
       await _loadFromNetwork(service, prefs);
     }
   }
+
+  // 🔥 ДОБАВЛЕН МЕТОД _checkProductsFreshness
+  Future<bool> _checkProductsFreshness(String lastUpdateStr) async {
+    final lastLocalUpdate = DateTime.tryParse(lastUpdateStr);
+    if (lastLocalUpdate == null) return false;
+
+    final service = GoogleSheetsService(dotenv.env['SPREADSHEET_ID']!);
+    await service.init();
+    final serverTime = await service.getLastPriceUpdateTime();
+
+    return !serverTime.isAfter(lastLocalUpdate);
+  }
+
+  Future<void> loadProductsIfNeeded() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastUpdateStr = prefs.getString('metadata_products');
+
+    if (lastUpdateStr == null) {
+      // Нет метаданных - загружаем обязательно
+      await loadProducts();
+    } else {
+      // Проверяем актуальность через метаданные
+      final isFresh = await _checkProductsFreshness(lastUpdateStr);
+      if (!isFresh) {
+        await loadProducts();
+      } else {
+        // 🔥 ИСПРАВЛЕНО: используем существующий метод
+        await _loadFromCache(prefs);
+      }
+    }
+  }
 }

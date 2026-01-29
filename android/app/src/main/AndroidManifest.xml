@@ -2,6 +2,9 @@
     <!-- ✅ Добавлено разрешение для интернета -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- 🔥 ДОБАВЛЕНО: разрешение для доступа к контактам -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
     <application
         android:label="order_app"
         android:name="${applicationName}"

@@ -1,3 +1,4 @@
+// lib/services/google_sheets_service.dart
 import 'dart:convert';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis_auth/auth_io.dart' as auth;
@@ -21,9 +22,12 @@ class GoogleSheetsService {
       json.decode(jsonKey),
     );
 
+    // 🔥 УБРАТЬ ЛИШНИЙ ПРОБЕЛ В SCOPE
     final authClient = await auth.clientViaServiceAccount(
       credentials,
-      ['https://www.googleapis.com/auth/spreadsheets'],
+      [
+        'https://www.googleapis.com/auth/spreadsheets'
+      ], // ← убран пробел в конце
     );
 
     _sheetsApi = sheets.SheetsApi(authClient);
@@ -136,60 +140,101 @@ class GoogleSheetsService {
   }
 
   // ==================== UPDATE ====================
+  /// Обновляет данные в таблице
+  /// Либо по rowIndex, либо по filters (только одно из двух)
   Future<void> update({
     required String sheetName,
-    required List<Map<String, String>> filters,
-    required Map<String, dynamic> updateData,
+    int? rowIndex,
+    List<Map<String, String>>? filters,
+    required Map<String, dynamic> data,
   }) async {
     _ensureInitialized();
 
-    // Сначала читаем все данные
-    final allData = await _readAllRows(sheetName);
-    if (allData.isEmpty) return;
-
-    final headers = allData[0].cast<String>();
-    final dataRows = allData.skip(1).toList();
-
-    // Находим индексы строк для обновления
-    final rowIndexes = <int>[];
-    for (int i = 0; i < dataRows.length; i++) {
-      final row = dataRows[i];
-      bool matches = true;
-      for (var filter in filters) {
-        final colIndex = headers.indexOf(filter['column']!);
-        if (colIndex == -1) continue;
-        final cellValue = (row[colIndex] ?? '').toString();
-        if (cellValue != filter['value']) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) {
-        rowIndexes.add(i +
-            2); // +2 потому что строки в Google Sheets начинаются с 1, и первая — заголовок
-      }
+    if (rowIndex == null && filters == null) {
+      throw Exception('Должен быть указан либо rowIndex, либо filters');
     }
 
-    // Обновляем каждую найденную строку
-    for (int rowIndex in rowIndexes) {
-      final range =
-          '$sheetName!A$rowIndex:${String.fromCharCode('A'.codeUnitAt(0) + headers.length - 1)}$rowIndex';
-      final newRow = List<dynamic>.filled(headers.length, '');
-      for (int i = 0; i < headers.length; i++) {
-        final header = headers[i];
-        if (updateData.containsKey(header)) {
-          newRow[i] = updateData[header];
-        } else {
-          // Сохраняем старое значение
-          newRow[i] = dataRows[rowIndex - 2][i] ?? '';
+    if (rowIndex != null && filters != null) {
+      throw Exception('Нельзя указывать одновременно rowIndex и filters');
+    }
+
+    if (rowIndex != null) {
+      // Существующая логика по rowIndex
+      final headersResponse = await _sheetsApi!.spreadsheets.values.get(
+        _spreadsheetId,
+        '$sheetName!1:1',
+      );
+      final headers = headersResponse.values?.first ?? [];
+
+      final rowValues = List.filled(headers.length, '');
+      data.forEach((key, value) {
+        final index = headers.indexOf(key);
+        if (index != -1) {
+          rowValues[index] = value.toString();
+        }
+      });
+
+      await _sheetsApi!.spreadsheets.values.update(
+        sheets.ValueRange(values: [rowValues]),
+        _spreadsheetId,
+        '$sheetName!A$rowIndex',
+        valueInputOption: 'RAW',
+      );
+    } else if (filters != null) {
+      // 🔥 БЕЗОПАСНОЕ ОБНОВЛЕНИЕ ДЛЯ КОРОТКИХ СТРОК
+      final allData = await _readAllRows(sheetName);
+      if (allData.isEmpty) return;
+
+      final headers = allData[0].cast<String>();
+      final dataRows = allData.skip(1).toList();
+
+      for (int i = 0; i < dataRows.length; i++) {
+        final originalRow = dataRows[i];
+        bool matches = true;
+
+        // Проверяем фильтры (с безопасным доступом к ячейкам)
+        for (var filter in filters) {
+          final colIndex = headers.indexOf(filter['column']!);
+          if (colIndex == -1) continue;
+
+          final cellValue =
+              (colIndex < originalRow.length ? originalRow[colIndex] : '')
+                  .toString();
+          if (cellValue != filter['value']) {
+            matches = false;
+            break;
+          }
+        }
+
+        if (matches) {
+          // 🔥 Дополняем строку до нужной длины
+          final normalizedRow = List<String>.filled(headers.length, '');
+          for (int j = 0; j < originalRow.length && j < headers.length; j++) {
+            normalizedRow[j] = originalRow[j].toString();
+          }
+
+          // Обновляем указанные поля
+          data.forEach((column, value) {
+            final colIndex = headers.indexOf(column);
+            if (colIndex != -1) {
+              String cellValue = value.toString();
+              // Нормализация телефона (если применимо)
+              if (column == 'Телефон' && !cellValue.startsWith('+')) {
+                cellValue = '+$cellValue';
+              }
+              normalizedRow[colIndex] = cellValue;
+            }
+          });
+
+          final rowIndexToUpdate = i + 2;
+          await _sheetsApi!.spreadsheets.values.update(
+            sheets.ValueRange(values: [normalizedRow]),
+            _spreadsheetId,
+            '$sheetName!A$rowIndexToUpdate',
+            valueInputOption: 'RAW',
+          );
         }
       }
-      await _sheetsApi!.spreadsheets.values.update(
-        sheets.ValueRange(values: [newRow]),
-        _spreadsheetId,
-        range,
-        valueInputOption: 'USER_ENTERED',
-      );
     }
   }
 
@@ -225,27 +270,175 @@ class GoogleSheetsService {
       }
     }
 
-    // Удаляем с конца, чтобы не сбивались индексы
-    for (int i = rowIndexes.length - 1; i >= 0; i--) {
-      final rowIndex = rowIndexes[i];
-      await _sheetsApi!.spreadsheets.batchUpdate(
-        sheets.BatchUpdateSpreadsheetRequest(
-          requests: [
-            sheets.Request(
-              deleteDimension: sheets.DeleteDimensionRequest(
-                range: sheets.DimensionRange(
-                  sheetId: await _getSheetId(sheetName),
-                  dimension: 'ROWS',
-                  startIndex: rowIndex - 1,
-                  endIndex: rowIndex,
-                ),
+    // 🔥 ИСПОЛЬЗУЕМ BATCH ДЛЯ УДАЛЕНИЯ
+    if (rowIndexes.isNotEmpty) {
+      final requests = <sheets.Request>[];
+
+      // Удаляем в обратном порядке для корректности индексов
+      for (final rowIndex in rowIndexes.reversed) {
+        requests.add(
+          sheets.Request(
+            deleteDimension: sheets.DeleteDimensionRequest(
+              range: sheets.DimensionRange(
+                sheetId: await getSheetId(sheetName),
+                dimension: 'ROWS',
+                startIndex: rowIndex - 1,
+                endIndex: rowIndex,
               ),
             ),
-          ],
-        ),
-        _spreadsheetId,
-      );
+          ),
+        );
+      }
+
+      await batchUpdate(requests);
     }
+  }
+
+  // ==================== BATCH OPERATIONS ====================
+
+  /// 🔥 Выполняет несколько операций в одном запросе
+  Future<void> batchUpdate(List<sheets.Request> requests) async {
+    _ensureInitialized();
+
+    if (requests.isEmpty) return;
+
+    final batchRequest = sheets.BatchUpdateSpreadsheetRequest(
+      requests: requests,
+    );
+
+    await _sheetsApi!.spreadsheets.batchUpdate(
+      batchRequest,
+      _spreadsheetId,
+    );
+  }
+
+  /// 🔥 Находит rowIndex по фильтрам (для использования в batch-запросах)
+  Future<int?> findRowIndexByFilters({
+    required String sheetName,
+    required List<Map<String, String>> filters,
+  }) async {
+    _ensureInitialized();
+
+    final allData = await _readAllRows(sheetName);
+    if (allData.isEmpty) return null;
+
+    final headers = allData[0].cast<String>();
+    final dataRows = allData.skip(1).toList();
+
+    for (int i = 0; i < dataRows.length; i++) {
+      final row = dataRows[i];
+      bool matches = true;
+
+      for (var filter in filters) {
+        final colIndex = headers.indexOf(filter['column']!);
+        if (colIndex == -1) continue;
+        final cellValue =
+            (colIndex < row.length ? row[colIndex] : '').toString();
+        if (cellValue != filter['value']) {
+          matches = false;
+          break;
+        }
+      }
+
+      if (matches) {
+        return i + 2; // 1-based индексация + заголовок
+      }
+    }
+
+    return null;
+  }
+
+  /// 🔥 Создаёт запрос на обновление строки для batch-операции
+  Future<sheets.Request> createUpdateRowRequest({
+    required String sheetName,
+    required int rowIndex,
+    required Map<String, dynamic> data,
+  }) async {
+    _ensureInitialized();
+
+    final headersResponse = await _sheetsApi!.spreadsheets.values.get(
+      _spreadsheetId,
+      '$sheetName!1:1',
+    );
+    final headers = headersResponse.values?.first ?? [];
+    final sheetId = await getSheetId(sheetName);
+
+    final rowValues = List.filled(headers.length, '');
+    data.forEach((key, value) {
+      final index = headers.indexOf(key);
+      if (index != -1) {
+        rowValues[index] = value.toString();
+      }
+    });
+
+    return sheets.Request(
+      updateCells: sheets.UpdateCellsRequest(
+        rows: [
+          sheets.RowData(
+            values: rowValues
+                .map((cell) => sheets.CellData(
+                    userEnteredValue: sheets.ExtendedValue(stringValue: cell)))
+                .toList(),
+          ),
+        ],
+        fields: 'userEnteredValue',
+        start: sheets.GridCoordinate(
+          sheetId: sheetId,
+          rowIndex: rowIndex - 1, // 0-based для API
+          columnIndex: 0,
+        ),
+      ),
+    );
+  }
+
+  /// 🔥 Создаёт запрос на добавление строк для batch-операции
+  Future<sheets.Request> createAppendRowsRequest({
+    required String sheetName,
+    required List<List<dynamic>> records,
+  }) async {
+    _ensureInitialized();
+
+    final sheetId = await getSheetId(sheetName);
+
+    final rowData = records.map((record) {
+      return sheets.RowData(
+        values: record
+            .map((cell) => sheets.CellData(
+                userEnteredValue:
+                    sheets.ExtendedValue(stringValue: cell.toString())))
+            .toList(),
+      );
+    }).toList();
+
+    return sheets.Request(
+      appendCells: sheets.AppendCellsRequest(
+        sheetId: sheetId,
+        fields: 'userEnteredValue',
+        rows: rowData,
+      ),
+    );
+  }
+
+  /// 🔥 Создаёт запрос на удаление строк для batch-операции
+  Future<sheets.Request> createDeleteRowsRequest({
+    required String sheetName,
+    required int startRowIndex,
+    required int rowCount,
+  }) async {
+    _ensureInitialized();
+
+    final sheetId = await getSheetId(sheetName);
+
+    return sheets.Request(
+      deleteDimension: sheets.DeleteDimensionRequest(
+        range: sheets.DimensionRange(
+          sheetId: sheetId,
+          dimension: 'ROWS',
+          startIndex: startRowIndex - 1, // 0-based
+          endIndex: startRowIndex - 1 + rowCount, // 0-based, exclusive
+        ),
+      ),
+    );
   }
 
   // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
@@ -258,7 +451,7 @@ class GoogleSheetsService {
     return response.values ?? [];
   }
 
-  Future<int> _getSheetId(String sheetName) async {
+  Future<int> getSheetId(String sheetName) async {
     final spreadsheet = await _sheetsApi!.spreadsheets.get(_spreadsheetId);
     final sheet = spreadsheet.sheets!.firstWhere(
       (s) => s.properties!.title == sheetName,

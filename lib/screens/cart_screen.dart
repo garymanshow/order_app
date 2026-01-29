@@ -1,11 +1,11 @@
 // lib/screens/cart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/client.dart';
+import '../models/product.dart';
+import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/products_provider.dart';
-import '../providers/auth_provider.dart';
-import '../models/product.dart';
-import '../models/user.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({Key? key}) : super(key: key);
@@ -19,134 +19,241 @@ class _CartScreenState extends State<CartScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cartProvider = Provider.of<CartProvider>(context);
-    final productsProvider = Provider.of<ProductsProvider>(context);
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    return Consumer<ProductsProvider>(
+      builder: (context, productsProvider, child) {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final client = authProvider.currentUser as Client?;
 
-    final client =
-        authProvider.isClient ? authProvider.currentUser as Client? : null;
-    final clientDiscountPercent = client?.discount ?? 0;
-    final discount = clientDiscountPercent / 100.0;
-    final total = cartProvider.getTotal(productsProvider.products, discount);
-    final minOrderAmount = client?.minOrderAmount ?? 0.0;
-    final isOrderValid = total >= minOrderAmount && total > 0;
+        if (client == null) {
+          return Scaffold(
+            appBar: AppBar(title: Text('Ошибка')),
+            body: Center(child: Text('Не авторизован')),
+          );
+        }
 
-    if (productsProvider.isLoading) {
-      return Scaffold(
-        appBar: AppBar(title: Text('Корзина')),
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+        // Загружаем продукты если нужно
+        if (productsProvider.products.isEmpty && !productsProvider.isLoading) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            productsProvider.loadProducts();
+          });
+        }
 
-    if (productsProvider.error != null) {
-      return Scaffold(
-        appBar: AppBar(title: Text('Корзина')),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        // Показываем загрузку пока продукты не готовы
+        if (productsProvider.products.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(title: Text('Корзина')),
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final cartProvider = Provider.of<CartProvider>(context, listen: false);
+        final discount = (client.discount ?? 0) / 100.0;
+        final minOrderAmount = client.minOrderAmount ?? 0.0;
+        final total =
+            cartProvider.getTotal(productsProvider.products, discount);
+        final isOrderValid = total >= minOrderAmount && total > 0;
+
+        return Scaffold(
+          appBar: AppBar(title: Text('Корзина')),
+          body: Column(
             children: [
-              Icon(Icons.error, color: Colors.red, size: 48),
-              SizedBox(height: 16),
-              Text('Ошибка загрузки товаров', style: TextStyle(fontSize: 18)),
-              Text(productsProvider.error!),
+              Expanded(
+                child: _buildCartItems(cartProvider, productsProvider.products),
+              ),
+              _buildOrderSummary(client, discount, total, minOrderAmount),
+              _buildSubmitButton(isOrderValid),
             ],
           ),
-        ),
-      );
+        );
+      },
+    );
+  }
+
+  Widget _buildCartItems(CartProvider cartProvider, List<Product> products) {
+    final cartItems = cartProvider.cartItems;
+
+    print('📊 Корзина содержит ${cartItems.length} позиций:');
+    cartItems.forEach((key, value) {
+      print('   Ключ: "$key" = $value');
+    });
+    print('📦 Доступные продукты (${products.length}):');
+    for (var product in products.take(5)) {
+      // Показываем первые 5 продуктов
+      print('   ID: "${product.id}", Название: "${product.name}"');
     }
 
-    final products = productsProvider.products;
+    if (cartItems.isEmpty) {
+      return Center(child: Text('Корзина пуста'));
+    }
 
-    return Scaffold(
-      appBar: AppBar(title: Text('Корзина')),
-      body: Column(
-        children: [
-          Expanded(
-            child: cartProvider.cartItems.isEmpty
-                ? Center(
-                    child:
-                        Text('Корзина пуста', style: TextStyle(fontSize: 18)))
-                : ListView.builder(
-                    itemCount: cartProvider.cartItems.length,
-                    itemBuilder: (context, index) {
-                      final productId =
-                          cartProvider.cartItems.keys.elementAt(index);
-                      final quantity = cartProvider.cartItems[productId]!;
-                      final product = products.firstWhere(
-                        (p) => p.id == productId,
-                        orElse: () => Product(
-                          id: '',
-                          name: 'Товар недоступен',
-                          price: 0.0,
-                          multiplicity: 1,
-                        ),
-                      );
+    return ListView.builder(
+      itemCount: cartItems.length,
+      itemBuilder: (context, index) {
+        final productId = cartItems.keys.elementAt(index);
+        final quantity = cartItems[productId]!;
 
-                      return ListTile(
-                        title: Text(product.name),
-                        subtitle: Text(
-                            '${product.price.toStringAsFixed(2)} ₽ × $quantity'),
-                        trailing: IconButton(
-                          icon: Icon(Icons.delete, color: Colors.red),
-                          onPressed: () =>
-                              cartProvider.removeItem(productId, products),
-                        ),
-                      );
-                    },
-                  ),
+        final product = products.firstWhere(
+          (p) => p.id == productId,
+          orElse: () => Product(
+            id: 'not_found',
+            name: 'Товар не найден',
+            price: 0.0,
+            multiplicity: 1,
+            composition: '',
+            weight: '',
+            nutrition: '',
+            storage: '',
+            packaging: '',
+            categoryName: '',
           ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                if (clientDiscountPercent > 0)
-                  Text('Скидка: ${clientDiscountPercent}%',
-                      style: TextStyle(color: Colors.green)),
-                SizedBox(height: 4),
-                Text('Итого: ${total.toStringAsFixed(2)} ₽',
-                    style:
-                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: (client == null || !isOrderValid || _isSubmitting)
-                      ? null
-                      : () => _submitOrder(
-                          context, cartProvider, products, client!),
-                  child: _isSubmitting
-                      ? CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation(Colors.white))
-                      : Text('Оформить заказ'),
-                  style: ElevatedButton.styleFrom(
-                      minimumSize: Size(double.infinity, 48)),
+        );
+
+        final totalForItem = product.price * quantity;
+
+        return ListTile(
+          title: Text(product.name),
+          subtitle: Text(
+            'Цена: ${product.price.toStringAsFixed(2)} ₽ × $quantity шт',
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (quantity > 0)
+                IconButton(
+                  icon: Icon(Icons.remove, color: Colors.red),
+                  onPressed: () {
+                    cartProvider.setQuantity(
+                      productId,
+                      quantity - product.multiplicity,
+                      product.multiplicity,
+                      products,
+                    );
+                  },
                 ),
+              Text('$quantity', style: TextStyle(fontWeight: FontWeight.bold)),
+              IconButton(
+                icon: Icon(Icons.add, color: Colors.green),
+                onPressed: () {
+                  cartProvider.setQuantity(
+                    productId,
+                    quantity + product.multiplicity,
+                    product.multiplicity,
+                    products,
+                  );
+                },
+              ),
+            ],
+          ),
+          leading: Text('${totalForItem.toStringAsFixed(2)} ₽'),
+        );
+      },
+    );
+  }
+
+  Widget _buildOrderSummary(
+      Client client, double discount, double total, double minOrderAmount) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (discount > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Скидка клиента:'),
+                Text('${(discount * 100).toStringAsFixed(0)}%',
+                    style: TextStyle(
+                        color: Colors.green, fontWeight: FontWeight.bold)),
               ],
             ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Итого:',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Text('${total.toStringAsFixed(2)} ₽',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
           ),
+          if (total < minOrderAmount && total > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Минимальная сумма заказа: ${minOrderAmount.toStringAsFixed(2)} ₽',
+                style:
+                    TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Future<void> _submitOrder(
-    BuildContext context,
-    CartProvider cartProvider,
-    List<Product> products,
-    Client client,
-  ) async {
+  Widget _buildSubmitButton(bool isOrderValid) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: ElevatedButton(
+        onPressed: (!isOrderValid || _isSubmitting)
+            ? null
+            : () => _submitOrder(context),
+        child: _isSubmitting
+            ? CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
+            : Text('Оформить заказ', style: TextStyle(fontSize: 16)),
+        style: ElevatedButton.styleFrom(
+          minimumSize: Size(double.infinity, 48),
+          backgroundColor: isOrderValid ? Colors.blue : Colors.grey,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitOrder(BuildContext context) async {
     setState(() => _isSubmitting = true);
 
     try {
-      // ✅ Используем метод из CartProvider
-      await cartProvider.submitOrder(products);
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final client = authProvider.currentUser as Client;
+      final productsProvider =
+          Provider.of<ProductsProvider>(context, listen: false);
 
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Заказ успешно оформлен!')));
+      if (productsProvider.products.isEmpty) {
+        await productsProvider.loadProducts();
+      }
+
+      await Provider.of<CartProvider>(context, listen: false)
+          .submitOrder(productsProvider.products);
+
+      _showSuccessMessage(context);
+
+      Navigator.pushNamedAndRemoveUntil(context, '/price', (route) => false,
+          arguments: client);
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Ошибка оформления: $e')));
-    } finally {
+      _showErrorMessage(context, e.toString());
       setState(() => _isSubmitting = false);
     }
+  }
+
+  void _showSuccessMessage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('✅ Заказ успешно оформлен!'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showErrorMessage(BuildContext context, String error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('❌ Ошибка: $error'),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 5),
+      ),
+    );
   }
 }

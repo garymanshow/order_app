@@ -1,4 +1,6 @@
+// lib/services/google_drive_service.dart
 import 'dart:convert';
+import 'dart:io';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/auth_io.dart' as auth;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -18,18 +20,18 @@ class GoogleDriveService {
       json.decode(jsonKey),
     );
 
+    // 🔥 ВАЖНО: Изменено с readonly на полный доступ для записи файлов
     final authClient = await auth.clientViaServiceAccount(
       credentials,
-      ['https://www.googleapis.com/auth/drive.readonly'],
+      ['https://www.googleapis.com/auth/drive'],
     );
     _driveApi = drive.DriveApi(authClient);
   }
 
   /// Получает список ID файлов с расширением .webp из папки
   Future<List<String>> getWebPImageFileIds(String folderId) async {
-    // Фильтр: только файлы в папке с MIME-типом image/webp и именем, содержащим '.webp'
     final query =
-        "'$folderId' in parents and mimeType='image/webp' and name contains '.webp'";
+        "'$folderId' in parents and mimeType='image/webp' and name contains 'bg' and name contains '.webp'";
 
     final response = await _driveApi.files.list(
       q: query,
@@ -39,19 +41,78 @@ class GoogleDriveService {
     return response.files?.map((file) => file.id!).toList() ?? [];
   }
 
-  /// Генерирует URL для скачивания изображения
-  String getDownloadUrl(String fileId) {
-    // Добавляем access_token не нужно — URL будет использоваться с авторизацией через HTTP-заголовки
-    // Но для простоты мы используем прямой доступ через API (см. ниже)
-    return 'https://www.googleapis.com/drive/v3/files/$fileId?alt=media';
-  }
-
   /// Загружает изображение как байты (альтернатива Image.network)
   Future<List<int>> downloadImageBytes(String fileId) async {
     final response = await _driveApi.files.get(
       fileId,
       downloadOptions: drive.DownloadOptions.fullMedia,
     );
-    return response as List<int>;
+
+    if (response is drive.Media) {
+      final List<int> bytes = [];
+      await for (final chunk in response.stream) {
+        bytes.addAll(chunk);
+      }
+      return bytes;
+    }
+
+    throw Exception('Unexpected response type: ${response.runtimeType}');
+  }
+
+  // 🔥 НОВЫЕ МЕТОДЫ ДЛЯ РАБОТЫ С ФАЙЛАМИ
+
+  /// Загружает файл в Google Drive (CREATE)
+  Future<String> uploadFile(File file,
+      {required String mimeType, required String folderId}) async {
+    final filename = '${DateTime.now().millisecondsSinceEpoch}.webp';
+
+    final fileMetadata = drive.File()
+      ..name = filename
+      ..parents = [folderId]
+      ..mimeType = mimeType;
+
+    final media = drive.Media(file.openRead(), file.lengthSync());
+    final uploadedFile = await _driveApi.files.create(
+      fileMetadata,
+      uploadMedia: media,
+    );
+
+    return uploadedFile.id!;
+  }
+
+  /// Обновляет существующий файл (UPDATE)
+  Future<void> updateFile(String fileId, File newFile,
+      {required String mimeType}) async {
+    final media = drive.Media(newFile.openRead(), newFile.lengthSync());
+    await _driveApi.files.update(
+      drive.File(),
+      fileId,
+      uploadMedia: media,
+    );
+  }
+
+  /// Удаляет файл (DELETE)
+  Future<void> deleteFile(String fileId) async {
+    await _driveApi.files.delete(fileId);
+  }
+
+  /// Получает информацию о файле (READ)
+  Future<drive.File> getFile(String fileId) async {
+    final result = await _driveApi.files.get(fileId);
+    return result as drive.File;
+  }
+
+  /// Делает файл доступным по публичной ссылке
+  Future<void> makeFilePublic(String fileId) async {
+    final permission = drive.Permission()
+      ..role = 'reader'
+      ..type = 'anyone';
+
+    await _driveApi.permissions.create(permission, fileId);
+  }
+
+  /// Генерирует публичную ссылку для скачивания
+  String getPublicUrl(String fileId) {
+    return 'https://drive.google.com/uc?export=download&id=$fileId';
   }
 }

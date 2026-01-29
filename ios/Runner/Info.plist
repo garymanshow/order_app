@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- 🔥 Добавлено разрешение для контактов -->
+	<key>NSContactsUsageDescription</key>
+	<string>Это приложение нуждается в доступе к контактам для выбора номера телефона</string>
 </dict>
 </plist>

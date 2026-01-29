@@ -1,7 +1,7 @@
 // lib/services/clients_service.dart
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../models/user.dart';
-import './google_sheets_service.dart'; // ← ваш новый сервис
+import '../models/client.dart';
+import './google_sheets_service.dart';
 
 class ClientsService {
   Future<List<Client>> fetchClientsByPhone(String phone) async {
@@ -17,23 +17,35 @@ class ClientsService {
     // Фильтруем по телефону (точное совпадение)
     final filtered = allClients.where((row) {
       final tablePhone = row['Телефон']?.toString().trim() ?? '';
-      print('  Проверка: "$tablePhone" == "$phone" ? ${tablePhone == phone}');
       return tablePhone == phone;
     }).toList();
 
-    print('✅ Найдено совпадений: ${filtered.length}');
-
     return filtered.map((row) {
+      // Гарантируем, что телефон начинается с '+'
+      String normalizedPhone = phone.startsWith('+') ? phone : '+$phone';
+
+      // 🔥 Исправление: используем правильные параметры из модели Client
       return Client(
-        phone: phone,
+        phone: normalizedPhone,
         name: row['Клиент']?.toString() ?? '',
-        address: row['Адрес доставки']?.toString() ?? '',
-        discount: _parseDiscount(row['Скидка']?.toString() ?? ''),
+        client: row['Клиент']?.toString(), // ← правильное поле
+        firm: row['ФИРМА']?.toString(),
+        postalCode: row['Почтовый индекс']?.toString(),
+        // 🔥 Исправление: парсим boolean значение
+        legalEntity: _parseBool(row['Юридическое лицо']?.toString()),
+        city: row['Город']?.toString(),
+        // 🔥 Исправление: deliveryAddress вместо address
+        deliveryAddress: row['Адрес доставки']?.toString(),
+        delivery: _parseBool(row['Доставка']?.toString()),
+        comment: row['Комментарий']?.toString(),
+        latitude: _parseDouble(row['latitude']?.toString()),
+        longitude: _parseDouble(row['longitude']?.toString()),
+        // 🔥 Исправление: конвертируем int? в double?
+        discount: _parseDiscount(row['Скидка']?.toString() ?? '')?.toDouble(),
         minOrderAmount:
             double.tryParse(row['Сумма миним.заказа']?.toString() ?? '0') ??
                 0.0,
-        transportCost: null,
-        legalEntity: row['Юридическое лицо']?.toString() ?? '',
+        // transportCost убран - его нет в модели
       );
     }).toList();
   }
@@ -48,5 +60,17 @@ class ClientsService {
     } catch (e) {
       return null;
     }
+  }
+
+  // 🔥 Добавьте недостающие вспомогательные методы
+  static double? _parseDouble(String? value) {
+    if (value == null || value.isEmpty) return null;
+    return double.tryParse(value);
+  }
+
+  static bool? _parseBool(String? value) {
+    if (value == null) return null;
+    final str = value.toLowerCase().trim();
+    return str == 'true' || str == '1' || str == 'да' || str == 'yes';
   }
 }

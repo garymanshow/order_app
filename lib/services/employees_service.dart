@@ -1,6 +1,6 @@
 // lib/services/employees_service.dart
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../models/user.dart';
+import '../models/employee.dart';
 import './google_sheets_service.dart';
 
 class EmployeesService {

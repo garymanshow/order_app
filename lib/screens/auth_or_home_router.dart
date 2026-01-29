@@ -1,15 +1,17 @@
 // lib/screens/auth_or_home_router.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/user.dart';
+import '../models/employee.dart'; // ← добавлен импорт Employee
+import '../models/client.dart'; // ← добавлен импорт Client
 import '../providers/auth_provider.dart';
 import '../services/clients_service.dart';
-import '../screens/price_list_screen.dart';
-import '../screens/client_selection_screen.dart';
+import 'price_list_screen.dart';
+import 'client_selection_screen.dart';
 import 'auth_phone_screen.dart';
 import 'admin_dashboard_screen.dart';
-import 'driver_screen.dart'; // ← добавлено
-import 'manager_screen.dart'; // ← добавлено
+import 'driver_screen.dart';
+import 'manager_screen.dart';
+import 'warehouse_screen.dart'; // ← добавлено для кладовщика
 
 class AuthOrHomeRouter extends StatelessWidget {
   @override
@@ -27,18 +29,20 @@ class AuthOrHomeRouter extends StatelessWidget {
     if (authProvider.isEmployee) {
       final employee = authProvider.currentUser as Employee;
       switch (employee.role) {
-        case 'Admin':
+        case 'Администратор':
           return AdminDashboardScreen();
-        case 'Driver':
+        case 'Водитель':
           return DriverScreen();
-        case 'Manager':
+        case 'Менеджер':
           return ManagerScreen();
+        case 'Кладовщик':
+          return WarehouseScreen(); // ← новый экран
         default:
-          // Для Developer и других ролей — можно показать заглушку
           return _GenericEmployeeScreen(employee: employee);
       }
     }
-    // ✅ Для клиента — ВСЕГДА показываем экран-посредник
+
+    // Для клиента — показываем экран-посредник
     return ClientAddressOrPriceListScreen();
   }
 }
@@ -54,7 +58,7 @@ class _GenericEmployeeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(employee.name),
+        title: Text(employee.name ?? 'Сотрудник'),
         actions: [
           IconButton(
             icon: Icon(Icons.logout),
@@ -71,11 +75,7 @@ class _GenericEmployeeScreen extends StatelessWidget {
   }
 }
 
-// Новый экран-посредник
-// ... остальные импорты и классы AuthOrHomeRouter, _GenericEmployeeScreen ...
-
-// Новый экран-посредник
-// Новый экран-посредник
+// Экран-посредник для клиентов
 class ClientAddressOrPriceListScreen extends StatefulWidget {
   @override
   _ClientAddressOrPriceListScreenState createState() =>
@@ -86,15 +86,22 @@ class _ClientAddressOrPriceListScreenState
     extends State<ClientAddressOrPriceListScreen> {
   @override
   Widget build(BuildContext context) {
-    // Получаем телефон из AuthProvider
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final phone = (authProvider.currentUser as Client).phone;
 
-    // Создаём Future прямо в build
-    final clientsFuture = ClientsService().fetchClientsByPhone(phone);
+    // Проверяем, что пользователь действительно клиент
+    if (authProvider.currentUser == null || authProvider.isEmployee) {
+      return Scaffold(body: Center(child: Text('Ошибка авторизации')));
+    }
+
+    final client = authProvider.currentUser as Client;
+    final phone = client.phone;
+
+    if (phone == null) {
+      return Scaffold(body: Center(child: Text('Номер телефона не указан')));
+    }
 
     return FutureBuilder<List<Client>>(
-      future: clientsFuture,
+      future: ClientsService().fetchClientsByPhone(phone),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -103,12 +110,11 @@ class _ClientAddressOrPriceListScreenState
         if (snapshot.hasError) {
           print('❌ Ошибка загрузки клиентов: ${snapshot.error}');
           return Scaffold(
-            body: Center(child: Text('Ошибка загрузки: ${snapshot.error}')),
+            body: Center(child: Text('Ошибка загрузки данных')),
           );
         }
 
         final clients = snapshot.data ?? [];
-        print('👥 Получено клиентов: ${clients.length}');
 
         if (clients.isEmpty) {
           return Scaffold(body: Center(child: Text('Клиент не найден')));
@@ -118,7 +124,7 @@ class _ClientAddressOrPriceListScreenState
           return PriceListScreen(client: clients.first);
         } else {
           return ClientSelectionScreen(
-            phone: clients.first.phone,
+            phone: phone,
             clients: clients,
           );
         }

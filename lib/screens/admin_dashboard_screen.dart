@@ -2,19 +2,98 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../models/user.dart';
+import '../providers/products_provider.dart';
+import '../providers/orders_provider.dart';
+import '../models/employee.dart';
+import '../models/client.dart';
+import 'admin_clients_screen.dart';
+import 'admin_clients_with_orders_screen.dart';
+import 'admin_price_list_screen.dart';
+import 'admin_employees_screen.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatefulWidget {
+  @override
+  _AdminDashboardScreenState createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  bool _isLoading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRequiredData();
+  }
+
+  Future<void> _loadRequiredData() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Загружаем все необходимые данные для администратора
+      final productsProvider =
+          Provider.of<ProductsProvider>(context, listen: false);
+      final ordersProvider =
+          Provider.of<OrdersProvider>(context, listen: false);
+
+      // Загружаем прайс-лист если нужно
+      await productsProvider.loadProductsIfNeeded();
+
+      // Загружаем заказы если нужно
+      await ordersProvider.loadOrdersIfNeeded();
+    } catch (e) {
+      setState(() => _error = 'Ошибка загрузки данных: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    final user = authProvider.currentUser as Employee;
+    final user = authProvider.currentUser as Employee?;
+
+    if (user == null) {
+      return Scaffold(
+        body: Center(child: Text('Не авторизован')),
+      );
+    }
+
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: Text('Загрузка данных...')),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        appBar: AppBar(title: Text('Ошибка')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(_error!),
+              SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadRequiredData,
+                child: Text('Повторить'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
         title: Text('${user.name} (${user.role})'),
         actions: [
-          // 🔑 Кнопка выхода
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: _loadRequiredData,
+            tooltip: 'Обновить данные',
+          ),
           IconButton(
             icon: Icon(Icons.logout),
             onPressed: () {
@@ -32,20 +111,25 @@ class AdminDashboardScreen extends StatelessWidget {
             _buildAdminButton(
               context,
               icon: Icons.shopping_cart_outlined,
-              title: 'Заказы',
+              title: 'Заказы клиентов',
               onPressed: () {
-                // TODO: переход к экрану заказов
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => OrdersScreen()));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => AdminClientsWithOrdersScreen()),
+                );
               },
             ),
             SizedBox(height: 24),
             _buildAdminButton(
               context,
-              icon: Icons.list_alt_outlined,
+              icon: Icons.currency_ruble,
               title: 'Прайс-лист',
               onPressed: () {
-                // TODO: переход к редактору прайс-листа
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => PriceListEditorScreen()));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AdminPriceListScreen()),
+                );
               },
             ),
             SizedBox(height: 24),
@@ -54,8 +138,40 @@ class AdminDashboardScreen extends StatelessWidget {
               icon: Icons.people_outline,
               title: 'Клиенты',
               onPressed: () {
-                // TODO: переход к редактору клиентов
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => ClientsEditorScreen()));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AdminClientsScreen()),
+                );
+              },
+            ),
+            SizedBox(height: 24),
+            _buildAdminButton(
+              context,
+              icon: Icons.people,
+              title: 'Сотрудники',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AdminEmployeesScreen()),
+                );
+              },
+            ),
+            SizedBox(height: 24),
+            _buildAdminButton(
+              context,
+              icon: Icons.food_bank_outlined,
+              title: 'Поставщики',
+              onPressed: () {
+                // TODO: переход к редактору контрагентов
+              },
+            ),
+            SizedBox(height: 24),
+            _buildAdminButton(
+              context,
+              icon: Icons.warehouse,
+              title: 'Склад',
+              onPressed: () {
+                // TODO: переход к редактору склада
               },
             ),
           ],

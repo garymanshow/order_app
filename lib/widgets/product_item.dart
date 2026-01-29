@@ -22,11 +22,16 @@ class ProductItem extends StatelessWidget {
     final cartProvider = Provider.of<CartProvider>(context);
     final productsProvider =
         Provider.of<ProductsProvider>(context, listen: false);
-    final currentQuantity = cartProvider.getTemporaryQuantity(product.id);
+    final currentQuantity = cartProvider.getQuantity(product.id);
 
     void _updateQuantity(int newQuantity) {
       if (newQuantity < 0) return;
-      cartProvider.setTemporaryQuantity(product.id, newQuantity);
+      cartProvider.setQuantity(
+        product.id,
+        newQuantity,
+        product.multiplicity,
+        productsProvider.products,
+      );
     }
 
     void _handleInput(String input) {

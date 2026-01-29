@@ -2,29 +2,74 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/client.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
-import '../models/user.dart';
-import '../services/google_sheets_service.dart'; // ← новый сервис
+import '../services/google_sheets_service.dart';
 
 class CartProvider with ChangeNotifier {
   final Map<String, int> _cartItems = {};
-  final Map<String, int> _temporaryQuantities = {};
-
-  Map<String, int> get cartItems => Map.unmodifiable(_cartItems);
-  int getTemporaryQuantity(String productId) =>
-      _temporaryQuantities[productId] ?? 0;
-
   late GoogleSheetsService _sheetService;
   Client? _client;
 
-  void initialize(GoogleSheetsService service, Client client) {
+  // ЕДИНСТВЕННЫЙ источник правды
+  Map<String, int> get cartItems => Map.unmodifiable(_cartItems);
+
+  // Получаем количество напрямую из _cartItems
+  int getQuantity(String productId) => _cartItems[productId] ?? 0;
+
+  // Полностью отключить загрузку для ClientSelectionScreen
+  Future<void> initialize(GoogleSheetsService service, Client client,
+      {bool loadFromCache = true}) async {
     _sheetService = service;
     _client = client;
-    _loadFromSharedPreferences();
+
+    if (loadFromCache) {
+      await _loadFromSharedPreferences();
+    }
   }
 
-  // Сохраняет корзину в shared_preferences
+  // 🔥 НОВЫЙ ИСПРАВЛЕННЫЙ МЕТОД для восстановления корзины
+  void restoreCartFromOrders(List<OrderItem> orders, List<Product> products) {
+    _cartItems.clear();
+
+    final activeOrders =
+        orders.where((order) => order.status == 'оформлен').toList();
+
+    print(
+        '🛒 Активных заказов (оформлен) cart_provider : ${activeOrders.length}');
+
+    for (var order in activeOrders) {
+      if (order.priceListId.isNotEmpty) {
+        // 🔥 ИСПОЛЬЗУЕМ ID НАПРЯМУЮ
+        _cartItems[order.priceListId] = order.quantity;
+        print('✅ Заказ по ID: ${order.priceListId} = ${order.quantity}');
+      } else {
+        // Fallback: поиск по имени (для старых данных без ID)
+        final product = products.firstWhere(
+          (p) => p.name == order.productName,
+          orElse: () => Product(
+            id: order.productName,
+            name: order.productName,
+            price: 0.0,
+            multiplicity: 1,
+            composition: '',
+            weight: '',
+            nutrition: '',
+            storage: '',
+            packaging: '',
+            categoryName: '',
+          ),
+        );
+        _cartItems[product.id] = order.quantity;
+        print('⚠️ Fallback по имени: ${order.productName} = ${order.quantity}');
+      }
+    }
+
+    _saveToSharedPreferences();
+    notifyListeners();
+  }
+
   void _saveToSharedPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     final key = _getCartKey();
@@ -32,40 +77,45 @@ class CartProvider with ChangeNotifier {
     await prefs.setString(key, json);
   }
 
-  // Загружает корзину из shared_preferences
-  void _loadFromSharedPreferences() async {
+  Future<void> _loadFromSharedPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     final key = _getCartKey();
     final json = prefs.getString(key);
     if (json != null) {
       final Map<String, dynamic> map = jsonDecode(json);
       _cartItems.clear();
-      _temporaryQuantities.clear();
       map.forEach((k, v) {
         _cartItems[k] = v as int;
-        _temporaryQuantities[k] = v as int;
       });
       notifyListeners();
     }
   }
 
   String _getCartKey() {
+    // Проверяем сам объект
     if (_client == null) {
-      throw Exception('CartProvider не инициализирован');
+      print('⚠️ _client is null!');
+      return 'cart_unknown_unknown';
     }
-    // Уникальный ключ: телефон + имя (нормализованное)
-    final normalizedClientName = _client!.name.replaceAll(RegExp(r'\s+'), '_');
-    return 'cart_${_client!.phone}_$normalizedClientName';
+
+    // Безопасно получаем имя и телефон
+    final name = (_client!.name ?? 'unknown').replaceAll(RegExp(r'\s+'), '_');
+    final phone = _client!.phone ?? 'unknown';
+    final key = 'cart_${phone}_$name';
+    print('🔑 Cart key: $key');
+    return key;
   }
 
-  void setTemporaryQuantity(String productId, int quantity) {
+  // Основной метод изменения количества
+  Future<void> setQuantity(String productId, int quantity, int multiplicity,
+      List<Product> products) async {
+    print('🛒 setQuantity: productId="$productId", quantity=$quantity');
     if (quantity < 0) quantity = 0;
-    _temporaryQuantities[productId] = quantity;
-
-    // Синхронизируем с основной корзиной и сохраняем
+    if (quantity > 0 && quantity % multiplicity != 0) {
+      quantity = ((quantity ~/ multiplicity) + 1) * multiplicity;
+    }
     _cartItems[productId] = quantity;
-    _saveToSharedPreferences(); // ← добавлено!
-
+    _saveToSharedPreferences();
     notifyListeners();
   }
 
@@ -74,41 +124,30 @@ class CartProvider with ChangeNotifier {
     if (quantity <= 0) return;
     final currentQty = _cartItems[productId] ?? 0;
     final newQty = currentQty + quantity;
-    _cartItems[productId] = newQty;
-    _temporaryQuantities[productId] = newQty;
-    _saveToSharedPreferences(); // ← сохраняем локально
-    notifyListeners();
-  }
-
-  Future<void> setQuantity(String productId, int quantity, int multiplicity,
-      List<Product> products) async {
-    if (quantity < 0) quantity = 0;
-    if (quantity > 0 && quantity % multiplicity != 0) {
-      quantity = ((quantity ~/ multiplicity) + 1) * multiplicity;
-    }
-    _cartItems[productId] = quantity;
-    _temporaryQuantities[productId] = quantity; // ← убедитесь, что есть
-    _saveToSharedPreferences();
-    notifyListeners();
+    await setQuantity(productId, newQty, 1, products); // используем общий метод
   }
 
   Future<void> removeItem(String productId, List<Product> products) async {
     _cartItems.remove(productId);
-    _temporaryQuantities.remove(productId);
-    _saveToSharedPreferences(); // ← сохраняем локально
+    _saveToSharedPreferences();
     notifyListeners();
   }
 
   void reset() {
     _client = null;
-    clearAll(); // теперь безопасно
+    clearAll();
   }
 
   void clearAll() {
     _cartItems.clear();
-    _temporaryQuantities.clear();
     _clearFromSharedPreferences();
     notifyListeners();
+  }
+
+  void setClient(Client client) {
+    _client = client;
+    _cartItems.clear(); // ← ОЧИЩАЕМ текущую корзину
+    _loadFromSharedPreferences();
   }
 
   Future<void> _clearFromSharedPreferences() async {
@@ -116,19 +155,28 @@ class CartProvider with ChangeNotifier {
     await prefs.remove(_getCartKey());
   }
 
-  // Отправка заказа в Google Таблицу
   Future<void> submitOrder(List<Product> products) async {
     print('📤 Отправка заказа...');
 
-    // Убедимся, что телефон начинается с '+'
-    String formattedPhone = _client!.phone;
-    if (!formattedPhone.startsWith('+')) {
+    String formattedPhone = _client!.phone ?? '';
+    if (formattedPhone.isNotEmpty && !formattedPhone.startsWith('+')) {
       formattedPhone = '+$formattedPhone';
     }
 
     final now = DateTime.now();
     final formattedDate = '${now.day}.${now.month}.${now.year}';
 
+    // 🔥 Сначала удаляем старые заказы
+    await _sheetService.delete(
+      sheetName: 'Заказы',
+      filters: [
+        {'column': 'Статус', 'value': 'оформлен'},
+        {'column': 'Телефон', 'value': formattedPhone},
+        {'column': 'Клиент', 'value': _client!.name ?? ''},
+      ],
+    );
+
+    // Затем добавляем новые
     final items = getOrderItemsForClient(products);
     final rows = items
         .map((item) => [
@@ -137,8 +185,8 @@ class CartProvider with ChangeNotifier {
               item.quantity,
               item.totalPrice,
               formattedDate,
-              formattedPhone, // ← всегда с '+'
-              _client!.name,
+              "'$formattedPhone",
+              _client!.name ?? '',
               0,
             ])
         .toList();
@@ -158,13 +206,13 @@ class CartProvider with ChangeNotifier {
     _cartItems.forEach((productId, quantity) {
       final product = products.firstWhere((p) => p.id == productId);
       items.add(OrderItem(
-        status: 'оформлен', // ← теперь всегда "оформлен"
+        status: 'оформлен',
         productName: product.name,
         quantity: quantity,
         totalPrice: product.price * quantity,
         date: '',
-        clientPhone: _client!.phone,
-        clientName: _client!.name,
+        clientPhone: _client!.phone ?? '',
+        clientName: _client!.name ?? '',
       ));
     });
     return items;

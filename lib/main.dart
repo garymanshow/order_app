@@ -6,12 +6,13 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 
 // Models
-import 'models/user.dart';
+import 'models/client.dart';
 
 // Screens
 import 'screens/auth_or_home_router.dart';
 import 'screens/price_list_screen.dart';
 import 'screens/cart_screen.dart';
+import 'screens/client_orders_screen.dart';
 
 // Providers
 import 'providers/auth_provider.dart';
@@ -51,7 +52,13 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => ThemeProvider()..init()),
-        ChangeNotifierProvider(create: (context) => AuthProvider()..init()),
+        ChangeNotifierProvider(
+          create: (context) {
+            final provider = AuthProvider();
+            provider.init();
+            return provider;
+          },
+        ),
         ChangeNotifierProvider(create: (context) => ProductsProvider()),
         ChangeNotifierProvider(create: (context) => CartProvider()),
       ],
@@ -79,8 +86,14 @@ class MyAppContent extends StatelessWidget {
                   ModalRoute.of(context)!.settings.arguments as Client;
               return PriceListScreen(client: client);
             },
-            // ✅ Корзина — без аргументов (использует ProductsProvider и CartProvider)
+            // ✅ Корзина
             '/cart': (context) => CartScreen(),
+            // ✅ История заказов
+            '/orders': (context) {
+              final Client client =
+                  ModalRoute.of(context)!.settings.arguments as Client;
+              return ClientOrdersScreen(client: client);
+            },
           },
         );
       },
