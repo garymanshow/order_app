@@ -7,6 +7,7 @@ import 'package:contacts_service/contacts_service.dart';
 import 'package:flutter/services.dart';
 import '../services/google_sheets_service.dart';
 import '../models/client.dart';
+import '../utils/phone_validator.dart'; // ← добавьте импорт
 
 class AdminClientFormScreen extends StatefulWidget {
   final Client? client;
@@ -21,7 +22,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _service = GoogleSheetsService(dotenv.env['SPREADSHEET_ID']!);
 
-  late TextEditingController _clientController;
+  late TextEditingController _nameController; // ← изменено с _clientController
   late TextEditingController _firmController;
   late TextEditingController _postalCodeController;
   late TextEditingController _phoneController;
@@ -39,8 +40,8 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     super.initState();
 
     if (widget.client != null) {
-      _clientController =
-          TextEditingController(text: widget.client!.client ?? '');
+      _nameController = TextEditingController(
+          text: widget.client!.name ?? ''); // ← name вместо client
       _firmController = TextEditingController(text: widget.client!.firm ?? '');
       _postalCodeController =
           TextEditingController(text: widget.client!.postalCode ?? '');
@@ -59,7 +60,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
       _legalEntityValue = widget.client!.legalEntity ?? false;
       _deliveryValue = widget.client!.delivery ?? false;
     } else {
-      _clientController = TextEditingController();
+      _nameController = TextEditingController();
       _firmController = TextEditingController();
       _postalCodeController = TextEditingController();
       _phoneController = TextEditingController();
@@ -76,7 +77,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
 
   @override
   void dispose() {
-    _clientController.dispose();
+    _nameController.dispose(); // ← изменено
     _firmController.dispose();
     _postalCodeController.dispose();
     _phoneController.dispose();
@@ -88,11 +89,11 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     super.dispose();
   }
 
-  // 🔥 Валидация телефона
+  // 🔥 Валидация телефона - используем PhoneValidator
   String? _validatePhone(String? value) {
     if (value == null || value.trim().isEmpty) return null;
 
-    final normalized = Client.normalizePhone(value);
+    final normalized = PhoneValidator.normalizePhone(value);
     if (normalized == null) return 'Неверный формат телефона';
 
     // Проверка российского формата
@@ -109,7 +110,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     try {
       final clipboardData = await Clipboard.getData('text/plain');
       if (clipboardData?.text != null) {
-        final normalized = Client.normalizePhone(clipboardData!.text);
+        final normalized = PhoneValidator.normalizePhone(clipboardData!.text);
         if (normalized != null) {
           _phoneController.text = normalized;
         } else {
@@ -137,7 +138,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
 
   // 🔥 Выбор контакта
   Future<void> _pickContact() async {
-    if (!_isMobilePlatform) return; // ← Только на мобильных
+    if (!_isMobilePlatform) return;
 
     final hasPermission = await _requestContactPermission();
     if (!hasPermission) {
@@ -150,7 +151,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     try {
       final contacts = await ContactsService.getContacts();
 
-      // Фильтруем контакты без телефонов
       final contactsWithPhones = contacts.where((contact) {
         final phones = contact.phones
                 ?.map((p) => p.value ?? '')
@@ -167,7 +167,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
         return;
       }
 
-      // Показываем диалог выбора контакта
       final selectedContact = await showDialog<Contact?>(
         context: context,
         builder: (context) {
@@ -214,11 +213,9 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
             [];
 
         if (phones.length == 1) {
-          // Один телефон - используем сразу
-          final normalized = Client.normalizePhone(phones[0]);
+          final normalized = PhoneValidator.normalizePhone(phones[0]);
           _phoneController.text = normalized ?? phones[0];
         } else if (phones.length > 1) {
-          // Несколько телефонов - выбираем какой использовать
           final selectedPhone = await showDialog<String?>(
             context: context,
             builder: (context) {
@@ -250,7 +247,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
           );
 
           if (selectedPhone != null) {
-            final normalized = Client.normalizePhone(selectedPhone);
+            final normalized = PhoneValidator.normalizePhone(selectedPhone);
             _phoneController.text = normalized ?? selectedPhone;
           }
         }
@@ -265,12 +262,10 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
 
   // 🔥 Обновление заказов при изменении телефона
   Future<void> _updateOrdersPhone(String oldPhone, String newPhone) async {
-    // Если телефон был пустым и стал заполненным - не обновляем заказы
     if ((oldPhone.isEmpty || oldPhone == '') && newPhone.isNotEmpty) {
       return;
     }
 
-    // Обновляем все заказы с этим телефоном
     final ordersService = GoogleSheetsService(dotenv.env['SPREADSHEET_ID']!);
     await ordersService.init();
 
@@ -288,12 +283,13 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
 
     final oldPhone = widget.client?.phone ?? '';
     final newPhone = _phoneController.text.trim().isNotEmpty
-        ? Client.normalizePhone(_phoneController.text.trim()) ?? ''
+        ? PhoneValidator.normalizePhone(_phoneController.text.trim()) ?? ''
         : '';
 
+    // 🔥 ИСПРАВЛЕНО: используем name вместо client
     final client = Client(
-      client: _clientController.text.trim().isNotEmpty
-          ? _clientController.text.trim()
+      name: _nameController.text.trim().isNotEmpty
+          ? _nameController.text.trim()
           : null,
       firm: _firmController.text.trim().isNotEmpty
           ? _firmController.text.trim()
@@ -321,11 +317,11 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
       await _service.init();
 
       if (widget.client != null) {
-        // 🔥 Определяем только изменённые поля
         final updates = <String, dynamic>{};
 
-        if (client.client != widget.client!.client) {
-          updates['Клиент'] = client.client ?? '';
+        if (client.name != widget.client!.name) {
+          // ← name вместо client
+          updates['Клиент'] = client.name ?? '';
         }
         if (client.firm != widget.client!.firm) {
           updates['ФИРМА'] = client.firm ?? '';
@@ -360,9 +356,8 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
         }
 
         if (updates.isNotEmpty) {
-          // 🔥 Используем надёжные фильтры
           final filters = [
-            {'column': 'Клиент', 'value': widget.client!.client ?? ''},
+            {'column': 'Клиент', 'value': widget.client!.name ?? ''}, // ← name
             {'column': 'ФИРМА', 'value': widget.client!.firm ?? ''},
             {'column': 'Телефон', 'value': widget.client!.phone ?? ''},
             {'column': 'Город', 'value': widget.client!.city ?? ''},
@@ -378,7 +373,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
             data: updates,
           );
 
-          // 🔥 Обновляем заказы, если изменился телефон
           if (updates.containsKey('Телефон') && oldPhone != newPhone) {
             await _updateOrdersPhone(oldPhone, newPhone);
           }
@@ -388,7 +382,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
       } else {
         // Создание нового клиента
         final record = [
-          client.client ?? '',
+          client.name ?? '', // ← name вместо client
           client.firm ?? '',
           client.postalCode ?? '',
           client.phone ?? '',
@@ -397,11 +391,11 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
           client.deliveryAddress ?? '',
           client.delivery.toString(),
           client.comment ?? '',
-          client.latitude?.toString() ?? '',
-          client.longitude?.toString() ?? '',
+          '', // latitude
+          '', // longitude
           client.discount?.toString() ?? '',
           client.minOrderAmount?.toString() ?? '',
-          client.fcm ?? '',
+          '', // fcm
         ];
 
         await _service.create(
@@ -441,7 +435,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
           child: ListView(
             children: [
               TextFormField(
-                controller: _clientController,
+                controller: _nameController, // ← name вместо client
                 decoration: InputDecoration(labelText: 'Клиент *'),
                 validator: (value) =>
                     value!.trim().isEmpty ? 'Обязательное поле' : null,
@@ -454,8 +448,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                 controller: _postalCodeController,
                 decoration: InputDecoration(labelText: 'Почтовый индекс'),
               ),
-
-              // 🔥 Поле телефона с улучшенным UX
               TextFormField(
                 controller: _phoneController,
                 decoration: InputDecoration(
@@ -469,7 +461,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                         onPressed: _pastePhoneFromClipboard,
                         tooltip: 'Вставить из буфера',
                       ),
-                      // 🔥 Кнопка контактов только на мобильных
                       if (_isMobilePlatform)
                         IconButton(
                           icon: Icon(Icons.contacts),
@@ -482,7 +473,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                 keyboardType: TextInputType.phone,
                 validator: _validatePhone,
               ),
-
               CheckboxListTile(
                 title: Text('Юридическое лицо'),
                 value: _legalEntityValue,
@@ -493,7 +483,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                 },
                 tristate: false,
               ),
-
               TextFormField(
                 controller: _cityController,
                 decoration: InputDecoration(labelText: 'Город'),
@@ -502,7 +491,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                 controller: _deliveryAddressController,
                 decoration: InputDecoration(labelText: 'Адрес доставки'),
               ),
-
               CheckboxListTile(
                 title: Text('Доставка'),
                 value: _deliveryValue,
@@ -513,7 +501,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                 },
                 tristate: false,
               ),
-
               TextFormField(
                 controller: _commentController,
                 decoration: InputDecoration(labelText: 'Комментарий'),

@@ -5,6 +5,7 @@ import 'dart:convert';
 
 // Models
 import '../models/client.dart';
+import '../models/employee.dart';
 import '../models/user.dart';
 import '../models/sheet_metadata.dart';
 import '../models/product.dart';
@@ -27,7 +28,33 @@ class AuthService {
     final normalizedInputPhone = _normalizePhone(phone);
 
     try {
-      // Поиск клиента
+      // 🔥 СНАЧАЛА ПРОВЕРЯЕМ СОТРУДНИКОВ
+      final employees = await service.read(
+        sheetName: 'Сотрудники',
+        filters: [
+          {'column': 'Телефон', 'value': normalizedInputPhone}
+        ],
+      );
+
+      if (employees.isNotEmpty) {
+        // Найден сотрудник
+        final employee = Employee.fromMap(employees.first);
+
+        // Загружаем данные для сотрудника
+        final clientData = await _loadEmployeeData(service, employee);
+
+        // Получаем метаданные
+        final metadata = await _loadMetadata(service);
+
+        return AuthResponse(
+          user: employee,
+          metadata: metadata,
+          clientData: clientData,
+          timestamp: DateTime.now().toIso8601String(),
+        );
+      }
+
+      // 🔥 ЕСЛИ НЕ НАЙДЕН СОТРУДНИК, ПРОВЕРЯЕМ КЛИЕНТОВ
       final clients = await service.read(
         sheetName: 'Клиенты',
         filters: [
@@ -36,16 +63,8 @@ class AuthService {
       );
 
       if (clients.isNotEmpty) {
-        final row = clients.first;
-        final client = Client(
-          phone: _normalizePhone(
-              row['Телефон']?.toString() ?? normalizedInputPhone),
-          name: row['Клиент']?.toString() ?? 'Клиент',
-          discount: _parseDiscount(row['Скидка']?.toString() ?? '')?.toDouble(),
-          minOrderAmount:
-              double.tryParse(row['Сумма миним.заказа']?.toString() ?? '0') ??
-                  0.0,
-        );
+        // 🔥 ИСПРАВЛЕНО: используем fromMap вместо ручного конструктора
+        final client = Client.fromMap(clients.first);
 
         // Получаем метаданные
         final metadata = await _loadMetadata(service);
@@ -62,11 +81,43 @@ class AuthService {
         );
       }
 
+      // Не найден ни клиент, ни сотрудник
       return null;
     } catch (e) {
       print('Ошибка авторизации: $e');
       return null;
     }
+  }
+
+  // 🔥 НОВЫЙ МЕТОД: Загрузка данных для сотрудника
+  Future<ClientData> _loadEmployeeData(
+      GoogleSheetsService service, Employee employee) async {
+    final clientData = ClientData();
+
+    // Сотрудникам нужны все данные для работы
+    try {
+      // Загружаем прайс-лист
+      final products = await service.read(sheetName: 'Прайс-лист');
+      clientData.products =
+          products.map((row) => Product.fromMap(row)).toList();
+
+      // Загружаем все заказы (без фильтрации по телефону)
+      final orders = await service.read(sheetName: 'Заказы');
+      clientData.orders = orders.map((row) => OrderItem.fromMap(row)).toList();
+
+      // Сохраняем в кэш
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('client_price_data',
+          jsonEncode(clientData.products.map((p) => p.toJson()).toList()));
+      await prefs.setString('client_orders_data',
+          jsonEncode(clientData.orders.map((o) => o.toJson()).toList()));
+      await prefs.setString(
+          'client_price_last_update', DateTime.now().toIso8601String());
+    } catch (e) {
+      print('Ошибка загрузки данных для сотрудника: $e');
+    }
+
+    return clientData;
   }
 
   Future<Map<String, SheetMetadata>> _loadMetadata(
@@ -115,22 +166,8 @@ class AuthService {
       // Загружаем свежие данные
       final products = await service.read(sheetName: 'Прайс-лист');
 
-      // 🔥 ОТЛАДКА: Проверяем ключи первого продукта
-      if (products.isNotEmpty) {
-        print('🔍 Ключи в первом продукте из Google:');
-        products[0].keys.forEach((key) {
-          print('   "$key" = "${products[0][key]}"');
-        });
-      }
-
       clientData.products =
           products.map((row) => Product.fromMap(row)).toList();
-
-      // 🔥 ОТЛАДКА: Проверяем ID продуктов
-      print('💾 Продукты из Google:');
-      for (var product in clientData.products.take(3)) {
-        print('   ID: "${product.id}", Название: "${product.name}"');
-      }
 
       await prefs.setString('client_price_data',
           jsonEncode(clientData.products.map((p) => p.toJson()).toList()));
@@ -144,23 +181,8 @@ class AuthService {
       } else {
         // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: если кэш пуст, загружаем с сервера
         final products = await service.read(sheetName: 'Прайс-лист');
-
-        // 🔥 ОТЛАДКА: Проверяем ключи первого продукта
-        if (products.isNotEmpty) {
-          print('🔍 Ключи в первом продукте из Google (кэш пуст):');
-          products[0].keys.forEach((key) {
-            print('   "$key" = "${products[0][key]}"');
-          });
-        }
-
         clientData.products =
             products.map((row) => Product.fromMap(row)).toList();
-
-        // 🔥 ОТЛАДКА: Проверяем ID продуктов
-        print('💾 Продукты из Google (кэш пуст):');
-        for (var product in clientData.products.take(3)) {
-          print('   ID: "${product.id}", Название: "${product.name}"');
-        }
 
         await prefs.setString('client_price_data',
             jsonEncode(clientData.products.map((p) => p.toJson()).toList()));

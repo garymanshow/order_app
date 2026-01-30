@@ -3,47 +3,55 @@ import 'user.dart';
 
 class Employee extends User {
   final String? role;
-  final bool twoFactorAuth; // ← теперь boolean
+  final bool twoFactorAuth;
   String? fcm;
 
   Employee({
     String? name,
-    required String phone,
+    String? phone,
     this.role,
-    this.twoFactorAuth = false, // ← значение по умолчанию
+    this.twoFactorAuth = false,
     this.fcm,
   }) : super(phone: phone, name: name);
 
+  // 🔥 ИСПРАВЛЕННЫЙ fromMap для Google Таблиц
   factory Employee.fromMap(Map<String, dynamic> map) {
     return Employee(
-      phone: map['Телефон']?.toString() ?? '',
-      name: map['Сотрудник']?.toString().isNotEmpty == true
-          ? map['Сотрудник']?.toString()
-          : null,
-      role: map['Роль']?.toString().isNotEmpty == true
-          ? map['Роль']?.toString()
-          : null,
-      twoFactorAuth: _parseBool(map['2FA']), // ← парсим boolean
-      fcm: map['FCM']?.toString().isNotEmpty == true
-          ? map['FCM']?.toString()
-          : null,
+      name: map['Сотрудник']?.toString(),
+      phone: map['Телефон']?.toString(),
+      role: map['Роль']?.toString(),
+      twoFactorAuth: _parseBool(map['2FA']?.toString()) ?? false,
+      fcm: map['FCM']?.toString(),
     );
   }
 
-  Map<String, dynamic> toMap() {
+  // 🔥 fromJson для восстановления из кэша
+  factory Employee.fromJson(Map<String, dynamic> json) {
+    return Employee(
+      name: json['name'] as String?,
+      phone: json['phone'] as String?,
+      role: json['role'] as String?,
+      twoFactorAuth: json['twoFactorAuth'] as bool? ?? false,
+      fcm: json['fcm'] as String?,
+    );
+  }
+
+  // 🔥 toJson для сохранения в кэш
+  @override
+  Map<String, dynamic> toJson() {
     return {
-      'Сотрудник': name ?? '',
-      'Телефон': phone ?? '',
-      'Роль': role ?? '',
-      '2FA': twoFactorAuth.toString(), // ← сохраняем как строку "true"/"false"
-      'FCM': fcm ?? '',
+      'name': name,
+      'phone': phone,
+      'role': role, // ← ключевое поле для отличия от Client
+      'twoFactorAuth': twoFactorAuth,
+      'fcm': fcm,
     };
   }
 
   // Вспомогательный метод для парсинга boolean
-  static bool _parseBool(dynamic value) {
-    if (value == null) return false;
-    final str = value.toString().toLowerCase().trim();
+  static bool? _parseBool(String? value) {
+    if (value == null) return null;
+    final str = value.toLowerCase().trim();
     return str == 'true' || str == '1' || str == 'да' || str == 'yes';
   }
 

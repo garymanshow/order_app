@@ -8,6 +8,7 @@ import '../models/client.dart';
 import '../models/product.dart';
 import '../models/order_item.dart';
 import '../providers/cart_provider.dart';
+import '../providers/products_provider.dart'; // ← ДОБАВЬТЕ ИМПОРТ
 
 class PriceListScreen extends StatefulWidget {
   final Client client;
@@ -32,7 +33,6 @@ class _PriceListScreenState extends State<PriceListScreen>
     super.initState();
     _currentMode = _loadSavedMode(widget.client.phone ?? '');
 
-    // Инициализация анимации
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
@@ -51,37 +51,39 @@ class _PriceListScreenState extends State<PriceListScreen>
 
   Future<void> _loadProductsAndRestoreCart() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      // 🔥 СНАЧАЛА ПРОБУЕМ ЗАГРУЗИТЬ ИЗ ProductsProvider
+      final productsProvider =
+          Provider.of<ProductsProvider>(context, listen: false);
 
-      // Загружаем прайс-лист
-      final priceJson = prefs.getString('client_price_data');
-      List<Product> products = [];
-      if (priceJson != null) {
-        products = _deserializeProducts(priceJson);
+      if (productsProvider.products.isNotEmpty) {
+        // Используем данные из ProductsProvider
+        _products = productsProvider.products;
       } else {
-        throw Exception('Прайс-лист не загружен');
+        // Если нет в ProductsProvider, пробуем кэш
+        final prefs = await SharedPreferences.getInstance();
+        final priceJson = prefs.getString('client_price_data');
+
+        if (priceJson != null) {
+          _products = _deserializeProducts(priceJson);
+        } else {
+          // 🔥 Если нигде нет данных - загружаем с сервера
+          await productsProvider.loadProducts();
+          _products = productsProvider.products;
+        }
       }
 
-      // Загружаем заказы клиента
+      // Загружаем заказы
+      final prefs = await SharedPreferences.getInstance();
       final ordersJson = prefs.getString('client_orders_data');
       List<OrderItem> orders = [];
       if (ordersJson != null) {
         orders = _deserializeOrders(ordersJson);
       }
 
-      // Сначала устанавливаем продукты
-      setState(() {
-        _products = products;
-      });
-
-      // 🔥 Устанавливаем клиента в CartProvider
       final cartProvider = Provider.of<CartProvider>(context, listen: false);
       cartProvider.setClient(widget.client);
+      await _restoreCartFromOrders(orders, _products);
 
-      // Затем восстанавливаем корзину
-      await _restoreCartFromOrders(orders, products);
-
-      // Проверяем задолженность и запускаем анимацию если нужно
       final hasDebt = _calculateDebt(orders) > 0;
       if (hasDebt) {
         _pulseController.repeat(reverse: true);
@@ -101,9 +103,8 @@ class _PriceListScreenState extends State<PriceListScreen>
   Future<void> _restoreCartFromOrders(
       List<OrderItem> orders, List<Product> products) async {
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
-    cartProvider.setClient(widget.client); // устанавливаем клиента
+    cartProvider.setClient(widget.client);
 
-    // Фильтруем заказы ТОЛЬКО для этого клиента
     final clientOrders = orders
         .where((order) =>
             order.clientPhone == widget.client.phone &&
@@ -117,10 +118,7 @@ class _PriceListScreenState extends State<PriceListScreen>
           '📋 Заказ: ${order.productName}, статус: ${order.status}, количество: ${order.quantity}');
     }
 
-    // 🔥 ИСПОЛЬЗУЕМ ПУБЛИЧНЫЙ МЕТОД
     cartProvider.restoreCartFromOrders(clientOrders, products);
-
-    // Ждём, пока корзина обновится
     await Future.delayed(Duration(milliseconds: 100));
   }
 
@@ -187,7 +185,19 @@ class _PriceListScreenState extends State<PriceListScreen>
         if (_error != null) {
           return Scaffold(
             appBar: AppBar(title: Text('Ошибка')),
-            body: Center(child: Text(_error!)),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(_error!),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadProductsAndRestoreCart,
+                    child: Text('Повторить'),
+                  ),
+                ],
+              ),
+            ),
           );
         }
 
@@ -224,7 +234,6 @@ class _PriceListScreenState extends State<PriceListScreen>
               ],
             ),
             actions: [
-              // Кнопка истории заказов с анимацией
               AnimatedBuilder(
                 animation: _pulseAnimation,
                 builder: (context, child) {
@@ -246,7 +255,6 @@ class _PriceListScreenState extends State<PriceListScreen>
                   );
                 },
               ),
-              // Кнопка "Тип"
               PopupMenuButton<PriceListMode>(
                 icon: Icon(Icons.view_list, color: Colors.white),
                 tooltip: 'Режим отображения',
@@ -268,7 +276,6 @@ class _PriceListScreenState extends State<PriceListScreen>
                   );
                 }).toList(),
               ),
-              // Кнопка корзины
               IconButton(
                 icon: const Icon(Icons.shopping_cart, color: Colors.white),
                 onPressed: () {
@@ -385,7 +392,6 @@ class _PriceListScreenState extends State<PriceListScreen>
   }
 
   List<OrderItem> _getCurrentOrders() {
-    // Возвращаем пустой список, так как заказы загружаются в _loadProductsAndRestoreCart
     return [];
   }
 }

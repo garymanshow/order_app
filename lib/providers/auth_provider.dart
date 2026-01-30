@@ -17,6 +17,7 @@ class AuthProvider with ChangeNotifier {
   bool get isAuthenticated => _currentUser != null;
   bool get isEmployee => _currentUser is Employee;
 
+  // lib/providers/auth_provider.dart
   Future<void> init() async {
     _isLoading = true;
     notifyListeners();
@@ -27,8 +28,16 @@ class AuthProvider with ChangeNotifier {
 
     if (userData != null && timestamp != null) {
       try {
-        final user = User.fromJson(jsonDecode(userData));
-        _currentUser = user;
+        final json = jsonDecode(userData);
+
+        // 🔥 ОПРЕДЕЛЯЕМ ТИП ПОЛЬЗОВАТЕЛЯ
+        if (json['role'] == null) {
+          // Это клиент (у клиентов нет роли)
+          _currentUser = Client.fromJson(json);
+        } else {
+          // Это сотрудник
+          _currentUser = Employee.fromJson(json);
+        }
       } catch (e) {
         print('Ошибка восстановления авторизации: $e');
         await logout();

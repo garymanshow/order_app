@@ -19,27 +19,29 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isLoading = false;
   String? _error;
+  bool _dataLoaded = false; // ← добавлен флаг
 
   @override
-  void initState() {
-    super.initState();
-    _loadRequiredData();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Загружаем данные только один раз
+    if (!_dataLoaded) {
+      _dataLoaded = true;
+      _loadRequiredData();
+    }
   }
 
   Future<void> _loadRequiredData() async {
     setState(() => _isLoading = true);
 
     try {
-      // Загружаем все необходимые данные для администратора
+      // Теперь контекст доступен
       final productsProvider =
           Provider.of<ProductsProvider>(context, listen: false);
       final ordersProvider =
           Provider.of<OrdersProvider>(context, listen: false);
 
-      // Загружаем прайс-лист если нужно
       await productsProvider.loadProductsIfNeeded();
-
-      // Загружаем заказы если нужно
       await ordersProvider.loadOrdersIfNeeded();
     } catch (e) {
       setState(() => _error = 'Ошибка загрузки данных: $e');

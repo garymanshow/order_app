@@ -97,9 +97,26 @@ class _ClientAddressOrPriceListScreenState
     final phone = client.phone;
 
     if (phone == null) {
-      return Scaffold(body: Center(child: Text('Номер телефона не указан')));
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Номер телефона не указан'),
+              SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  authProvider.logout();
+                  Navigator.pushNamedAndRemoveUntil(
+                      context, '/', (route) => false);
+                },
+                child: Text('Вернуться к авторизации'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
-
     return FutureBuilder<List<Client>>(
       future: ClientsService().fetchClientsByPhone(phone),
       builder: (context, snapshot) {
@@ -108,16 +125,49 @@ class _ClientAddressOrPriceListScreenState
         }
 
         if (snapshot.hasError) {
-          print('❌ Ошибка загрузки клиентов: ${snapshot.error}');
           return Scaffold(
-            body: Center(child: Text('Ошибка загрузки данных')),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('❌ Ошибка загрузки данных'),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      authProvider.logout();
+                      Navigator.pushNamedAndRemoveUntil(
+                          context, '/', (route) => false);
+                    },
+                    child: Text('Попробовать снова'),
+                  ),
+                ],
+              ),
+            ),
           );
         }
 
         final clients = snapshot.data ?? [];
 
         if (clients.isEmpty) {
-          return Scaffold(body: Center(child: Text('Клиент не найден')));
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('Клиент не найден'),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      authProvider.logout();
+                      Navigator.pushNamedAndRemoveUntil(
+                          context, '/', (route) => false);
+                    },
+                    child: Text('Вернуться к авторизации'),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
         if (clients.length == 1) {

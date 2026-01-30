@@ -252,7 +252,8 @@ class _CartScreenState extends State<CartScreen> {
       SnackBar(
         content: Text('❌ Ошибка: $error'),
         backgroundColor: Colors.red,
-        duration: Duration(seconds: 5),
+        duration: Duration(seconds: 10),
+        behavior: SnackBarBehavior.floating, // Делает его более заметным
       ),
     );
   }

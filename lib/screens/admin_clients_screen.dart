@@ -44,9 +44,10 @@ class _AdminClientsScreenState extends State<AdminClientsScreen> {
 
   void _updateClientInList(Client updatedClient) {
     setState(() {
+      // 🔥 ИСПРАВЛЕНО: используем name вместо client
       final index = _clients.indexWhere((client) =>
           client.phone == updatedClient.phone &&
-          client.client == updatedClient.client);
+          client.name == updatedClient.name);
       if (index != -1) {
         _clients[index] = updatedClient;
       }
@@ -58,7 +59,8 @@ class _AdminClientsScreenState extends State<AdminClientsScreen> {
       sheetName: 'Клиенты',
       filters: [
         {'column': 'Телефон', 'value': client.phone ?? ''},
-        {'column': 'Клиент', 'value': client.client ?? ''},
+        // 🔥 ИСПРАВЛЕНО: используем name вместо client
+        {'column': 'Клиент', 'value': client.name ?? ''},
       ],
     );
     _loadClients();
@@ -69,8 +71,8 @@ class _AdminClientsScreenState extends State<AdminClientsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Удалить клиента?'),
-        content:
-            Text('Вы уверены, что хотите удалить "${client.getDisplayName}"?'),
+        // 🔥 ИСПРАВЛЕНО: используем name напрямую
+        content: Text('Вы уверены, что хотите удалить "${client.name}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -120,7 +122,8 @@ class _AdminClientsScreenState extends State<AdminClientsScreen> {
                     return Card(
                       margin: EdgeInsets.all(8),
                       child: ListTile(
-                        title: Text(client.client ?? ''),
+                        // 🔥 ИСПРАВЛЕНО: используем name вместо client
+                        title: Text(client.name ?? ''),
                         subtitle: Text(client.firm ?? ''),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,

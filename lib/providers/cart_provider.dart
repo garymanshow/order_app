@@ -6,28 +6,24 @@ import '../models/client.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
 import '../services/google_sheets_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // ← ДОБАВЬТЕ ИМПОРТ
 
 class CartProvider with ChangeNotifier {
+  late final GoogleSheetsService
+      _sheetService; // ← теперь будет инициализировано
   final Map<String, int> _cartItems = {};
-  late GoogleSheetsService _sheetService;
   Client? _client;
+
+  // 🔥 КОНСТРУКТОР ДЛЯ ИНИЦИАЛИЗАЦИИ
+  CartProvider() {
+    _sheetService = GoogleSheetsService(dotenv.env['SPREADSHEET_ID']!);
+  }
 
   // ЕДИНСТВЕННЫЙ источник правды
   Map<String, int> get cartItems => Map.unmodifiable(_cartItems);
 
   // Получаем количество напрямую из _cartItems
   int getQuantity(String productId) => _cartItems[productId] ?? 0;
-
-  // Полностью отключить загрузку для ClientSelectionScreen
-  Future<void> initialize(GoogleSheetsService service, Client client,
-      {bool loadFromCache = true}) async {
-    _sheetService = service;
-    _client = client;
-
-    if (loadFromCache) {
-      await _loadFromSharedPreferences();
-    }
-  }
 
   // 🔥 НОВЫЙ ИСПРАВЛЕННЫЙ МЕТОД для восстановления корзины
   void restoreCartFromOrders(List<OrderItem> orders, List<Product> products) {
@@ -110,11 +106,15 @@ class CartProvider with ChangeNotifier {
   Future<void> setQuantity(String productId, int quantity, int multiplicity,
       List<Product> products) async {
     print('🛒 setQuantity: productId="$productId", quantity=$quantity');
-    if (quantity < 0) quantity = 0;
-    if (quantity > 0 && quantity % multiplicity != 0) {
-      quantity = ((quantity ~/ multiplicity) + 1) * multiplicity;
+    if (quantity <= 0) {
+      // Удаляем товар из корзины
+      _cartItems.remove(productId);
+    } else {
+      if (multiplicity != 0) {
+        quantity = ((quantity ~/ multiplicity) + 1) * multiplicity;
+      }
+      _cartItems[productId] = quantity;
     }
-    _cartItems[productId] = quantity;
     _saveToSharedPreferences();
     notifyListeners();
   }
@@ -157,6 +157,9 @@ class CartProvider with ChangeNotifier {
 
   Future<void> submitOrder(List<Product> products) async {
     print('📤 Отправка заказа...');
+
+    // 🔥 ИНИЦИАЛИЗИРУЕМ СЕРВИС ПЕРЕД ИСПОЛЬЗОВАНИЕМ
+    await _sheetService.init();
 
     String formattedPhone = _client!.phone ?? '';
     if (formattedPhone.isNotEmpty && !formattedPhone.startsWith('+')) {
@@ -204,7 +207,10 @@ class CartProvider with ChangeNotifier {
   List<OrderItem> getOrderItemsForClient(List<Product> products) {
     final List<OrderItem> items = [];
     _cartItems.forEach((productId, quantity) {
-      final product = products.firstWhere((p) => p.id == productId);
+      final product = products.firstWhere(
+        (p) => p.id == productId,
+        orElse: () => Product(id: '', name: '', price: 0, multiplicity: 1),
+      );
       items.add(OrderItem(
         status: 'оформлен',
         productName: product.name,
