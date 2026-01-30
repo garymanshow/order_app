@@ -1,6 +1,7 @@
 // lib/models/employee.dart
 import 'user.dart';
 
+// Сотрудники
 class Employee extends User {
   final String? role;
   final bool twoFactorAuth;
@@ -45,6 +46,17 @@ class Employee extends User {
       'role': role, // ← ключевое поле для отличия от Client
       'twoFactorAuth': twoFactorAuth,
       'fcm': fcm,
+    };
+  }
+
+  // 🔥 ДОБАВЛЕН toMap для Google Таблиц
+  Map<String, dynamic> toMap() {
+    return {
+      'Сотрудник': name ?? '',
+      'Телефон': phone ?? '',
+      'Роль': role ?? '',
+      '2FA': twoFactorAuth.toString(),
+      'FCM': fcm ?? '',
     };
   }
 

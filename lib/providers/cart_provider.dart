@@ -5,19 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/client.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
-import '../services/google_sheets_service.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // ← ДОБАВЬТЕ ИМПОРТ
+import '../models/delivery_condition.dart'; // ← ДОБАВЛЕН ИМПОРТ
 
 class CartProvider with ChangeNotifier {
-  late final GoogleSheetsService
-      _sheetService; // ← теперь будет инициализировано
   final Map<String, int> _cartItems = {};
   Client? _client;
-
-  // 🔥 КОНСТРУКТОР ДЛЯ ИНИЦИАЛИЗАЦИИ
-  CartProvider() {
-    _sheetService = GoogleSheetsService(dotenv.env['SPREADSHEET_ID']!);
-  }
+  DeliveryCondition? _deliveryCondition; // ← ДОБАВЛЕНО
 
   // ЕДИНСТВЕННЫЙ источник правды
   Map<String, int> get cartItems => Map.unmodifiable(_cartItems);
@@ -25,7 +18,13 @@ class CartProvider with ChangeNotifier {
   // Получаем количество напрямую из _cartItems
   int getQuantity(String productId) => _cartItems[productId] ?? 0;
 
-  // 🔥 НОВЫЙ ИСПРАВЛЕННЫЙ МЕТОД для восстановления корзины
+  // 🔥 НОВЫЙ МЕТОД для установки условий доставки
+  void setDeliveryCondition(DeliveryCondition? condition) {
+    _deliveryCondition = condition;
+    notifyListeners();
+  }
+
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД для восстановления корзины
   void restoreCartFromOrders(List<OrderItem> orders, List<Product> products) {
     _cartItems.clear();
 
@@ -37,7 +36,6 @@ class CartProvider with ChangeNotifier {
 
     for (var order in activeOrders) {
       if (order.priceListId.isNotEmpty) {
-        // 🔥 ИСПОЛЬЗУЕМ ID НАПРЯМУЮ
         _cartItems[order.priceListId] = order.quantity;
         print('✅ Заказ по ID: ${order.priceListId} = ${order.quantity}');
       } else {
@@ -88,13 +86,11 @@ class CartProvider with ChangeNotifier {
   }
 
   String _getCartKey() {
-    // Проверяем сам объект
     if (_client == null) {
       print('⚠️ _client is null!');
       return 'cart_unknown_unknown';
     }
 
-    // Безопасно получаем имя и телефон
     final name = (_client!.name ?? 'unknown').replaceAll(RegExp(r'\s+'), '_');
     final phone = _client!.phone ?? 'unknown';
     final key = 'cart_${phone}_$name';
@@ -107,7 +103,6 @@ class CartProvider with ChangeNotifier {
       List<Product> products) async {
     print('🛒 setQuantity: productId="$productId", quantity=$quantity');
     if (quantity <= 0) {
-      // Удаляем товар из корзины
       _cartItems.remove(productId);
     } else {
       if (multiplicity != 0) {
@@ -124,7 +119,7 @@ class CartProvider with ChangeNotifier {
     if (quantity <= 0) return;
     final currentQty = _cartItems[productId] ?? 0;
     final newQty = currentQty + quantity;
-    await setQuantity(productId, newQty, 1, products); // используем общий метод
+    await setQuantity(productId, newQty, 1, products);
   }
 
   Future<void> removeItem(String productId, List<Product> products) async {
@@ -135,6 +130,7 @@ class CartProvider with ChangeNotifier {
 
   void reset() {
     _client = null;
+    _deliveryCondition = null; // ← ОЧИЩАЕМ
     clearAll();
   }
 
@@ -146,7 +142,7 @@ class CartProvider with ChangeNotifier {
 
   void setClient(Client client) {
     _client = client;
-    _cartItems.clear(); // ← ОЧИЩАЕМ текущую корзину
+    _cartItems.clear();
     _loadFromSharedPreferences();
   }
 
@@ -155,54 +151,8 @@ class CartProvider with ChangeNotifier {
     await prefs.remove(_getCartKey());
   }
 
-  Future<void> submitOrder(List<Product> products) async {
-    print('📤 Отправка заказа...');
-
-    // 🔥 ИНИЦИАЛИЗИРУЕМ СЕРВИС ПЕРЕД ИСПОЛЬЗОВАНИЕМ
-    await _sheetService.init();
-
-    String formattedPhone = _client!.phone ?? '';
-    if (formattedPhone.isNotEmpty && !formattedPhone.startsWith('+')) {
-      formattedPhone = '+$formattedPhone';
-    }
-
-    final now = DateTime.now();
-    final formattedDate = '${now.day}.${now.month}.${now.year}';
-
-    // 🔥 Сначала удаляем старые заказы
-    await _sheetService.delete(
-      sheetName: 'Заказы',
-      filters: [
-        {'column': 'Статус', 'value': 'оформлен'},
-        {'column': 'Телефон', 'value': formattedPhone},
-        {'column': 'Клиент', 'value': _client!.name ?? ''},
-      ],
-    );
-
-    // Затем добавляем новые
-    final items = getOrderItemsForClient(products);
-    final rows = items
-        .map((item) => [
-              'оформлен',
-              item.productName,
-              item.quantity,
-              item.totalPrice,
-              formattedDate,
-              "'$formattedPhone",
-              _client!.name ?? '',
-              0,
-            ])
-        .toList();
-
-    try {
-      await _sheetService.create(sheetName: 'Заказы', records: rows);
-      print('✅ Заказ отправлен успешно');
-      clearAll();
-    } catch (e) {
-      print('❌ Ошибка отправки заказа: $e');
-      rethrow;
-    }
-  }
+  // 🔥 УДАЛЕН МЕТОД submitOrder - он должен быть в ApiService
+  // Все операции с данными идут через Apps Script!
 
   List<OrderItem> getOrderItemsForClient(List<Product> products) {
     final List<OrderItem> items = [];
@@ -219,11 +169,13 @@ class CartProvider with ChangeNotifier {
         date: '',
         clientPhone: _client!.phone ?? '',
         clientName: _client!.name ?? '',
+        priceListId: productId,
       ));
     });
     return items;
   }
 
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД getTotal с поддержкой наценки
   double getTotal(List<Product> products, double discount) {
     double total = 0;
     _cartItems.forEach((productId, quantity) {
@@ -233,6 +185,15 @@ class CartProvider with ChangeNotifier {
       );
       total += product.price * quantity;
     });
-    return total * (1 - discount);
+
+    // Применяем скидку клиента
+    total = total * (1 - discount);
+
+    // Применяем скрытую наценку за доставку
+    if (_deliveryCondition?.hiddenMarkup != null) {
+      total = total * (1 + _deliveryCondition!.hiddenMarkup! / 100);
+    }
+
+    return total;
   }
 }

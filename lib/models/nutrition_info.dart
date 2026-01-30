@@ -1,12 +1,13 @@
-// lib/models/nutrition.dart
-class Nutrition {
+// lib/models/nutrition_info.dart
+class NutritionInfo {
+  //Энергетическая ценность (КЖБУ)
   final String? priceListId;
   final String? calories;
   final String? proteins;
   final String? fats;
   final String? carbohydrates;
 
-  Nutrition({
+  NutritionInfo({
     this.priceListId,
     this.calories,
     this.proteins,
@@ -14,8 +15,9 @@ class Nutrition {
     this.carbohydrates,
   });
 
-  factory Nutrition.fromMap(Map<String, dynamic> map) {
-    return Nutrition(
+  // 🔥 fromMap для Google Таблиц
+  factory NutritionInfo.fromMap(Map<String, dynamic> map) {
+    return NutritionInfo(
       priceListId: map['ID Прайс-лист']?.toString().isNotEmpty == true
           ? map['ID Прайс-лист']?.toString()
           : null,
@@ -34,6 +36,29 @@ class Nutrition {
     );
   }
 
+  // 🔥 fromJson для восстановления из кэша
+  factory NutritionInfo.fromJson(Map<String, dynamic> json) {
+    return NutritionInfo(
+      priceListId: json['priceListId'] as String?,
+      calories: json['calories'] as String?,
+      proteins: json['proteins'] as String?,
+      fats: json['fats'] as String?,
+      carbohydrates: json['carbohydrates'] as String?,
+    );
+  }
+
+  // 🔥 toJson для сохранения в кэш
+  Map<String, dynamic> toJson() {
+    return {
+      'priceListId': priceListId,
+      'calories': calories,
+      'proteins': proteins,
+      'fats': fats,
+      'carbohydrates': carbohydrates,
+    };
+  }
+
+  // toMap для Google Таблиц (если нужно)
   Map<String, dynamic> toMap() {
     return {
       'ID Прайс-лист': priceListId ?? '',

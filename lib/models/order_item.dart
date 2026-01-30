@@ -1,4 +1,5 @@
 // lib/models/order_item.dart
+// Заказы
 class OrderItem {
   final String status;
   final String productName;
@@ -25,6 +26,23 @@ class OrderItem {
     this.notificationSent = false,
     this.priceListId = '',
   });
+
+  // 🔥 ДОБАВЛЕН МЕТОД fromJson
+  factory OrderItem.fromJson(Map<String, dynamic> json) {
+    return OrderItem(
+      status: json['status'] as String? ?? 'оформлен',
+      productName: json['productName'] as String? ?? '',
+      quantity: json['quantity'] as int? ?? 0,
+      totalPrice: json['totalPrice'] as double? ?? 0.0,
+      date: json['date'] as String? ?? '',
+      clientPhone: json['clientPhone'] as String? ?? '',
+      clientName: json['clientName'] as String? ?? '',
+      paymentAmount: json['paymentAmount'] as double? ?? 0.0,
+      paymentDocument: json['paymentDocument'] as String? ?? '',
+      notificationSent: json['notificationSent'] as bool? ?? false,
+      priceListId: json['priceListId'] as String? ?? '',
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -61,20 +79,8 @@ class OrderItem {
         priceListId: map['ID Прайс-лист']?.toString() ?? '', // ← ИЗ GOOGLE
       );
     } else {
-      // Данные из кэша (JSON)
-      return OrderItem(
-        status: map['status']?.toString() ?? 'оформлен',
-        productName: map['productName']?.toString() ?? '',
-        quantity: map['quantity'] as int? ?? 0,
-        totalPrice: map['totalPrice'] as double? ?? 0.0,
-        date: map['date']?.toString() ?? '',
-        clientPhone: map['clientPhone']?.toString() ?? '',
-        clientName: map['clientName']?.toString() ?? '',
-        paymentAmount: map['paymentAmount'] as double? ?? 0.0,
-        paymentDocument: map['paymentDocument']?.toString() ?? '',
-        notificationSent: map['notificationSent'] as bool? ?? false,
-        priceListId: map['priceListId']?.toString() ?? '', // ← ИЗ КЭША
-      );
+      // Данные из кэша (JSON) - теперь можно использовать fromJson
+      return OrderItem.fromJson(map);
     }
   }
 

@@ -9,8 +9,8 @@ import 'dart:io';
 import '../services/google_sheets_service.dart';
 import '../services/google_drive_service.dart';
 import '../models/price_item.dart';
-import '../models/ingredient.dart';
-import '../models/nutrition.dart';
+import '../models/ingredient_info.dart';
+import '../models/nutrition_info.dart';
 
 class AdminPriceItemFormScreen extends StatefulWidget {
   final PriceItem? item; // null для создания, не null для редактирования

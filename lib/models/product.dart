@@ -84,4 +84,22 @@ class Product {
       categoryName: map['Категория']?.toString() ?? '',
     );
   }
+
+  // 🔥 ДОБАВЛЕН toMap для Google Таблиц
+  Map<String, dynamic> toMap() {
+    return {
+      'ID': id,
+      'Название': name,
+      'Фото': imageUrl ?? '',
+      'Фото_base64': imageBase64 ?? '',
+      'Состав': composition,
+      'Вес': weight,
+      'Цена': price.toString(),
+      'Пищевая ценность': nutrition,
+      'Условия хранения': storage,
+      'Упаковка': packaging,
+      'Кратность': multiplicity.toString(),
+      'Категория': categoryName,
+    };
+  }
 }

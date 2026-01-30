@@ -1,6 +1,7 @@
 // lib/services/auth_service.dart
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 // Models
@@ -11,9 +12,6 @@ import '../models/sheet_metadata.dart';
 import '../models/product.dart';
 import '../models/order_item.dart';
 
-// Services
-import './google_sheets_service.dart';
-
 class AuthService {
   /// Нормализует телефон: добавляет '+' если отсутствует
   String _normalizePhone(String phone) {
@@ -22,245 +20,129 @@ class AuthService {
   }
 
   Future<AuthResponse?> authenticate(String phone) async {
-    final service = GoogleSheetsService(dotenv.env['SPREADSHEET_ID']!);
-    await service.init();
-
-    final normalizedInputPhone = _normalizePhone(phone);
+    final normalizedPhone = _normalizePhone(phone);
 
     try {
-      // 🔥 СНАЧАЛА ПРОВЕРЯЕМ СОТРУДНИКОВ
-      final employees = await service.read(
-        sheetName: 'Сотрудники',
-        filters: [
-          {'column': 'Телефон', 'value': normalizedInputPhone}
-        ],
-      );
+      // 🔥 ПОЛУЧАЕМ ЛОКАЛЬНЫЕ МЕТАДАННЫЕ
+      final prefs = await SharedPreferences.getInstance();
+      final localMetadataJson = prefs.getString('local_metadata');
+      Map<String, SheetMetadata> localMetadata = {};
 
-      if (employees.isNotEmpty) {
-        // Найден сотрудник
-        final employee = Employee.fromMap(employees.first);
-
-        // Загружаем данные для сотрудника
-        final clientData = await _loadEmployeeData(service, employee);
-
-        // Получаем метаданные
-        final metadata = await _loadMetadata(service);
-
-        return AuthResponse(
-          user: employee,
-          metadata: metadata,
-          clientData: clientData,
-          timestamp: DateTime.now().toIso8601String(),
-        );
+      if (localMetadataJson != null) {
+        final metadataMap =
+            jsonDecode(localMetadataJson) as Map<String, dynamic>;
+        localMetadata = metadataMap.map((key, value) => MapEntry(
+            key, SheetMetadata.fromJson(value as Map<String, dynamic>)));
       }
 
-      // 🔥 ЕСЛИ НЕ НАЙДЕН СОТРУДНИК, ПРОВЕРЯЕМ КЛИЕНТОВ
-      final clients = await service.read(
-        sheetName: 'Клиенты',
-        filters: [
-          {'column': 'Телефон', 'value': normalizedInputPhone}
-        ],
+      // 🔥 СОСТАВНОЙ ЗАПРОС К APPS SCRIPT
+      final response = await _makeCompositeRequest(
+        phone: normalizedPhone,
+        localMetadata: localMetadata, // ← ИСПРАВЛЕНО: правильное имя параметра
       );
 
-      if (clients.isNotEmpty) {
-        // 🔥 ИСПРАВЛЕНО: используем fromMap вместо ручного конструктора
-        final client = Client.fromMap(clients.first);
+      if (response == null) return null;
 
-        // Получаем метаданные
-        final metadata = await _loadMetadata(service);
+      // Сохраняем обновленные метаданные
+      await prefs.setString('local_metadata', jsonEncode(response.metadata));
 
-        // Загружаем только обновлённые данные для клиента
-        final clientData =
-            await _loadClientSpecificData(service, metadata, client);
-
-        return AuthResponse(
-          user: client,
-          metadata: metadata,
-          clientData: clientData,
-          timestamp: DateTime.now().toIso8601String(),
-        );
-      }
-
-      // Не найден ни клиент, ни сотрудник
-      return null;
+      return AuthResponse(
+        user: response.user,
+        metadata: response.metadata,
+        clientData: response.clientData,
+        timestamp: DateTime.now().toIso8601String(),
+      );
     } catch (e) {
       print('Ошибка авторизации: $e');
       return null;
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: Загрузка данных для сотрудника
-  Future<ClientData> _loadEmployeeData(
-      GoogleSheetsService service, Employee employee) async {
-    final clientData = ClientData();
+  // 🔥 НОВЫЙ МЕТОД: Составной запрос к Apps Script
+  Future<AuthResponse?> _makeCompositeRequest({
+    required String phone,
+    required Map<String, SheetMetadata> localMetadata,
+  }) async {
+    final url =
+        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}?action=authenticate');
 
-    // Сотрудникам нужны все данные для работы
+    final requestBody = {
+      'phone': phone,
+      'localMetadata': localMetadata
+          .map((key, value) => MapEntry(key, value.toJson()))
+          .cast<String, dynamic>(), // ← ДОБАВЛЕНО: приведение типов
+    };
+
     try {
-      // Загружаем прайс-лист
-      final products = await service.read(sheetName: 'Прайс-лист');
-      clientData.products =
-          products.map((row) => Product.fromMap(row)).toList();
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
 
-      // Загружаем все заказы (без фильтрации по телефону)
-      final orders = await service.read(sheetName: 'Заказы');
-      clientData.orders = orders.map((row) => OrderItem.fromMap(row)).toList();
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
 
-      // Сохраняем в кэш
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('client_price_data',
-          jsonEncode(clientData.products.map((p) => p.toJson()).toList()));
-      await prefs.setString('client_orders_data',
-          jsonEncode(clientData.orders.map((o) => o.toJson()).toList()));
-      await prefs.setString(
-          'client_price_last_update', DateTime.now().toIso8601String());
-    } catch (e) {
-      print('Ошибка загрузки данных для сотрудника: $e');
-    }
-
-    return clientData;
-  }
-
-  Future<Map<String, SheetMetadata>> _loadMetadata(
-      GoogleSheetsService service) async {
-    try {
-      final metadataRows = await service.read(sheetName: 'Метаданные');
-      final metadata = <String, SheetMetadata>{};
-
-      for (var row in metadataRows) {
-        final sheetName = row['Лист']?.toString() ?? row['A']?.toString();
-        final lastUpdateStr =
-            row['Последнее обновление']?.toString() ?? row['B']?.toString();
-        final editor = row['Редактор']?.toString() ?? row['C']?.toString();
-
-        if (sheetName != null && lastUpdateStr != null) {
-          try {
-            final lastUpdate = DateTime.parse(lastUpdateStr);
-            metadata[sheetName] =
-                SheetMetadata(lastUpdate: lastUpdate, editor: editor ?? '');
-          } catch (e) {
-            print('Ошибка парсинга даты для листа $sheetName: $e');
-          }
+        if (data['success'] != true) {
+          return null;
         }
+
+        // Десериализация пользователя
+        final userData = data['user'];
+        User user;
+        if (userData['role'] != null) {
+          user = Employee.fromJson(userData);
+        } else {
+          user = Client.fromJson(userData);
+        }
+
+        // Десериализация метаданных
+        final metadataData = data['metadata'] as Map<String, dynamic>;
+        final metadata = metadataData.map((key, value) => MapEntry(
+            key, SheetMetadata.fromJson(value as Map<String, dynamic>)));
+
+        // Десериализация данных клиента
+        final clientDataObj = _deserializeClientData(data['clientData']);
+
+        return AuthResponse(
+          user: user,
+          metadata: metadata, // ← ИСПРАВЛЕНО: правильное имя параметра
+          clientData: clientDataObj,
+          timestamp: DateTime.now().toIso8601String(),
+        );
       }
 
-      return metadata;
+      return null;
     } catch (e) {
-      print('Ошибка загрузки метаданных: $e');
-      return {};
-    }
-  }
-
-  Future<ClientData> _loadClientSpecificData(GoogleSheetsService service,
-      Map<String, SheetMetadata> metadata, Client client) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    // Прайс-лист: проверяем метаданные (общий для всех)
-    final priceLastUpdate = prefs.getString('client_price_last_update');
-    final priceNeedsUpdate = _needsUpdate(
-        priceLastUpdate, metadata['Прайс-лист']?.lastUpdate.toIso8601String());
-
-    final clientData = ClientData();
-
-    // Загружаем прайс-лист если нужно ИЛИ если кэш пустой
-    if (priceNeedsUpdate) {
-      // Загружаем свежие данные
-      final products = await service.read(sheetName: 'Прайс-лист');
-
-      clientData.products =
-          products.map((row) => Product.fromMap(row)).toList();
-
-      await prefs.setString('client_price_data',
-          jsonEncode(clientData.products.map((p) => p.toJson()).toList()));
-      await prefs.setString(
-          'client_price_last_update', DateTime.now().toIso8601String());
-    } else {
-      // Загружаем из кэша
-      final priceJson = prefs.getString('client_price_data');
-      if (priceJson != null) {
-        clientData.products = _deserializeProducts(priceJson);
-      } else {
-        // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: если кэш пуст, загружаем с сервера
-        final products = await service.read(sheetName: 'Прайс-лист');
-        clientData.products =
-            products.map((row) => Product.fromMap(row)).toList();
-
-        await prefs.setString('client_price_data',
-            jsonEncode(clientData.products.map((p) => p.toJson()).toList()));
-        await prefs.setString(
-            'client_price_last_update', DateTime.now().toIso8601String());
-      }
-    }
-
-    print('📱 AUTH: Загружаем заказы для телефона: ${client.phone ?? "null"}');
-
-    // Загружаем ЗАКАЗЫ КЛИЕНТА ВСЕГДА (без проверки метаданных)
-    final orders = await service.read(
-      sheetName: 'Заказы',
-      filters: [
-        {'column': 'Телефон', 'value': client.phone ?? ''},
-      ],
-    );
-
-    print('✅ AUTH: Найдено заказов в Google: ${orders.length}');
-    if (orders.isNotEmpty) {
-      print('📋 Первый заказ: ${orders[0]}');
-    }
-
-    clientData.orders = orders.map((row) => OrderItem.fromMap(row)).toList();
-    print('✅ AUTH SERVICE: Загружено заказов из Google: ${orders.length}');
-    print('📱 AUTH SERVICE: Телефон клиента: ${client.phone ?? "null"}');
-
-    final ordersJson =
-        jsonEncode(clientData.orders.map((order) => order.toJson()).toList());
-    await prefs.setString('client_orders_data', ordersJson);
-    print(
-        '💾 AUTH SERVICE: Сохранено ${clientData.orders.length} заказов для телефона ${client.phone}');
-
-    // Загружаем корзину из SharedPreferences
-    final cartJson = prefs.getString('client_cart_data');
-    if (cartJson != null) {
-      clientData.cart = jsonDecode(cartJson) as Map<String, dynamic>;
-    }
-
-    return clientData;
-  }
-
-  bool _needsUpdate(String? lastLocalUpdate, String? lastRemoteUpdate) {
-    if (lastRemoteUpdate == null) return false;
-    if (lastLocalUpdate == null) return true;
-
-    final localDate = DateTime.tryParse(lastLocalUpdate);
-    final remoteDate = DateTime.tryParse(lastRemoteUpdate);
-
-    return remoteDate != null &&
-        localDate != null &&
-        remoteDate.isAfter(localDate);
-  }
-
-  int? _parseDiscount(String raw) {
-    if (raw.isEmpty) return null;
-    final cleaned = raw.replaceAll(RegExp(r'[^\d,]'), '');
-    if (cleaned.isEmpty) return null;
-    final normalized = cleaned.replaceAll(',', '.');
-    try {
-      return double.parse(normalized).toInt();
-    } catch (e) {
+      print('Ошибка составного запроса: $e');
       return null;
     }
   }
 
-  List<Product> _deserializeProducts(String json) {
-    final list = jsonDecode(json) as List;
-    return list
-        .map((item) => Product.fromJson(item as Map<String, dynamic>))
-        .toList();
-  }
+  // 🔥 ДЕСЕРИАЛИЗАЦИЯ ДАННЫХ КЛИЕНТА
+  ClientData _deserializeClientData(dynamic data) {
+    if (data == null) return ClientData();
 
-  List<OrderItem> _deserializeOrders(String json) {
-    final list = jsonDecode(json) as List;
-    return list
-        .map((item) => OrderItem.fromMap(item as Map<String, dynamic>))
-        .toList();
+    final clientData = ClientData();
+    final clientDataMap = data as Map<String, dynamic>;
+
+    if (clientDataMap['products'] != null) {
+      clientData.products = (clientDataMap['products'] as List)
+          .map((item) => Product.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    if (clientDataMap['orders'] != null) {
+      clientData.orders = (clientDataMap['orders'] as List)
+          .map((item) => OrderItem.fromMap(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    if (clientDataMap['cart'] != null) {
+      clientData.cart = clientDataMap['cart'] as Map<String, dynamic>;
+    }
+
+    return clientData;
   }
 }
 

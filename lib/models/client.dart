@@ -88,6 +88,25 @@ class Client extends User {
     };
   }
 
+  // 🔥 ДОБАВЛЕН МЕТОД toMap() для Google Таблиц
+  Map<String, dynamic> toMap() {
+    return {
+      'Клиент': name ?? '',
+      'Телефон': phone ?? '',
+      'ФИРМА': firm ?? '',
+      'Почтовый индекс': postalCode ?? '',
+      'Юридическое лицо': legalEntity?.toString() ?? '',
+      'Город': city ?? '',
+      'Адрес доставки': deliveryAddress ?? '',
+      'Доставка': delivery?.toString() ?? '',
+      'Комментарий': comment ?? '',
+      'latitude': latitude?.toString() ?? '',
+      'longitude': longitude?.toString() ?? '',
+      'Скидка': discount?.toString() ?? '',
+      'Сумма миним.заказа': minOrderAmount?.toString() ?? '0',
+    };
+  }
+
   static double? _parseDouble(String? value) {
     if (value == null || value.isEmpty) return null;
     return double.tryParse(value);

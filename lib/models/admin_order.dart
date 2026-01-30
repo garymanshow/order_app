@@ -22,14 +22,76 @@ class AdminOrder {
     required this.clientName,
   });
 
-  // Доступные переходы статусов
+  // 🔥 ДОБАВЛЕНЫ МЕТОДЫ СЕРИАЛИЗАЦИИ
+  factory AdminOrder.fromJson(Map<String, dynamic> json) {
+    return AdminOrder(
+      id: json['id'] as String,
+      status: json['status'] as String,
+      productName: json['productName'] as String,
+      quantity: json['quantity'] as int,
+      totalPrice: json['totalPrice'] as double,
+      date: json['date'] as String,
+      phone: json['phone'] as String,
+      clientName: json['clientName'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'status': status,
+      'productName': productName,
+      'quantity': quantity,
+      'totalPrice': totalPrice,
+      'date': date,
+      'phone': phone,
+      'clientName': clientName,
+    };
+  }
+
+  factory AdminOrder.fromMap(Map<String, dynamic> map) {
+    // Поддержка данных из Google Таблиц
+    if (map.containsKey('ID') || map.containsKey('Статус')) {
+      return AdminOrder(
+        id: map['ID']?.toString() ?? '',
+        status: map['Статус']?.toString() ?? 'оформлен',
+        productName: map['Название']?.toString() ?? '',
+        quantity: int.tryParse(map['Количество']?.toString() ?? '0') ?? 0,
+        totalPrice:
+            double.tryParse(map['Итоговая цена']?.toString() ?? '0') ?? 0.0,
+        date: map['Дата']?.toString() ?? '',
+        phone: map['Телефон']?.toString() ?? '',
+        clientName: map['Клиент']?.toString() ?? '',
+      );
+    } else {
+      // Данные из кэша
+      return AdminOrder.fromJson(map);
+    }
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'ID': id,
+      'Статус': status,
+      'Название': productName,
+      'Количество': quantity.toString(),
+      'Итоговая цена': totalPrice.toString(),
+      'Дата': date,
+      'Телефон': phone,
+      'Клиент': clientName,
+    };
+  }
+
+  // 🔥 ОБНОВЛЕННЫЕ СТАТУСЫ (соответствуют вашей бизнес-логике)
   List<String> getAvailableStatuses() {
     switch (status) {
       case 'оформлен':
-        return ['производство'];
-      case 'производство':
-        return ['готов'];
-      case 'готов':
+        return ['в производство'];
+      case 'в производство':
+        return ['в работе'];
+      case 'в работе':
+        return ['готов к отправке'];
+      case 'готов к отправке':
         return ['доставлен'];
       case 'доставлен':
         return [];
@@ -42,14 +104,35 @@ class AdminOrder {
     switch (status) {
       case 'оформлен':
         return Colors.orange;
-      case 'производство':
+      case 'в производство':
         return Colors.blue;
-      case 'готов':
+      case 'в работе':
+        return Colors.cyan;
+      case 'готов к отправке':
         return Colors.purple;
       case 'доставлен':
         return Colors.green;
       default:
         return Colors.grey;
+    }
+  }
+
+  // Вспомогательные методы
+  bool get canBeUpdated => status != 'доставлен';
+  String get statusLabel {
+    switch (status) {
+      case 'оформлен':
+        return 'Оформлен';
+      case 'в производство':
+        return 'В производство';
+      case 'в работе':
+        return 'В работе';
+      case 'готов к отправке':
+        return 'Готов к отправке';
+      case 'доставлен':
+        return 'Доставлен';
+      default:
+        return status;
     }
   }
 }
