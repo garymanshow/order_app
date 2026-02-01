@@ -2,8 +2,8 @@
 class Product {
   final String id;
   final String name;
-  final String? imageUrl; // ← nullable
-  final String? imageBase64; // ← nullable
+  final String? imageUrl;
+  final String? imageBase64;
   final String composition;
   final String weight;
   final double price;
@@ -12,11 +12,12 @@ class Product {
   final String packaging;
   final int multiplicity;
   final String categoryName;
+  final String _categoryId; // ← приватное поле
 
   Product({
     required this.id,
     required this.name,
-    this.imageUrl, // ← НЕ required!
+    this.imageUrl,
     this.imageBase64,
     this.composition = '',
     this.weight = '',
@@ -26,9 +27,16 @@ class Product {
     this.packaging = '',
     this.multiplicity = 1,
     this.categoryName = '',
-  });
+    String categoryId = '',
+  }) : _categoryId = categoryId;
 
-  // Геттеры для удобства
+  // 🔥 ЯВНЫЙ ГЕТТЕР
+  String get categoryId => _categoryId;
+  String getCategoryId() {
+    return _categoryId;
+  }
+
+  // Остальные геттеры
   bool get hasImageUrl => imageUrl != null && imageUrl!.isNotEmpty;
   bool get hasImageBase64 => imageBase64 != null && imageBase64!.isNotEmpty;
 
@@ -46,10 +54,10 @@ class Product {
       'packaging': packaging,
       'multiplicity': multiplicity,
       'categoryName': categoryName,
+      'categoryId': _categoryId, // ← используем приватное поле
     };
   }
 
-  // Конструктор fromJson (для восстановления из кэша)
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
       id: json['id'] as String,
@@ -64,10 +72,10 @@ class Product {
       packaging: json['packaging'] as String? ?? '',
       multiplicity: json['multiplicity'] as int? ?? 1,
       categoryName: json['categoryName'] as String? ?? '',
+      categoryId: json['categoryId'] as String? ?? '',
     );
   }
 
-  // 🔥 КОНСТРУКТОР fromMap для Google Таблиц
   factory Product.fromMap(Map<String, dynamic> map) {
     return Product(
       id: map['ID']?.toString() ?? '',
@@ -82,10 +90,10 @@ class Product {
       packaging: map['Упаковка']?.toString() ?? '',
       multiplicity: int.tryParse(map['Кратность']?.toString() ?? '1') ?? 1,
       categoryName: map['Категория']?.toString() ?? '',
+      categoryId: map['ID категории']?.toString() ?? '',
     );
   }
 
-  // 🔥 ДОБАВЛЕН toMap для Google Таблиц
   Map<String, dynamic> toMap() {
     return {
       'ID': id,
@@ -100,6 +108,7 @@ class Product {
       'Упаковка': packaging,
       'Кратность': multiplicity.toString(),
       'Категория': categoryName,
+      'ID категории': _categoryId, // ← используем приватное поле
     };
   }
 }

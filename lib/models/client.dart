@@ -1,5 +1,6 @@
 // lib/models/client.dart
 import 'user.dart';
+import 'client_data.dart'; // ← ТОЛЬКО client_data нужен
 
 class Client extends User {
   final String? firm;
@@ -31,6 +32,26 @@ class Client extends User {
             name: name,
             discount: discount,
             minOrderAmount: minOrderAmount);
+
+  // 🔥 ГЕТТЕР ДЛЯ СУММЫ АКТИВНЫХ ЗАКАЗОВ
+  double getActiveOrdersTotal(ClientData? clientData) {
+    // Убираем избыточные ?.
+    final orders = clientData?.orders;
+    if (orders == null) return 0.0;
+
+    final activeOrders = orders
+        .where((order) =>
+            order.clientPhone == phone &&
+            order.clientName == name &&
+            order.status == 'оформлен')
+        .toList();
+
+    double total = 0;
+    for (var order in activeOrders) {
+      total += order.totalPrice;
+    }
+    return total;
+  }
 
   factory Client.fromMap(Map<String, dynamic> map) {
     return Client(

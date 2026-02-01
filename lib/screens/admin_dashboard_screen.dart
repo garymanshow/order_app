@@ -2,10 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../providers/products_provider.dart';
-import '../providers/orders_provider.dart';
 import '../models/employee.dart';
-import '../models/client.dart';
 import 'admin_clients_screen.dart';
 import 'admin_clients_with_orders_screen.dart';
 import 'admin_price_list_screen.dart';
@@ -19,12 +16,12 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isLoading = false;
   String? _error;
-  bool _dataLoaded = false; // ← добавлен флаг
+  bool _dataLoaded = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Загружаем данные только один раз
+    // Загружаем данные только один раз при первом построении
     if (!_dataLoaded) {
       _dataLoaded = true;
       _loadRequiredData();
@@ -35,14 +32,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Теперь контекст доступен
-      final productsProvider =
-          Provider.of<ProductsProvider>(context, listen: false);
-      final ordersProvider =
-          Provider.of<OrdersProvider>(context, listen: false);
+      // Данные уже загружены при авторизации через "умную загрузку"
+      // Здесь можно добавить дополнительную логику если нужно
+      // Например, проверку актуальности данных
 
-      await productsProvider.loadProductsIfNeeded();
-      await ordersProvider.loadOrdersIfNeeded();
+      // Пока просто ждем немного для UX
+      await Future.delayed(Duration(milliseconds: 300));
     } catch (e) {
       setState(() => _error = 'Ошибка загрузки данных: $e');
     } finally {
@@ -107,8 +102,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: ListView(
           children: [
             _buildAdminButton(
               context,
@@ -165,6 +159,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               title: 'Поставщики',
               onPressed: () {
                 // TODO: переход к редактору контрагентов
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Функция в разработке')),
+                );
               },
             ),
             SizedBox(height: 24),
@@ -174,6 +171,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               title: 'Склад',
               onPressed: () {
                 // TODO: переход к редактору склада
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Функция в разработке')),
+                );
               },
             ),
           ],

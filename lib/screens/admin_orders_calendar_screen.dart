@@ -1,28 +1,26 @@
-// lib/screens/client_orders_screen.dart
-import 'dart:convert';
+// lib/screens/admin_orders_calendar_screen.dart
 import 'package:flutter/material.dart';
-import 'package:table_calendar/table_calendar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:table_calendar/table_calendar.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/auth_provider.dart';
 import '../models/order_item.dart';
-import '../providers/auth_provider.dart'; // ← ДОБАВЛЕН ИМПОРТ
 
-class ClientOrdersScreen extends StatefulWidget {
-  // УДАЛЕН ОБЯЗАТЕЛЬНЫЙ ПАРАМЕТР client
-  const ClientOrdersScreen({super.key});
-
+class AdminOrdersCalendarScreen extends StatefulWidget {
   @override
-  _ClientOrdersScreenState createState() => _ClientOrdersScreenState();
+  _AdminOrdersCalendarScreenState createState() =>
+      _AdminOrdersCalendarScreenState();
 }
 
-class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
+class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
   late CalendarFormat _calendarFormat;
   late DateTime _focusedDay;
   late DateTime _selectedDay;
   List<OrderItem> _orders = [];
   DateTime? _minDate;
   DateTime? _maxDate;
+  String _filterStatus = 'all';
 
   @override
   void initState() {
@@ -32,32 +30,37 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     _focusedDay = today;
     _selectedDay = today;
 
-    _loadOrdersFromCache();
+    _loadSavedCalendarFilter();
   }
 
-  Future<void> _loadOrdersFromCache() async {
+  Future<void> _loadSavedCalendarFilter() async {
     final prefs = await SharedPreferences.getInstance();
-    final ordersJson = prefs.getString('client_orders_data');
-
-    if (ordersJson != null) {
-      final orders = _deserializeOrders(ordersJson);
-      setState(() {
-        _orders = orders;
-        _calculateDateRange();
-      });
-    }
+    final savedFilter = prefs.getString('admin_calendar_filter') ?? 'all';
+    setState(() {
+      _filterStatus = savedFilter;
+    });
+    _loadOrders();
   }
 
-  List<OrderItem> _deserializeOrders(String json) {
-    try {
-      final list = jsonDecode(json) as List;
-      return list
-          .map((item) => OrderItem.fromMap(item as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      print('Ошибка десериализации заказов: $e');
-      return [];
+  Future<void> _saveCalendarFilter(String filter) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('admin_calendar_filter', filter);
+  }
+
+  void _loadOrders() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    var allOrders = authProvider.clientData?.orders ?? [];
+
+    // Применяем фильтр
+    if (_filterStatus != 'all') {
+      allOrders =
+          allOrders.where((order) => order.status == _filterStatus).toList();
     }
+
+    setState(() {
+      _orders = allOrders;
+      _calculateDateRange();
+    });
   }
 
   void _calculateDateRange() {
@@ -109,26 +112,16 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     return null;
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД - получаем клиента из AuthProvider
   List<OrderItem> _getOrdersForDate(DateTime date) {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final client = authProvider.currentUser;
-
-    if (client == null) return [];
-
     final dateString = '${date.day}.${date.month}.${date.year}';
-    return _orders
-        .where((order) =>
-            order.date == dateString &&
-            order.clientPhone == client.phone &&
-            order.clientName == client.name)
-        .toList();
+    return _orders.where((order) => order.date == dateString).toList();
   }
 
   Color? _getDayColor(DateTime day) {
     final orders = _getOrdersForDate(day);
     if (orders.isEmpty) return null;
 
+    // Возвращаем цвет первого заказа (или приоритетный статус)
     for (var order in orders) {
       final color = _getStatusColor(order.status);
       if (color != null) return color;
@@ -158,11 +151,11 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
       case 'оформлен':
         return 'Оформлен';
       case 'в производстве':
-        return 'В производстве';
+        return 'В работе';
       case 'готов к отправке':
         return 'Готов';
       case 'доставлен':
-        return 'Получен';
+        return 'Доставлен';
       case 'оплачен':
         return 'Оплачен';
       default:
@@ -170,54 +163,87 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     }
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД - получаем клиента из AuthProvider
-  double _calculateDebt() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final client = authProvider.currentUser;
+  double _calculateTotalDebt() {
+    if (_filterStatus != 'all' && _filterStatus != 'доставлен') {
+      return 0.0; // Задолженность только для доставленных
+    }
 
-    if (client == null) return 0.0;
-
-    final clientOrders = _orders
-        .where((order) =>
-            order.clientPhone == client.phone &&
-            order.clientName == client.name)
-        .toList();
-
-    double totalDebt = 0;
-    for (var order in clientOrders) {
-      if (order.status == 'доставлен' &&
-          order.paymentAmount < order.totalPrice) {
-        totalDebt += order.totalPrice - order.paymentAmount;
+    double totalDeht = 0;
+    for (var order in _orders) {
+      if (order.status == 'доставлен' && !order.isPaid) {
+        totalDeht += order.totalPrice - order.paymentAmount;
       }
     }
-    return totalDebt;
+    return totalDeht;
   }
 
   @override
   Widget build(BuildContext context) {
-    final debt = _calculateDebt();
+    final debt = _calculateTotalDebt();
     final hasDebt = debt > 0;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Мои заказы'),
+        title: Text('Календарь заказов'),
         backgroundColor: hasDebt ? Colors.red[50] : null,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          // 🔥 КНОПКА ФИЛЬТРАЦИИ В КАЛЕНДАРЕ
+          PopupMenuButton<String>(
+            onSelected: (String result) {
+              _saveCalendarFilter(result);
+              setState(() {
+                _filterStatus = result;
+              });
+              _loadOrders();
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'all',
+                child: Text('Все заказы'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'оформлен',
+                child: Text('Оформлен'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'в производстве',
+                child: Text('В работе'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'готов к отправке',
+                child: Text('Готов'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'доставлен',
+                child: Text('Доставлен'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'оплачен',
+                child: Text('Оплачен'),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
           if (hasDebt)
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               color: Colors.red[50],
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.warning, color: Colors.red),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Text(
-                    'Задолженность: ${debt.toStringAsFixed(2)} ₽',
+                    'Общая задолженность: ${debt.toStringAsFixed(2)} ₽',
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.red[800],
                     ),
@@ -257,7 +283,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                 return Center(
                   child: Text(
                     DateFormat.E().format(day).substring(0, 1),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                 );
               },
@@ -319,7 +345,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     final orders = _getOrdersForDate(_selectedDay);
     if (orders.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         child: Text(
           'Нет заказов на ${_selectedDay.day}.${_selectedDay.month}.${_selectedDay.year}',
           textAlign: TextAlign.center,
@@ -327,89 +353,79 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
       );
     }
 
+    // Группируем заказы по клиентам
+    final Map<String, List<OrderItem>> groupedOrders = {};
+    for (var order in orders) {
+      final key = '${order.clientPhone}-${order.clientName}';
+      if (!groupedOrders.containsKey(key)) {
+        groupedOrders[key] = [];
+      }
+      groupedOrders[key]!.add(order);
+    }
+
     return Expanded(
       child: ListView.builder(
-        itemCount: orders.length,
+        itemCount: groupedOrders.keys.length,
         itemBuilder: (context, index) {
-          final order = orders[index];
+          final clientKey = groupedOrders.keys.elementAt(index);
+          final clientOrders = groupedOrders[clientKey]!;
+          final firstOrder = clientOrders.first;
+
+          // Считаем сумму для клиента
+          double clientTotal = 0;
+          for (var order in clientOrders) {
+            clientTotal += order.totalPrice;
+          }
+
           return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    order.productName,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                    firstOrder.clientName ?? '',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Количество: ${order.quantity} шт'),
-                      Text('${order.totalPrice.toStringAsFixed(2)} ₽',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ],
+                  Text(
+                    'Телефон: ${firstOrder.clientPhone}',
+                    style: TextStyle(color: Colors.grey[600]),
                   ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(order.status)
-                          ?.withAlpha((0.2 * 255).toInt()),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      _getStatusText(order.status),
-                      style: TextStyle(color: _getStatusColor(order.status)),
-                    ),
-                  ),
-                  if (order.status == 'доставлен' || order.isPaid)
-                    Column(
-                      children: [
-                        const SizedBox(height: 8),
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        if (order.paymentAmount > 0)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Оплачено:'),
-                              Text(
-                                  '${order.paymentAmount.toStringAsFixed(2)} ₽',
-                                  style: const TextStyle(color: Colors.green)),
-                            ],
+                  SizedBox(height: 8),
+                  Text('Сумма: ${clientTotal.toStringAsFixed(2)} ₽'),
+                  SizedBox(height: 8),
+                  // Показываем все заказы клиента
+                  ...clientOrders.map((order) {
+                    return Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '${order.productName} (${order.quantity} шт)',
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        if (order.status == 'доставлен' && !order.isPaid)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('К оплате:'),
-                              Text(
-                                  '${(order.totalPrice - order.paymentAmount).toStringAsFixed(2)} ₽',
-                                  style: const TextStyle(color: Colors.red)),
-                            ],
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(order.status)
+                                  ?.withAlpha((0.2 * 255).toInt()),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _getStatusText(order.status),
+                              style: TextStyle(
+                                  color: _getStatusColor(order.status)),
+                            ),
                           ),
-                        if (order.paymentDocument.isNotEmpty)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Платёжный документ:'),
-                              Flexible(
-                                child: Text(
-                                  order.paymentDocument,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ],
               ),
             ),
@@ -421,15 +437,15 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
 
   Widget _buildLegend() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16),
       child: Wrap(
         spacing: 16,
         runSpacing: 8,
         children: [
           _buildLegendItem('Оформлен', Colors.blue),
-          _buildLegendItem('В производстве', Colors.orange),
+          _buildLegendItem('В работе', Colors.orange),
           _buildLegendItem('Готов', Colors.purple),
-          _buildLegendItem('Получен', Colors.green),
+          _buildLegendItem('Доставлен', Colors.green),
           _buildLegendItem('Оплачен', Colors.yellow[700]!),
         ],
       ),
@@ -448,8 +464,8 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
             shape: BoxShape.circle,
           ),
         ),
-        const SizedBox(width: 4),
-        Text(text, style: const TextStyle(fontSize: 12)),
+        SizedBox(width: 4),
+        Text(text, style: TextStyle(fontSize: 12)),
       ],
     );
   }

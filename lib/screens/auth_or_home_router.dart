@@ -1,17 +1,18 @@
 // lib/screens/auth_or_home_router.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/employee.dart'; // ← добавлен импорт Employee
-import '../models/client.dart'; // ← добавлен импорт Client
+import '../models/employee.dart';
+import '../models/client.dart';
 import '../providers/auth_provider.dart';
 import '../services/clients_service.dart';
 import 'price_list_screen.dart';
-import 'client_selection_screen.dart';
 import 'auth_phone_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'driver_screen.dart';
 import 'manager_screen.dart';
-import 'warehouse_screen.dart'; // ← добавлено для кладовщика
+import 'warehouse_screen.dart';
+import 'client_selection_screen.dart';
+import 'role_selection_screen.dart'; // ← ДОБАВЛЕН ИМПОРТ
 
 class AuthOrHomeRouter extends StatelessWidget {
   @override
@@ -26,6 +27,12 @@ class AuthOrHomeRouter extends StatelessWidget {
       return AuthPhoneScreen();
     }
 
+    // 🔥 НОВАЯ ЛОГИКА: ПРОВЕРКА МНОЖЕСТВЕННЫХ РОЛЕЙ
+    if (authProvider.hasMultipleRoles) {
+      return RoleSelectionScreen(roles: authProvider.availableRoles!);
+    }
+
+    // 🔥 СОХРАНЯЕМ ВСЮ ЛОГИКУ РОЛЕЙ ДЛЯ СОТРУДНИКОВ
     if (authProvider.isEmployee) {
       final employee = authProvider.currentUser as Employee;
       switch (employee.role) {
@@ -36,18 +43,17 @@ class AuthOrHomeRouter extends StatelessWidget {
         case 'Менеджер':
           return ManagerScreen();
         case 'Кладовщик':
-          return WarehouseScreen(); // ← новый экран
+          return WarehouseScreen();
         default:
           return _GenericEmployeeScreen(employee: employee);
       }
     }
 
-    // Для клиента — показываем экран-посредник
+    // 🔥 ДЛЯ КЛИЕНТОВ — ПРОВЕРКА ПО ТЕЛЕФОНУ
     return ClientAddressOrPriceListScreen();
   }
 }
 
-// Заглушка для других ролей
 class _GenericEmployeeScreen extends StatelessWidget {
   final Employee employee;
 
@@ -117,6 +123,8 @@ class _ClientAddressOrPriceListScreenState
         ),
       );
     }
+
+    // 🔥 ГЛАВНЫЙ КРИТЕРИЙ: КОЛИЧЕСТВО КЛИЕНТОВ С ОДНИМ ТЕЛЕФОНОМ
     return FutureBuilder<List<Client>>(
       future: ClientsService().fetchClientsByPhone(phone),
       builder: (context, snapshot) {
@@ -170,9 +178,15 @@ class _ClientAddressOrPriceListScreenState
           );
         }
 
+        // 🔥 КЛЮЧЕВАЯ ЛОГИКА:
+        // Если найден только один клиент → прямой переход
+        // Если найдено несколько клиентов → показываем выбор
         if (clients.length == 1) {
-          return PriceListScreen(client: clients.first);
+          // Обновляем текущего клиента в AuthProvider
+          authProvider.setClient(clients.first);
+          return PriceListScreen();
         } else {
+          // Несколько клиентов с одним телефоном → выбор
           return ClientSelectionScreen(
             phone: phone,
             clients: clients,

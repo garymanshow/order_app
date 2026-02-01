@@ -42,7 +42,7 @@ class GoogleSheetsService {
       'Метаданные!B1', // ← B1 содержит ISO-дату
     );
 
-    final timeStr = (response.values?.first?.first ?? '') as String;
+    final timeStr = (response.values?.first.first ?? '') as String;
     if (timeStr.isEmpty) {
       return DateTime(1970); // очень старая дата → кэш всегда устаревший
     }

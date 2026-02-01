@@ -27,6 +27,35 @@ class OrderItem {
     this.priceListId = '',
   });
 
+  // 🔥 НОВЫЙ МЕТОД copyWith
+  OrderItem copyWith({
+    String? status,
+    String? productName,
+    int? quantity,
+    double? totalPrice,
+    String? date,
+    String? clientPhone,
+    String? clientName,
+    double? paymentAmount,
+    String? paymentDocument,
+    bool? notificationSent,
+    String? priceListId,
+  }) {
+    return OrderItem(
+      status: status ?? this.status,
+      productName: productName ?? this.productName,
+      quantity: quantity ?? this.quantity,
+      totalPrice: totalPrice ?? this.totalPrice,
+      date: date ?? this.date,
+      clientPhone: clientPhone ?? this.clientPhone,
+      clientName: clientName ?? this.clientName,
+      paymentAmount: paymentAmount ?? this.paymentAmount,
+      paymentDocument: paymentDocument ?? this.paymentDocument,
+      notificationSent: notificationSent ?? this.notificationSent,
+      priceListId: priceListId ?? this.priceListId,
+    );
+  }
+
   // 🔥 ДОБАВЛЕН МЕТОД fromJson
   factory OrderItem.fromJson(Map<String, dynamic> json) {
     return OrderItem(

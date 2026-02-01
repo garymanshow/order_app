@@ -2,29 +2,48 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:collection/collection.dart';
 import '../models/client.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
-import '../models/delivery_condition.dart'; // ← ДОБАВЛЕН ИМПОРТ
+import '../models/delivery_condition.dart';
+import '../models/price_list_mode.dart';
+import '../models/client_data.dart';
+import '../services/api_service.dart';
 
 class CartProvider with ChangeNotifier {
   final Map<String, int> _cartItems = {};
   Client? _client;
-  DeliveryCondition? _deliveryCondition; // ← ДОБАВЛЕНО
+  DeliveryCondition? _deliveryCondition;
+  PriceListMode _priceListMode = PriceListMode.full;
 
   // ЕДИНСТВЕННЫЙ источник правды
   Map<String, int> get cartItems => Map.unmodifiable(_cartItems);
+  PriceListMode get priceListMode => _priceListMode;
+
+  // 🔥 ДОБАВЛЕН ГЕТТЕР ДЛЯ ДОСТУПА К УСЛОВИЯМ ДОСТАВКИ
+  DeliveryCondition? get deliveryCondition => _deliveryCondition;
 
   // Получаем количество напрямую из _cartItems
   int getQuantity(String productId) => _cartItems[productId] ?? 0;
 
-  // 🔥 НОВЫЙ МЕТОД для установки условий доставки
-  void setDeliveryCondition(DeliveryCondition? condition) {
-    _deliveryCondition = condition;
+  // 🔥 НОВЫЙ МЕТОД для установки режима прайс-листа
+  Future<void> setPriceListMode(PriceListMode mode) async {
+    _priceListMode = mode;
+    await _saveModeToSharedPreferences();
     notifyListeners();
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД для восстановления корзины
+  // 🔥 НОВЫЙ МЕТОД для загрузки режима
+  Future<void> loadPriceListMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final modeString = prefs.getString('price_list_mode');
+    if (modeString != null) {
+      _priceListMode = PriceListModeExtension.fromString(modeString);
+    }
+  }
+
+  // 🔥 НОВЫЙ МЕТОД для восстановления корзины и режима
   void restoreCartFromOrders(List<OrderItem> orders, List<Product> products) {
     _cartItems.clear();
 
@@ -98,6 +117,12 @@ class CartProvider with ChangeNotifier {
     return key;
   }
 
+  // 🔥 НОВЫЙ МЕТОД сохранения режима
+  Future<void> _saveModeToSharedPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('price_list_mode', _priceListMode.name);
+  }
+
   // Основной метод изменения количества
   Future<void> setQuantity(String productId, int quantity, int multiplicity,
       List<Product> products) async {
@@ -130,7 +155,7 @@ class CartProvider with ChangeNotifier {
 
   void reset() {
     _client = null;
-    _deliveryCondition = null; // ← ОЧИЩАЕМ
+    _deliveryCondition = null;
     clearAll();
   }
 
@@ -142,8 +167,32 @@ class CartProvider with ChangeNotifier {
 
   void setClient(Client client) {
     _client = client;
+
+    // 🔥 ИСПРАВЛЕНО: чистый подход без !
+    _deliveryCondition = null;
+    final deliveryConditions = clientData?.deliveryConditions;
+    if (client.city != null && deliveryConditions != null) {
+      _deliveryCondition = deliveryConditions
+          .firstWhereOrNull((cond) => cond.location == client.city);
+    }
+
     _cartItems.clear();
     _loadFromSharedPreferences();
+    loadPriceListMode();
+  }
+
+  // 🔥 ДОБАВЛЕНО: ссылка на ClientData для получения условий доставки
+  ClientData? clientData;
+  void setClientData(ClientData? data) {
+    clientData = data;
+    if (_client != null) {
+      // Обновляем условия доставки при изменении данных
+      final deliveryConditions = clientData?.deliveryConditions;
+      if (_client!.city != null && deliveryConditions != null) {
+        _deliveryCondition = deliveryConditions
+            .firstWhereOrNull((cond) => cond.location == _client!.city);
+      }
+    }
   }
 
   Future<void> _clearFromSharedPreferences() async {
@@ -151,49 +200,86 @@ class CartProvider with ChangeNotifier {
     await prefs.remove(_getCartKey());
   }
 
-  // 🔥 УДАЛЕН МЕТОД submitOrder - он должен быть в ApiService
-  // Все операции с данными идут через Apps Script!
+  // 🔥 НОВЫЙ МЕТОД ОТПРАВКИ ЗАКАЗА
+  Future<bool> submitOrder(
+      List<Product> products, ApiService apiService) async {
+    print('📤 Отправка заказа...');
+
+    // Получаем заказы для клиента
+    final orders = getOrderItemsForClient(products);
+
+    // Проверяем минимальную сумму заказа
+    final clientDiscount = (_client?.discount ?? 0.0) / 100;
+    final total = getTotal(products, clientDiscount);
+
+    if (!meetsMinimumOrderAmount(total)) {
+      print('❌ Заказ не соответствует минимальной сумме');
+      return false;
+    }
+
+    // Отправляем заказ через ApiService
+    final success = await apiService.submitOrder(
+      orders: orders,
+      phone: _client!.phone!,
+      clientName: _client!.name!,
+    );
+
+    if (success) {
+      print('✅ Заказ отправлен успешно');
+      clearAll(); // Очищаем корзину после успешной отправки
+    } else {
+      print('❌ Ошибка отправки заказа');
+    }
+
+    return success;
+  }
 
   List<OrderItem> getOrderItemsForClient(List<Product> products) {
     final List<OrderItem> items = [];
     _cartItems.forEach((productId, quantity) {
-      final product = products.firstWhere(
-        (p) => p.id == productId,
-        orElse: () => Product(id: '', name: '', price: 0, multiplicity: 1),
-      );
-      items.add(OrderItem(
-        status: 'оформлен',
-        productName: product.name,
-        quantity: quantity,
-        totalPrice: product.price * quantity,
-        date: '',
-        clientPhone: _client!.phone ?? '',
-        clientName: _client!.name ?? '',
-        priceListId: productId,
-      ));
+      if (quantity > 0) {
+        final product = products.firstWhere(
+          (p) => p.id == productId,
+          orElse: () => Product(id: '', name: '', price: 0, multiplicity: 1),
+        );
+        items.add(OrderItem(
+          status: 'оформлен',
+          productName: product.name,
+          quantity: quantity,
+          totalPrice: product.price * quantity,
+          date: '',
+          clientPhone: _client!.phone ?? '',
+          clientName: _client!.name ?? '',
+          priceListId: productId,
+        ));
+      }
     });
     return items;
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД getTotal с поддержкой наценки
-  double getTotal(List<Product> products, double discount) {
+  // 🔥 УПРОЩЕННЫЙ И ПРАВИЛЬНЫЙ РАСЧЕТ С ЧИСТОЙ МАРЖОЙ
+  double getTotal(List<Product> products, double clientDiscount) {
     double total = 0;
     _cartItems.forEach((productId, quantity) {
-      final product = products.firstWhere(
-        (p) => p.id == productId,
-        orElse: () => Product(id: '', name: '', price: 0, multiplicity: 1),
-      );
-      total += product.price * quantity;
+      if (quantity > 0) {
+        final product = products.firstWhere(
+          (p) => p.id == productId,
+          orElse: () => Product(id: '', name: '', price: 0, multiplicity: 1),
+        );
+        total += product.price * quantity;
+      }
     });
 
-    // Применяем скидку клиента
-    total = total * (1 - discount);
+    // Чистая маржа = Наценка доставки - Скидка клиента
+    final deliveryMarkup = _deliveryCondition?.hiddenMarkup ?? 0.0;
+    final netMarkup = deliveryMarkup - (clientDiscount * 100);
 
-    // Применяем скрытую наценку за доставку
-    if (_deliveryCondition?.hiddenMarkup != null) {
-      total = total * (1 + _deliveryCondition!.hiddenMarkup! / 100);
-    }
+    return total * (1 + netMarkup / 100);
+  }
 
-    return total;
+  // 🔥 НОВЫЙ МЕТОД проверки минимальной суммы заказа
+  bool meetsMinimumOrderAmount(double total) {
+    final minAmount = _deliveryCondition?.deliveryAmount ?? 0.0;
+    return total >= minAmount;
   }
 }

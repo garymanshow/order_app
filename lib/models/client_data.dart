@@ -5,6 +5,7 @@ import 'composition.dart';
 import 'filling.dart';
 import 'nutrition_info.dart';
 import 'delivery_condition.dart';
+import 'client_category.dart'; // ← ДОБАВЛЕН ИМПОРТ
 
 class ClientData {
   List<Product> products = [];
@@ -13,20 +14,20 @@ class ClientData {
   List<Filling> fillings = [];
   List<NutritionInfo> nutritionInfos = [];
   List<DeliveryCondition> deliveryConditions = [];
+  List<ClientCategory> clientCategories = []; // ← ДОБАВЛЕНО ПОЛЕ
   Map<String, dynamic> cart = {};
 
   // Индексы для быстрого поиска
   Map<String, Product> productIndex = {};
-  Map<String, List<Composition>> compositionIndex = {}; // Составы по entityId
-  Map<String, Filling> fillingIndex = {}; // Начинки по entityId
+  Map<String, List<Composition>> compositionIndex = {};
+  Map<String, Filling> fillingIndex = {};
+  Map<String, List<String>> clientCategoryIndex = {}; // ← ДОБАВЛЕН ИНДЕКС
 
   ClientData();
 
-  // 🔥 Строим индексы для оптимизации поиска
   void buildIndexes() {
     productIndex = {for (var p in products) p.id: p};
 
-    // Индекс составов по entityId (может быть несколько записей на одну сущность)
     compositionIndex = {};
     for (var comp in compositions) {
       if (!compositionIndex.containsKey(comp.entityId)) {
@@ -35,11 +36,18 @@ class ClientData {
       compositionIndex[comp.entityId]!.add(comp);
     }
 
-    // Индекс начинок по entityId
     fillingIndex = {for (var f in fillings) f.entityId: f};
+
+    // 🔥 СТРОИМ ИНДЕКС КАТЕГОРИЙ КЛИЕНТОВ
+    clientCategoryIndex = {};
+    for (var category in clientCategories) {
+      if (!clientCategoryIndex.containsKey(category.clientName)) {
+        clientCategoryIndex[category.clientName] = [];
+      }
+      clientCategoryIndex[category.clientName]!.add(category.entityId);
+    }
   }
 
-  // 🔥 fromJson для восстановления из кэша
   factory ClientData.fromJson(Map<String, dynamic> json) {
     final clientData = ClientData();
 
@@ -50,7 +58,6 @@ class ClientData {
     }
 
     if (json['orders'] != null) {
-      // 🔥 ИСПРАВЛЕНО: используем fromJson вместо fromMap
       clientData.orders = (json['orders'] as List)
           .map((item) => OrderItem.fromJson(item as Map<String, dynamic>))
           .toList();
@@ -81,6 +88,13 @@ class ClientData {
           .toList();
     }
 
+    // 🔥 ЗАГРУЗКА КАТЕГОРИЙ КЛИЕНТОВ
+    if (json['clientCategories'] != null) {
+      clientData.clientCategories = (json['clientCategories'] as List)
+          .map((item) => ClientCategory.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
     if (json['cart'] != null) {
       clientData.cart = json['cart'] as Map<String, dynamic>;
     }
@@ -89,17 +103,16 @@ class ClientData {
     return clientData;
   }
 
-  // 🔥 toJson для сохранения в кэш
   Map<String, dynamic> toJson() {
     return {
       'products': products.map((p) => p.toJson()).toList(),
-      'orders': orders
-          .map((o) => o.toJson())
-          .toList(), // 🔥 ИСПРАВЛЕНО: toJson вместо toMap
+      'orders': orders.map((o) => o.toJson()).toList(),
       'compositions': compositions.map((c) => c.toJson()).toList(),
       'fillings': fillings.map((f) => f.toJson()).toList(),
       'nutritionInfos': nutritionInfos.map((n) => n.toJson()).toList(),
       'deliveryConditions': deliveryConditions.map((d) => d.toJson()).toList(),
+      'clientCategories':
+          clientCategories.map((c) => c.toJson()).toList(), // 🔥
       'cart': cart,
     };
   }

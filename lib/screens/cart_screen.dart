@@ -6,6 +6,7 @@ import '../models/product.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/products_provider.dart';
+import '../services/api_service.dart'; // ← ДОБАВЛЕН ИМПОРТ
 
 class CartScreen extends StatefulWidget {
   const CartScreen({Key? key}) : super(key: key);
@@ -26,8 +27,8 @@ class _CartScreenState extends State<CartScreen> {
 
         if (client == null) {
           return Scaffold(
-            appBar: AppBar(title: Text('Ошибка')),
-            body: Center(child: Text('Не авторизован')),
+            appBar: AppBar(title: const Text('Ошибка')),
+            body: const Center(child: Text('Не авторизован')),
           );
         }
 
@@ -41,8 +42,8 @@ class _CartScreenState extends State<CartScreen> {
         // Показываем загрузку пока продукты не готовы
         if (productsProvider.products.isEmpty) {
           return Scaffold(
-            appBar: AppBar(title: Text('Корзина')),
-            body: Center(child: CircularProgressIndicator()),
+            appBar: AppBar(title: const Text('Корзина')),
+            body: const Center(child: CircularProgressIndicator()),
           );
         }
 
@@ -54,7 +55,7 @@ class _CartScreenState extends State<CartScreen> {
         final isOrderValid = total >= minOrderAmount && total > 0;
 
         return Scaffold(
-          appBar: AppBar(title: Text('Корзина')),
+          appBar: AppBar(title: const Text('Корзина')),
           body: Column(
             children: [
               Expanded(
@@ -72,18 +73,8 @@ class _CartScreenState extends State<CartScreen> {
   Widget _buildCartItems(CartProvider cartProvider, List<Product> products) {
     final cartItems = cartProvider.cartItems;
 
-    print('📊 Корзина содержит ${cartItems.length} позиций:');
-    cartItems.forEach((key, value) {
-      print('   Ключ: "$key" = $value');
-    });
-    print('📦 Доступные продукты (${products.length}):');
-    for (var product in products.take(5)) {
-      // Показываем первые 5 продуктов
-      print('   ID: "${product.id}", Название: "${product.name}"');
-    }
-
     if (cartItems.isEmpty) {
-      return Center(child: Text('Корзина пуста'));
+      return const Center(child: Text('Корзина пуста'));
     }
 
     return ListView.builder(
@@ -105,6 +96,7 @@ class _CartScreenState extends State<CartScreen> {
             storage: '',
             packaging: '',
             categoryName: '',
+            categoryId: '',
           ),
         );
 
@@ -114,14 +106,14 @@ class _CartScreenState extends State<CartScreen> {
           title: Text(product.name),
           subtitle: Text(
             'Цена: ${product.price.toStringAsFixed(2)} ₽ × $quantity шт',
-            style: TextStyle(color: Colors.grey[600]),
+            style: const TextStyle(color: Colors.grey),
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (quantity > 0)
                 IconButton(
-                  icon: Icon(Icons.remove, color: Colors.red),
+                  icon: const Icon(Icons.remove, color: Colors.red),
                   onPressed: () {
                     cartProvider.setQuantity(
                       productId,
@@ -131,9 +123,10 @@ class _CartScreenState extends State<CartScreen> {
                     );
                   },
                 ),
-              Text('$quantity', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('$quantity',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
               IconButton(
-                icon: Icon(Icons.add, color: Colors.green),
+                icon: const Icon(Icons.add, color: Colors.green),
                 onPressed: () {
                   cartProvider.setQuantity(
                     productId,
@@ -162,9 +155,9 @@ class _CartScreenState extends State<CartScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Скидка клиента:'),
+                const Text('Скидка клиента:'),
                 Text('${(discount * 100).toStringAsFixed(0)}%',
-                    style: TextStyle(
+                    style: const TextStyle(
                         color: Colors.green, fontWeight: FontWeight.bold)),
               ],
             ),
@@ -172,10 +165,11 @@ class _CartScreenState extends State<CartScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Итого:',
+              const Text('Итого:',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               Text('${total.toStringAsFixed(2)} ₽',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold)),
             ],
           ),
           if (total < minOrderAmount && total > 0)
@@ -183,8 +177,8 @@ class _CartScreenState extends State<CartScreen> {
               padding: const EdgeInsets.only(top: 8),
               child: Text(
                 'Минимальная сумма заказа: ${minOrderAmount.toStringAsFixed(2)} ₽',
-                style:
-                    TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    color: Colors.red, fontWeight: FontWeight.bold),
               ),
             ),
         ],
@@ -200,9 +194,9 @@ class _CartScreenState extends State<CartScreen> {
             ? null
             : () => _submitOrder(context),
         child: _isSubmitting
-            ? CircularProgressIndicator(
+            ? const CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
-            : Text('Оформить заказ', style: TextStyle(fontSize: 16)),
+            : const Text('Оформить заказ', style: TextStyle(fontSize: 16)),
         style: ElevatedButton.styleFrom(
           minimumSize: Size(double.infinity, 48),
           backgroundColor: isOrderValid ? Colors.blue : Colors.grey,
@@ -224,13 +218,14 @@ class _CartScreenState extends State<CartScreen> {
         await productsProvider.loadProducts();
       }
 
+      // 🔥 ИСПРАВЛЕНО: передаем оба аргумента
+      final apiService = ApiService();
       await Provider.of<CartProvider>(context, listen: false)
-          .submitOrder(productsProvider.products);
+          .submitOrder(productsProvider.products, apiService);
 
       _showSuccessMessage(context);
 
-      Navigator.pushNamedAndRemoveUntil(context, '/price', (route) => false,
-          arguments: client);
+      Navigator.pushNamedAndRemoveUntil(context, '/price', (route) => false);
     } catch (e) {
       _showErrorMessage(context, e.toString());
       setState(() => _isSubmitting = false);
@@ -240,9 +235,9 @@ class _CartScreenState extends State<CartScreen> {
   void _showSuccessMessage(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('✅ Заказ успешно оформлен!'),
+        content: const Text('✅ Заказ успешно оформлен!'),
         backgroundColor: Colors.green,
-        duration: Duration(seconds: 3),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -252,8 +247,8 @@ class _CartScreenState extends State<CartScreen> {
       SnackBar(
         content: Text('❌ Ошибка: $error'),
         backgroundColor: Colors.red,
-        duration: Duration(seconds: 10),
-        behavior: SnackBarBehavior.floating, // Делает его более заметным
+        duration: const Duration(seconds: 10),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }

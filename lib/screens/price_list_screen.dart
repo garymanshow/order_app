@@ -1,397 +1,341 @@
 // lib/screens/price_list_screen.dart
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../models/price_list_mode.dart';
-import '../models/client.dart';
 import '../models/product.dart';
-import '../models/order_item.dart';
+import '../models/client_data.dart';
+import '../models/price_list_mode.dart';
+import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
-import '../providers/products_provider.dart'; // ← ДОБАВЬТЕ ИМПОРТ
+import '../widgets/product_card.dart';
+import '../services/api_service.dart';
 
 class PriceListScreen extends StatefulWidget {
-  final Client client;
-
-  const PriceListScreen({Key? key, required this.client}) : super(key: key);
+  const PriceListScreen({super.key});
 
   @override
-  _PriceListScreenState createState() => _PriceListScreenState();
+  State<PriceListScreen> createState() => _PriceListScreenState();
 }
 
-class _PriceListScreenState extends State<PriceListScreen>
-    with TickerProviderStateMixin {
-  late PriceListMode _currentMode;
-  List<Product> _products = [];
-  bool _isLoading = true;
-  String? _error;
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+class _PriceListScreenState extends State<PriceListScreen> {
+  late final AuthProvider _authProvider;
+  late final CartProvider _cartProvider;
 
   @override
   void initState() {
     super.initState();
-    _currentMode = _loadSavedMode(widget.client.phone ?? '');
-
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    );
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
-        CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
-
-    _loadProductsAndRestoreCart();
+    _loadData();
   }
 
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
+  Future<void> _loadData() async {
+    _authProvider = Provider.of<AuthProvider>(context, listen: false);
+    _cartProvider = Provider.of<CartProvider>(context, listen: false);
 
-  Future<void> _loadProductsAndRestoreCart() async {
-    try {
-      // 🔥 СНАЧАЛА ПРОБУЕМ ЗАГРУЗИТЬ ИЗ ProductsProvider
-      final productsProvider =
-          Provider.of<ProductsProvider>(context, listen: false);
-
-      if (productsProvider.products.isNotEmpty) {
-        // Используем данные из ProductsProvider
-        _products = productsProvider.products;
-      } else {
-        // Если нет в ProductsProvider, пробуем кэш
-        final prefs = await SharedPreferences.getInstance();
-        final priceJson = prefs.getString('client_price_data');
-
-        if (priceJson != null) {
-          _products = _deserializeProducts(priceJson);
-        } else {
-          // 🔥 Если нигде нет данных - загружаем с сервера
-          await productsProvider.loadProducts();
-          _products = productsProvider.products;
-        }
-      }
-
-      // Загружаем заказы
-      final prefs = await SharedPreferences.getInstance();
-      final ordersJson = prefs.getString('client_orders_data');
-      List<OrderItem> orders = [];
-      if (ordersJson != null) {
-        orders = _deserializeOrders(ordersJson);
-      }
-
-      final cartProvider = Provider.of<CartProvider>(context, listen: false);
-      cartProvider.setClient(widget.client);
-      await _restoreCartFromOrders(orders, _products);
-
-      final hasDebt = _calculateDebt(orders) > 0;
-      if (hasDebt) {
-        _pulseController.repeat(reverse: true);
-      }
-
-      setState(() {
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = 'Ошибка загрузки данных: $e';
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _restoreCartFromOrders(
-      List<OrderItem> orders, List<Product> products) async {
-    final cartProvider = Provider.of<CartProvider>(context, listen: false);
-    cartProvider.setClient(widget.client);
-
-    final clientOrders = orders
-        .where((order) =>
-            order.clientPhone == widget.client.phone &&
-            order.clientName == widget.client.name)
-        .toList();
-
-    print(
-        '📱 Заказы для клиента в price_list_screen ${widget.client.name}: ${clientOrders.length}');
-    for (var order in clientOrders) {
-      print(
-          '📋 Заказ: ${order.productName}, статус: ${order.status}, количество: ${order.quantity}');
-    }
-
-    cartProvider.restoreCartFromOrders(clientOrders, products);
-    await Future.delayed(Duration(milliseconds: 100));
-  }
-
-  double _calculateDebt(List<OrderItem> orders) {
-    double totalDebt = 0;
-    for (var order in orders) {
-      if (order.status == 'доставлен' &&
-          order.paymentAmount < order.totalPrice) {
-        totalDebt += order.totalPrice - order.paymentAmount;
-      }
-    }
-    return totalDebt;
-  }
-
-  PriceListMode _loadSavedMode(String phone) {
-    return PriceListMode.full;
-  }
-
-  void _saveMode(String phone, PriceListMode mode) {}
-
-  void _changeMode(PriceListMode newMode) {
-    setState(() {
-      _currentMode = newMode;
-    });
-    _saveMode(widget.client.phone ?? '', newMode);
-  }
-
-  List<Product> _deserializeProducts(String json) {
-    final list = jsonDecode(json) as List;
-    return list
-        .map((item) => Product.fromJson(item as Map<String, dynamic>))
-        .toList();
-  }
-
-  List<OrderItem> _deserializeOrders(String json) {
-    final list = jsonDecode(json) as List;
-    return list
-        .map((item) => OrderItem.fromMap(item as Map<String, dynamic>))
-        .toList();
-  }
-
-  List<Product> _filterProductsByMode(List<Product> products) {
-    switch (_currentMode) {
-      case PriceListMode.full:
-        return products;
-      case PriceListMode.byCategory:
-        return products;
-      case PriceListMode.contractOnly:
-        return products;
-    }
+    await _cartProvider.loadPriceListMode();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<CartProvider>(
-      builder: (context, cartProvider, child) {
-        if (_isLoading) {
-          return Scaffold(
-            appBar: AppBar(title: Text('Загрузка прайса...')),
-            body: const Center(child: CircularProgressIndicator()),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: _authProvider),
+        ChangeNotifierProvider.value(value: _cartProvider),
+      ],
+      child: Builder(
+        builder: (context) {
+          final user = Provider.of<AuthProvider>(context).currentUser;
+          final clientData = Provider.of<AuthProvider>(context).clientData;
+          final cartProvider = Provider.of<CartProvider>(context);
+
+          final allProducts = clientData?.products ?? [];
+          final clientName = user?.name ?? '';
+          final currentMode = cartProvider.priceListMode;
+
+          final filteredProducts = _filterProducts(
+            allProducts: allProducts,
+            mode: currentMode,
+            clientName: clientName,
+            clientData: clientData,
           );
-        }
 
-        if (_error != null) {
+          final clientDiscount = (user?.discount ?? 0.0) / 100;
+          final total = cartProvider.getTotal(allProducts, clientDiscount);
+          final meetsMinOrder = cartProvider.meetsMinimumOrderAmount(total);
+
+          final titleText = total > 0
+              ? 'Прайс-лист: выбрано на сумму ${total.toStringAsFixed(2)}'
+              : 'Прайс-лист';
+
+          final titleColor = total > 0
+              ? (meetsMinOrder ? Colors.green : Colors.red)
+              : Theme.of(context).appBarTheme.foregroundColor ?? Colors.black;
+
           return Scaffold(
-            appBar: AppBar(title: Text('Ошибка')),
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(_error!),
-                  SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _loadProductsAndRestoreCart,
-                    child: Text('Повторить'),
-                  ),
-                ],
+            appBar: AppBar(
+              title: Text(
+                titleText,
+                style: TextStyle(color: titleColor),
+                maxLines: 2,
+                overflow: TextOverflow.visible,
+                softWrap: true,
               ),
-            ),
-          );
-        }
-
-        final orders = _getCurrentOrders();
-        final debt = _calculateDebt(orders);
-        final hasDebt = debt > 0;
-
-        final filteredProducts = _filterProductsByMode(_products);
-        if (filteredProducts.isEmpty) {
-          return Scaffold(
-            appBar: AppBar(title: Text('Прайс-лист пуст')),
-            body: const Center(child: Text('Нет товаров для отображения')),
-          );
-        }
-
-        final discount = (widget.client.discount ?? 0) / 100.0;
-        final total = cartProvider.getTotal(_products, discount);
-
-        String title = 'Заказ для: ${widget.client.name ?? 'Клиент'}';
-        if ((widget.client.deliveryAddress ?? '').isNotEmpty) {
-          title += ' — ${widget.client.deliveryAddress}';
-        }
-        title += '  Итого: ${total.toStringAsFixed(2)} ₽';
-
-        return Scaffold(
-          appBar: AppBar(
-            toolbarHeight: 80,
-            title: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-            actions: [
-              AnimatedBuilder(
-                animation: _pulseAnimation,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: _pulseAnimation.value,
-                    child: IconButton(
-                      icon: Icon(
-                        Icons.history,
-                        color: hasDebt ? Colors.red : Colors.white,
-                        size: 24,
-                      ),
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/orders',
-                            arguments: widget.client);
-                      },
-                      tooltip:
-                          hasDebt ? 'Есть задолженность!' : 'История заказов',
-                    ),
-                  );
-                },
-              ),
-              PopupMenuButton<PriceListMode>(
-                icon: Icon(Icons.view_list, color: Colors.white),
-                tooltip: 'Режим отображения',
-                onSelected: (PriceListMode mode) {
-                  _changeMode(mode);
-                },
-                itemBuilder: (BuildContext context) =>
-                    PriceListMode.values.map((PriceListMode mode) {
-                  return PopupMenuItem<PriceListMode>(
-                    value: mode,
-                    child: Row(
-                      children: [
-                        if (mode == _currentMode)
-                          Icon(Icons.check, size: 16, color: Colors.green),
-                        SizedBox(width: mode == _currentMode ? 8 : 0),
-                        Text(mode.label),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-              IconButton(
-                icon: const Icon(Icons.shopping_cart, color: Colors.white),
+              toolbarHeight: total > 0 ? 80.0 : kToolbarHeight,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
                 onPressed: () {
-                  Navigator.pushNamed(context, '/cart', arguments: {
-                    'client': widget.client,
-                    'products': _products,
-                  });
+                  Navigator.of(context).pop();
                 },
               ),
-            ],
-          ),
-          body: ListView.builder(
-            itemCount: filteredProducts.length,
-            itemBuilder: (context, index) {
-              final product = filteredProducts[index];
-              final cartQty = cartProvider.getQuantity(product.id);
-              final totalForItem = product.price * cartQty;
-
-              return Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    if (product.hasImageUrl)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          product.imageUrl!,
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                        ),
-                      )
-                    else
-                      Container(
-                        width: 60,
-                        height: 60,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.cake, color: Colors.grey),
-                      ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(product.name,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Цена: ${product.price.toStringAsFixed(2)} ₽ '
-                            '× $cartQty шт = '
-                            'Сумма: ${totalForItem.toStringAsFixed(2)} ₽',
-                            style: TextStyle(
-                                color: totalForItem != 0
-                                    ? Colors.green[700]
-                                    : Colors.grey[600],
-                                fontWeight: totalForItem == 0
-                                    ? FontWeight.normal
-                                    : FontWeight.bold,
-                                fontSize: 12),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Кратность: ${product.multiplicity} шт',
-                            style: const TextStyle(
-                                fontSize: 11, color: Colors.blue),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        if (cartQty > 0)
-                          IconButton(
-                            icon: const Icon(Icons.remove, color: Colors.red),
-                            onPressed: () {
-                              cartProvider.setQuantity(
-                                product.id,
-                                cartQty - product.multiplicity,
-                                product.multiplicity,
-                                _products,
-                              );
-                            },
-                          ),
-                        Text('$cartQty',
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold)),
-                        IconButton(
-                          icon: const Icon(Icons.add, color: Colors.green),
-                          onPressed: () {
-                            cartProvider.setQuantity(
-                              product.id,
-                              cartQty + product.multiplicity,
-                              product.multiplicity,
-                              _products,
-                            );
-                          },
-                        ),
-                      ],
+              actions: [
+                // 🔥 КНОПКА КАЛЕНДАРЯ
+                IconButton(
+                  icon: const Icon(Icons.calendar_today),
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/orders');
+                  },
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (String result) {
+                    if (result == 'export') {
+                      _showExportDialog(context);
+                    }
+                  },
+                  itemBuilder: (BuildContext context) =>
+                      <PopupMenuEntry<String>>[
+                    const PopupMenuItem<String>(
+                      value: 'export',
+                      child: Text('Сохранить прайс'),
                     ),
                   ],
                 ),
-              );
-            },
+                DropdownButton<PriceListMode>(
+                  value: cartProvider.priceListMode,
+                  onChanged: (newMode) async {
+                    if (newMode != null) {
+                      await cartProvider.setPriceListMode(newMode);
+                    }
+                  },
+                  items: PriceListMode.values.map((PriceListMode mode) {
+                    return DropdownMenuItem<PriceListMode>(
+                      value: mode,
+                      child: Text(mode.label),
+                    );
+                  }).toList(),
+                  underline: Container(),
+                ),
+                // 🔥 КНОПКА КОРЗИНЫ
+                IconButton(
+                  icon: const Icon(Icons.shopping_cart),
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/cart');
+                  },
+                ),
+                const SizedBox(width: 16),
+              ],
+            ),
+            body: filteredProducts.isEmpty
+                ? const Center(child: Text('Нет товаров для отображения'))
+                : ListView.builder(
+                    itemCount: filteredProducts.length,
+                    itemBuilder: (context, index) {
+                      final product = filteredProducts[index];
+                      final quantity = cartProvider.getQuantity(product.id);
+
+                      return ProductCard(
+                        product: product,
+                        quantity: quantity,
+                        onQuantityChanged: (newQuantity) {
+                          cartProvider.setQuantity(
+                            product.id,
+                            newQuantity,
+                            product.multiplicity,
+                            allProducts,
+                          );
+                        },
+                      );
+                    },
+                  ),
+            bottomSheet: _buildBottomSheet(
+                total, meetsMinOrder, clientDiscount, cartProvider),
+          );
+        },
+      ),
+    );
+  }
+
+  List<Product> _filterProducts({
+    required List<Product> allProducts,
+    required PriceListMode mode,
+    required String clientName,
+    required ClientData? clientData,
+  }) {
+    switch (mode) {
+      case PriceListMode.full:
+        return allProducts;
+
+      case PriceListMode.byCategory:
+      case PriceListMode.contractOnly:
+        final allowedCategories =
+            clientData?.clientCategoryIndex[clientName] ?? [];
+        if (allowedCategories.isEmpty) {
+          return allProducts;
+        }
+        return allProducts
+            .where((product) => allowedCategories.contains(product.categoryId))
+            .toList();
+    }
+  }
+
+  Widget _buildBottomSheet(double total, bool meetsMinOrder,
+      double clientDiscount, CartProvider cartProvider) {
+    final formattedTotal = total.toStringAsFixed(2);
+
+    return Container(
+      color: Theme.of(context).cardColor,
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Итого: $formattedTotal ₽',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (clientDiscount > 0)
+                  Text(
+                    'Скидка: ${(clientDiscount * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(color: Colors.green),
+                  ),
+                if (!meetsMinOrder)
+                  Text(
+                    'Минимальная сумма: ${cartProvider.deliveryCondition?.deliveryAmount.toStringAsFixed(0) ?? '0'} ₽',
+                    style: const TextStyle(color: Colors.red),
+                  ),
+              ],
+            ),
           ),
-        );
+          ElevatedButton(
+            onPressed: meetsMinOrder ? () => _submitOrder() : null,
+            child: const Text('Оформить заказ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submitOrder() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final apiService = ApiService();
+    final success = await _cartProvider.submitOrder(
+      authProvider.clientData?.products ?? [],
+      apiService,
+    );
+
+    if (success) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Заказ успешно отправлен!')),
+      );
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ошибка при отправке заказа')),
+      );
+    }
+  }
+
+  void _showExportDialog(BuildContext context) {
+    String selectedFormat = 'pdf';
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Экспорт прайс-листа'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  title: const Text('PDF — полная информация о продукции'),
+                  subtitle: const Text('Для каталогов, презентаций, печати'),
+                  value: 'pdf',
+                  groupValue: selectedFormat,
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        selectedFormat = value;
+                      });
+                    }
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text('CSV — для этикеток и систем учета'),
+                  subtitle: const Text('Только структурированные данные'),
+                  value: 'csv',
+                  groupValue: selectedFormat,
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        selectedFormat = value;
+                      });
+                    }
+                  },
+                ),
+                if (selectedFormat == 'pdf')
+                  ExpansionTile(
+                    title: const Text('Что включить в PDF'),
+                    initiallyExpanded: true,
+                    children: [
+                      _buildFieldToggle('Основные поля', true),
+                      _buildFieldToggle('Состав', true),
+                      _buildFieldToggle('КБЖУ', true),
+                      _buildFieldToggle('Условия хранения', true),
+                      _buildFieldToggle('Фотографии', false),
+                    ],
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: Navigator.of(context).pop,
+                child: const Text('Отмена'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  _exportPriceList(context, format: selectedFormat);
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Экспортировать'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFieldToggle(String label, bool defaultValue) {
+    return CheckboxListTile(
+      title: Text(label),
+      value: defaultValue,
+      onChanged: (bool? value) {
+        // TODO: сохранять выбор в состояние
       },
     );
   }
 
-  List<OrderItem> _getCurrentOrders() {
-    return [];
+  Future<void> _exportPriceList(BuildContext context,
+      {required String format}) async {
+    // TODO: Реализовать экспорт в PDF/CSV
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content:
+              Text('Функция экспорта будет доступна в ближайшем обновлении!')),
+    );
   }
 }
