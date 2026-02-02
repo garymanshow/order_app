@@ -1,6 +1,6 @@
 // lib/providers/cart_provider.dart
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:collection/collection.dart';
 import '../models/client.dart';
@@ -168,7 +168,7 @@ class CartProvider with ChangeNotifier {
   void setClient(Client client) {
     _client = client;
 
-    // 🔥 ИСПРАВЛЕНО: чистый подход без !
+    // 🔥 ИСПРАВЛЕНО: безопасное получение условий доставки
     _deliveryCondition = null;
     final deliveryConditions = clientData?.deliveryConditions;
     if (client.city != null && deliveryConditions != null) {
@@ -185,10 +185,10 @@ class CartProvider with ChangeNotifier {
   ClientData? clientData;
   void setClientData(ClientData? data) {
     clientData = data;
-    if (_client != null) {
+    if (_client != null && _client!.city != null) {
       // Обновляем условия доставки при изменении данных
       final deliveryConditions = clientData?.deliveryConditions;
-      if (_client!.city != null && deliveryConditions != null) {
+      if (deliveryConditions != null) {
         _deliveryCondition = deliveryConditions
             .firstWhereOrNull((cond) => cond.location == _client!.city);
       }
@@ -200,9 +200,15 @@ class CartProvider with ChangeNotifier {
     await prefs.remove(_getCartKey());
   }
 
-  // 🔥 НОВЫЙ МЕТОД ОТПРАВКИ ЗАКАЗА
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД ОТПРАВКИ ЗАКАЗА (используем createOrder вместо несуществующего submitOrder)
   Future<bool> submitOrder(
       List<Product> products, ApiService apiService) async {
+    // 🔒 Проверка наличия клиента
+    if (_client == null || _client!.phone == null || _client!.phone!.isEmpty) {
+      print('❌ Нет авторизованного клиента для оформления заказа');
+      return false;
+    }
+
     print('📤 Отправка заказа...');
 
     // Получаем заказы для клиента
@@ -213,25 +219,42 @@ class CartProvider with ChangeNotifier {
     final total = getTotal(products, clientDiscount);
 
     if (!meetsMinimumOrderAmount(total)) {
-      print('❌ Заказ не соответствует минимальной сумме');
+      print(
+          '❌ Заказ не соответствует минимальной сумме (${_deliveryCondition?.deliveryAmount ?? 0} ₽)');
       return false;
     }
 
-    // Отправляем заказ через ApiService
-    final success = await apiService.submitOrder(
-      orders: orders,
-      phone: _client!.phone!,
-      clientName: _client!.name!,
-    );
+    // Преобразуем заказы в формат для API
+    final items = orders.map((item) => item.toJson()).toList();
 
-    if (success) {
-      print('✅ Заказ отправлен успешно');
-      clearAll(); // Очищаем корзину после успешной отправки
-    } else {
-      print('❌ Ошибка отправки заказа');
+    // Отправляем заказ через ApiService.createOrder
+    try {
+      final result = await apiService.createOrder(
+        clientId: _client!.phone!,
+        employeeId:
+            'автомат', // Специальное значение для заказов, созданных клиентом
+        items: items,
+        totalAmount: total,
+        deliveryCity: _deliveryCondition?.location ?? _client!.city,
+        deliveryAddress: '', // Пока не реализовано — оставляем пустым
+        comment: '', // Пока не реализовано — оставляем пустым
+      );
+
+      final success = result?['success'] == true;
+
+      if (success) {
+        print('✅ Заказ отправлен успешно');
+        clearAll(); // Очищаем корзину после успешной отправки
+      } else {
+        final message = result?['message'] ?? 'Неизвестная ошибка сервера';
+        print('❌ Ошибка отправки заказа: $message');
+      }
+
+      return success;
+    } catch (e) {
+      print('❌ Исключение при отправке заказа: $e');
+      return false;
     }
-
-    return success;
   }
 
   List<OrderItem> getOrderItemsForClient(List<Product> products) {
@@ -247,9 +270,9 @@ class CartProvider with ChangeNotifier {
           productName: product.name,
           quantity: quantity,
           totalPrice: product.price * quantity,
-          date: '',
-          clientPhone: _client!.phone ?? '',
-          clientName: _client!.name ?? '',
+          date: DateTime.now().toIso8601String().split('T')[0],
+          clientPhone: _client?.phone ?? '',
+          clientName: _client?.name ?? '',
           priceListId: productId,
         ));
       }

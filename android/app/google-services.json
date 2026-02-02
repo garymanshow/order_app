@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1057035080793:android:bc3ff2f5a868b31a0f4d48",
+        "mobilesdk_app_id": "1:1057035080793:android:19d33ab83956c9a00f4d48",
         "android_client_info": {
-          "package_name": "com.example.order_app"
+          "package_name": "io.github.garymanshow.orderapp"
         }
       },
       "oauth_client": [],

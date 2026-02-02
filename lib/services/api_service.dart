@@ -1,218 +1,383 @@
 // lib/services/api_service.dart
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
-
-// Models
-import '../models/client.dart';
-import '../models/employee.dart';
+import 'package:http/http.dart' as http;
 import '../models/sheet_metadata.dart';
-import '../models/product.dart';
-import '../models/order_item.dart';
-import '../models/composition.dart';
-import '../models/filling.dart';
-import '../models/nutrition_info.dart';
-import '../models/delivery_condition.dart';
-import '../models/client_category.dart';
-import '../models/client_data.dart';
 
 class ApiService {
+  // 🔔 FCM: URL вашего веб-приложения Apps Script
+  static const String _scriptUrl =
+      'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+
+  // 🔔 FCM: метод отправки токена (если нужно отдельно от логина)
+  Future<Map<String, dynamic>> sendFcmToken({
+    required String phoneNumber,
+    required String fcmToken,
+    String? role, // null для клиентов, строка для сотрудников
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'saveFcmToken',
+          'phoneNumber': phoneNumber,
+          'fcmToken': fcmToken,
+          'role': role, // для автоматического определения листа
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body) as Map<String, dynamic>;
+        return result;
+      } else {
+        throw Exception('Ошибка сохранения FCM токена: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Ошибка отправки FCM токена: $e');
+      rethrow;
+    }
+  }
+
+  // 🔥 АУТЕНТИФИКАЦИЯ С ПЕРЕДАЧЕЙ FCM-ТОКЕНА
   Future<Map<String, dynamic>?> authenticate({
     required String phone,
     required Map<String, SheetMetadata> localMetadata,
-    String? fcmToken,
+    String? fcmToken, // 🔔 FCM: новый параметр
   }) async {
-    final url =
-        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}?action=authenticate');
-
-    final requestBody = {
-      'phone': phone,
-      'localMetadata': localMetadata
-          .map((key, value) => MapEntry(key, value.toJson()))
-          .cast<String, dynamic>(),
-      if (fcmToken != null) 'fcmToken': fcmToken,
-    };
-
     try {
       final response = await http.post(
-        url,
+        Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
+        body: jsonEncode({
+          'action': 'authenticate',
+          'phone': phone,
+          'localMetadata': localMetadata.map(
+            (key, value) => MapEntry(key, value.toJson()),
+          ),
+          'fcmToken': fcmToken, // 🔔 FCM: передаём токен в аутентификацию
+        }),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
-        // Десериализация ответа
-        final userData = data['user'];
-        final metadataData = data['metadata'];
-        final clientData = data['clientData'];
-
-        // 🔥 НОВАЯ ЛОГИКА: ПОДДЕРЖКА МНОЖЕСТВЕННЫХ РОЛЕЙ
-        dynamic user;
-        if (userData is List) {
-          // Несколько ролей сотрудника
-          user = userData; // Возвращаем массив как есть
-        } else if (userData is Map<String, dynamic>) {
-          // Один пользователь
-          if (userData['role'] != null) {
-            user = Employee.fromJson(userData);
-          } else {
-            user = Client.fromJson(userData);
-          }
+        // Проверяем успешность аутентификации
+        if (data['success'] == true && data['user'] != null) {
+          return {
+            'user': data['user'],
+            'data': data['data'],
+            'metadata': data['metadata'],
+          };
         } else {
-          throw Exception('Неожиданный формат данных пользователя');
+          print('⚠️ Аутентификация не удалась: ${data['message']}');
+          return null;
         }
-
-        final metadata = (metadataData as Map<String, dynamic>).map(
-            (key, value) => MapEntry(
-                key, SheetMetadata.fromJson(value as Map<String, dynamic>)));
-
-        final clientDataObj = _deserializeClientData(clientData);
-
-        return {
-          'user': user,
-          'metadata': metadata,
-          'data': clientDataObj,
-        };
+      } else {
+        throw Exception('Ошибка аутентификации: ${response.statusCode}');
       }
-
-      return null;
     } catch (e) {
-      print('Ошибка API: $e');
-      return null;
+      print('❌ Ошибка запроса аутентификации: $e');
+      rethrow;
     }
   }
 
-  // Обновление заказов
-  Future<bool> updateOrders(List<OrderItem> orders) async {
-    final url =
-        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}?action=updateOrders');
-
-    final ordersData = orders.map((order) => order.toJson()).toList();
-
-    final requestBody = {
-      'orders': ordersData,
-    };
-
+  // 🔥 ЗАГРУЗКА ДАННЫХ КЛИЕНТА
+  Future<Map<String, dynamic>?> fetchClientData(String phone) async {
     try {
       final response = await http.post(
-        url,
+        Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
+        body: jsonEncode({
+          'action': 'fetchClientData',
+          'phone': phone,
+        }),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['success'] == true;
+        if (data['success'] == true) {
+          return data;
+        }
       }
-
-      return false;
+      return null;
     } catch (e) {
-      print('Ошибка обновления заказов: $e');
-      return false;
+      print('❌ Ошибка загрузки данных клиента: $e');
+      return null;
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД ОТПРАВКИ ЗАКАЗА
-  Future<bool> submitOrder({
-    required List<OrderItem> orders,
-    required String phone,
-    required String clientName,
+  // 🔥 ЗАГРУЗКА ПРОДУКТОВ
+  Future<List<dynamic>?> fetchProducts({
+    String? category,
+    String? clientId,
   }) async {
-    final url =
-        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}?action=submitOrder');
-
-    // Подготовка данных для отправки
-    final ordersData = orders.map((order) {
-      return {
-        'Статус': order.status,
-        'Название': order.productName,
-        'Количество': order.quantity,
-        'Итоговая цена': order.totalPrice,
-        'Дата': order.date,
-        'Телефон': order.clientPhone,
-        'Клиент': order.clientName,
-        'ID Прайс-лист': order.priceListId,
+    try {
+      final payload = {
+        'action': 'fetchProducts',
+        if (category != null) 'category': category,
+        if (clientId != null) 'clientId': clientId,
       };
-    }).toList();
 
-    final requestBody = {
-      'orders': ordersData,
-      'phone': phone,
-      'clientName': clientName,
-    };
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
 
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          return data['products'];
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки продуктов: $e');
+      return null;
+    }
+  }
+
+  // 🔥 СОЗДАНИЕ ЗАКАЗА
+  Future<Map<String, dynamic>?> createOrder({
+    required String clientId,
+    required String employeeId,
+    required List<dynamic> items,
+    required double totalAmount,
+    String? deliveryCity,
+    String? deliveryAddress,
+    String? comment,
+  }) async {
     try {
       final response = await http.post(
-        url,
+        Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
+        body: jsonEncode({
+          'action': 'createOrder',
+          'clientId': clientId,
+          'employeeId': employeeId,
+          'items': items,
+          'totalAmount': totalAmount,
+          if (deliveryCity != null) 'deliveryCity': deliveryCity,
+          if (deliveryAddress != null) 'deliveryAddress': deliveryAddress,
+          if (comment != null) 'comment': comment,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        throw Exception('Ошибка создания заказа: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Ошибка создания заказа: $e');
+      rethrow;
+    }
+  }
+
+  // 🔥 ЗАГРУЗКА ЗАКАЗОВ
+  Future<List<dynamic>?> fetchOrders({
+    String? clientId,
+    String? employeeId,
+    String? status,
+  }) async {
+    try {
+      final payload = {
+        'action': 'fetchOrders',
+        if (clientId != null) 'clientId': clientId,
+        if (employeeId != null) 'employeeId': employeeId,
+        if (status != null) 'status': status,
+      };
+
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          return data['orders'];
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки заказов: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ОБНОВЛЕНИЕ СТАТУСА ЗАКАЗА
+  Future<bool> updateOrderStatus({
+    required String orderId,
+    required String newStatus,
+    String? comment,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'updateOrderStatus',
+          'orderId': orderId,
+          'newStatus': newStatus,
+          if (comment != null) 'comment': comment,
+        }),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['success'] == true;
       }
-
       return false;
     } catch (e) {
-      print('Ошибка отправки заказа: $e');
+      print('❌ Ошибка обновления статуса заказа: $e');
       return false;
     }
   }
 
-  ClientData _deserializeClientData(dynamic data) {
-    if (data == null) return ClientData();
+  // 🔥 ЗАГРУЗКА МЕТАДАННЫХ
+  Future<Map<String, SheetMetadata>?> fetchMetadata() async {
+    try {
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'fetchMetadata'}),
+      );
 
-    final clientData = ClientData();
-    final clientDataMap = data as Map<String, dynamic>;
-
-    if (clientDataMap['products'] != null) {
-      clientData.products = (clientDataMap['products'] as List)
-          .map((item) => Product.fromJson(item as Map<String, dynamic>))
-          .toList();
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['metadata'] != null) {
+          final metadataMap = data['metadata'] as Map<String, dynamic>;
+          return metadataMap.map(
+              (key, value) => MapEntry(key, SheetMetadata.fromJson(value)));
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки метаданных: $e');
+      return null;
     }
+  }
 
-    if (clientDataMap['compositions'] != null) {
-      clientData.compositions = (clientDataMap['compositions'] as List)
-          .map((item) => Composition.fromJson(item as Map<String, dynamic>))
-          .toList();
+  // 🔥 ОБНОВЛЕНИЕ МЕТАДАННЫХ (после изменений в таблице)
+  Future<bool> updateMetadata(String sheetName) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'updateMetadata',
+          'sheetName': sheetName,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка обновления метаданных: $e');
+      return false;
     }
+  }
 
-    if (clientDataMap['fillings'] != null) {
-      clientData.fillings = (clientDataMap['fillings'] as List)
-          .map((item) => Filling.fromJson(item as Map<String, dynamic>))
-          .toList();
+  // 🔔 FCM: МЕТОД ОТПРАВКИ УВЕДОМЛЕНИЯ ЧЕРЕЗ СЕРВЕР (опционально)
+  // Если вы хотите отправлять уведомления напрямую из приложения (не через my-push-server)
+  Future<bool> sendNotification({
+    required String targetPhone,
+    required String title,
+    required String body,
+    String? role, // null для клиентов, 'admin'/'manager' для сотрудников
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'sendNotification',
+          'targetPhone': targetPhone,
+          'title': title,
+          'body': body,
+          'role': role,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка отправки уведомления: $e');
+      return false;
     }
+  }
 
-    if (clientDataMap['nutritionInfos'] != null) {
-      clientData.nutritionInfos = (clientDataMap['nutritionInfos'] as List)
-          .map((item) => NutritionInfo.fromJson(item as Map<String, dynamic>))
-          .toList();
+  // 🔥 УДАЛЕНИЕ ЗАКАЗА (для администратора)
+  Future<bool> deleteOrder(String orderId) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'deleteOrder',
+          'orderId': orderId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления заказа: $e');
+      return false;
     }
+  }
 
-    if (clientDataMap['orders'] != null) {
-      clientData.orders = (clientDataMap['orders'] as List)
-          .map((item) => OrderItem.fromJson(item as Map<String, dynamic>))
-          .toList();
+  // 🔥 ЭКСПОРТ/ИМПОРТ ДАННЫХ
+  Future<Map<String, dynamic>?> exportData() async {
+    try {
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'exportData'}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка экспорта данных: $e');
+      return null;
     }
+  }
 
-    if (clientDataMap['deliveryConditions'] != null) {
-      clientData.deliveryConditions =
-          (clientDataMap['deliveryConditions'] as List)
-              .map((item) =>
-                  DeliveryCondition.fromJson(item as Map<String, dynamic>))
-              .toList();
+  Future<bool> importData(Map<String, dynamic> data) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'importData',
+          'data': data,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка импорта данных: $e');
+      return false;
     }
-
-    if (clientDataMap['clientCategories'] != null) {
-      clientData.clientCategories = (clientDataMap['clientCategories'] as List)
-          .map((item) => ClientCategory.fromJson(item as Map<String, dynamic>))
-          .toList();
-    }
-
-    clientData.buildIndexes();
-    return clientData;
   }
 }
