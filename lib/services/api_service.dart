@@ -1,6 +1,8 @@
 // lib/services/api_service.dart
 import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import '../models/order_item.dart';
 import '../models/sheet_metadata.dart';
 
 class ApiService {
@@ -356,6 +358,37 @@ class ApiService {
     } catch (e) {
       print('❌ Ошибка экспорта данных: $e');
       return null;
+    }
+  }
+
+  // 🔥 НОВЫЙ МЕТОД: обновление заказов
+  Future<bool> updateOrders(List<OrderItem> orders) async {
+    final url =
+        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}?action=updateOrders');
+
+    // Используем toMap() для совместимости с Google Таблицами
+    final ordersData = orders.map((order) => order.toMap()).toList();
+
+    final requestBody = {
+      'orders': ordersData,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+
+      return false;
+    } catch (e) {
+      print('Ошибка обновления заказов: $e');
+      return false;
     }
   }
 

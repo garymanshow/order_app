@@ -73,6 +73,23 @@ class OrderItem {
     );
   }
 
+  // 🔥 МЕТОД ДЛЯ GOOGLE ТАБЛИЦ
+  Map<String, dynamic> toMap() {
+    return {
+      'Статус': status,
+      'Название': productName,
+      'Количество': quantity.toString(),
+      'Итоговая цена': totalPrice.toString(),
+      'Дата': date,
+      'Телефон': clientPhone,
+      'Клиент': clientName,
+      'Оплата': paymentAmount.toString(),
+      'Платежный документ': paymentDocument,
+      'Уведомление отправлено': notificationSent.toString(),
+      'ID Прайс-лист': priceListId,
+    };
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'status': status,
