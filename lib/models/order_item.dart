@@ -140,6 +140,8 @@ class OrderItem {
   bool get isSentToProduction => status == 'в производство';
   bool get isInProgress => status == 'в работе';
   bool get isReadyForDelivery => status == 'готов к отправке';
+  bool get isManufacturing => status == 'изготовление';
+  bool get isInReserve => status == 'запас';
 
   bool get canBeApprovedByAdmin => isPendingApproval;
   bool get canBeStartedByManager => isSentToProduction;

@@ -2,19 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../models/order_item.dart';
-
-class ClientWithOrders {
-  final String clientName;
-  final String address;
-  final List<OrderItem> orders;
-
-  ClientWithOrders({
-    required this.clientName,
-    required this.address,
-    required this.orders,
-  });
-}
+import '../services/api_service.dart';
+import '../models/status_update.dart';
 
 class DriverRouteScreen extends StatefulWidget {
   @override
@@ -22,73 +11,105 @@ class DriverRouteScreen extends StatefulWidget {
 }
 
 class _DriverRouteScreenState extends State<DriverRouteScreen> {
-  Map<String, ClientWithOrders> _groupedClients = {};
-  Map<String, String> _clientStatuses = {};
+  List<ClientWithAddress> _clientsForDelivery = [];
+  Map<String, String> _deliveryStatuses = {};
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _loadClients();
+    _loadClientsForDelivery();
   }
 
-  void _loadClients() {
+  void _loadClientsForDelivery() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final allOrders = authProvider.clientData?.orders ?? [];
+    final allClients = authProvider.clientData?.clients ?? [];
 
-    // Фильтруем только заказы "готов к отправке"
-    final readyOrders =
-        allOrders.where((order) => order.status == 'готов к отправке').toList();
-
-    // Группируем по полю "Клиент" из заказов
-    final ordersByClient = <String, List<OrderItem>>{};
-    for (var order in readyOrders) {
-      final clientName = order.clientName;
-      if (clientName != null && clientName.isNotEmpty) {
-        if (!ordersByClient.containsKey(clientName)) {
-          ordersByClient[clientName] = [];
-        }
-        ordersByClient[clientName]!.add(order);
+    // Найти всех клиентов, у которых есть заказы "готов к отправке"
+    final clientNamesFromOrders = <String>{};
+    for (var order in allOrders) {
+      if (order.status == 'готов к отправке' &&
+          order.clientName != null &&
+          order.clientName.isNotEmpty) {
+        clientNamesFromOrders.add(order.clientName);
       }
     }
 
-    // Создаем список клиентов для маршрутного листа
-    _groupedClients = {};
-    for (var clientName in ordersByClient.keys) {
-      final orders = ordersByClient[clientName]!;
-
-      // Попробуем получить адрес из первого заказа
-      String address = 'Адрес не указан';
-      if (orders.isNotEmpty && orders.first.deliveryAddress != null) {
-        address = orders.first.deliveryAddress!;
+    // Сопоставить с данными клиентов
+    _clientsForDelivery = [];
+    for (var client in allClients) {
+      // 🔥 Проверяем, что name не null и совпадает
+      if (client.name != null && clientNamesFromOrders.contains(client.name)) {
+        _clientsForDelivery.add(ClientWithAddress(
+          name: client.name ?? 'Клиент не указан',
+          address: client.deliveryAddress ?? 'Адрес не указан',
+          phone: client.phone ?? '',
+        ));
       }
-
-      _groupedClients[clientName] = ClientWithOrders(
-        clientName: clientName,
-        address: address,
-        orders: orders,
-      );
     }
 
-    _clientStatuses.clear();
+    _clientsForDelivery.sort((a, b) => a.name.compareTo(b.name));
+    _deliveryStatuses.clear();
     setState(() {});
   }
 
   bool get _canSubmitReport {
-    return _groupedClients.isNotEmpty &&
-        _groupedClients.keys
-            .every((clientName) => _clientStatuses.containsKey(clientName));
+    return _clientsForDelivery.isNotEmpty &&
+        _clientsForDelivery
+            .every((client) => _deliveryStatuses.containsKey(client.name));
   }
 
-  void _setClientStatus(String clientName, String status) {
+  void _setDeliveryStatus(String clientName, String status) {
     setState(() {
-      _clientStatuses[clientName] = status;
+      _deliveryStatuses[clientName] = status;
     });
+  }
+
+  Future<void> _submitReport() async {
+    try {
+      final statusUpdates = <StatusUpdate>[];
+
+      for (var client in _clientsForDelivery) {
+        final newStatus = _deliveryStatuses[client.name];
+        if (newStatus != null) {
+          statusUpdates.add(StatusUpdate(
+            client: client.name,
+            phone: client.phone,
+            newStatus: newStatus,
+          ));
+        }
+      }
+
+      if (statusUpdates.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Нет данных для отправки')),
+        );
+        return;
+      }
+
+      final apiService = ApiService();
+      final success = await apiService.updateOrderStatuses(statusUpdates);
+
+      if (success) {
+        // TODO: Отправить уведомления через NotificationService
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Отчет успешно отправлен!')),
+        );
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка отправки отчета')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final clientsList = _groupedClients.values.toList();
-
     return Scaffold(
       appBar: AppBar(
         title: Text('Маршрутный лист'),
@@ -96,7 +117,7 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
       ),
       body: Column(
         children: [
-          if (clientsList.isEmpty)
+          if (_clientsForDelivery.isEmpty)
             Expanded(
               child: Center(
                 child: Padding(
@@ -112,10 +133,10 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
           else
             Expanded(
               child: ListView.builder(
-                itemCount: clientsList.length,
+                itemCount: _clientsForDelivery.length,
                 itemBuilder: (context, index) {
-                  final client = clientsList[index];
-                  final currentStatus = _clientStatuses[client.clientName];
+                  final client = _clientsForDelivery[index];
+                  final currentStatus = _deliveryStatuses[client.name];
                   final isDelivered = currentStatus == 'доставлен';
                   final isCorrection = currentStatus == 'корректировка';
                   final hasStatus = isDelivered || isCorrection;
@@ -128,7 +149,7 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            client.clientName,
+                            client.name,
                             style: TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 16),
                           ),
@@ -155,8 +176,8 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
                                 onPressed: hasStatus && !isDelivered
                                     ? null
                                     : () {
-                                        _setClientStatus(
-                                            client.clientName, 'доставлен');
+                                        _setDeliveryStatus(
+                                            client.name, 'доставлен');
                                       },
                                 child: Text('Доставлен',
                                     style:
@@ -176,8 +197,8 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
                                 onPressed: hasStatus && !isCorrection
                                     ? null
                                     : () {
-                                        _setClientStatus(
-                                            client.clientName, 'корректировка');
+                                        _setDeliveryStatus(
+                                            client.name, 'корректировка');
                                       },
                                 child: Text('Корректировка',
                                     style:
@@ -214,12 +235,16 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
       ),
     );
   }
+}
 
-  Future<void> _submitReport() async {
-    // TODO: Реализуем после создания ApiService и NotificationService
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Отчет отправлен!')),
-    );
-    Navigator.pop(context);
-  }
+class ClientWithAddress {
+  final String name;
+  final String address;
+  final String phone;
+
+  ClientWithAddress({
+    required this.name,
+    required this.address,
+    required this.phone,
+  });
 }

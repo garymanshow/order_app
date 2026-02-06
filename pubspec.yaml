@@ -25,6 +25,7 @@ dependencies:
   googleapis: ^15.0.0 # Для работы с Google API
   googleapis_auth: ^2.0.0 # Для аутентификации сервисных аккаунтов в Google
   http: ^1.6.0 # Если используется HTTP-клиент
+  path_provider: ^2.1.5
   permission_handler: ^12.0.1
   provider: ^6.1.5+1
   shared_preferences: ^2.5.4

@@ -40,6 +40,9 @@ credentials.json
 /build/
 /coverage/
 
+# Temp LibreOffice
+.~*.*
+
 # Symbolication related
 app.*.symbols
 

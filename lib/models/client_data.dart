@@ -5,7 +5,8 @@ import 'composition.dart';
 import 'filling.dart';
 import 'nutrition_info.dart';
 import 'delivery_condition.dart';
-import 'client_category.dart'; // ← ДОБАВЛЕН ИМПОРТ
+import 'client_category.dart';
+import 'client.dart'; // ← ДОБАВЬТЕ ЭТОТ ИМПОРТ
 
 class ClientData {
   List<Product> products = [];
@@ -14,14 +15,15 @@ class ClientData {
   List<Filling> fillings = [];
   List<NutritionInfo> nutritionInfos = [];
   List<DeliveryCondition> deliveryConditions = [];
-  List<ClientCategory> clientCategories = []; // ← ДОБАВЛЕНО ПОЛЕ
+  List<ClientCategory> clientCategories = [];
+  List<Client> clients = []; // ← ДОБАВЬТЕ ЭТО ПОЛЕ
   Map<String, dynamic> cart = {};
 
   // Индексы для быстрого поиска
   Map<String, Product> productIndex = {};
   Map<String, List<Composition>> compositionIndex = {};
   Map<String, Filling> fillingIndex = {};
-  Map<String, List<String>> clientCategoryIndex = {}; // ← ДОБАВЛЕН ИНДЕКС
+  Map<String, List<String>> clientCategoryIndex = {};
 
   ClientData();
 
@@ -38,7 +40,6 @@ class ClientData {
 
     fillingIndex = {for (var f in fillings) f.entityId: f};
 
-    // 🔥 СТРОИМ ИНДЕКС КАТЕГОРИЙ КЛИЕНТОВ
     clientCategoryIndex = {};
     for (var category in clientCategories) {
       if (!clientCategoryIndex.containsKey(category.clientName)) {
@@ -88,10 +89,16 @@ class ClientData {
           .toList();
     }
 
-    // 🔥 ЗАГРУЗКА КАТЕГОРИЙ КЛИЕНТОВ
     if (json['clientCategories'] != null) {
       clientData.clientCategories = (json['clientCategories'] as List)
           .map((item) => ClientCategory.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    // 🔥 ЗАГРУЗКА КЛИЕНТОВ
+    if (json['clients'] != null) {
+      clientData.clients = (json['clients'] as List)
+          .map((item) => Client.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
@@ -111,8 +118,8 @@ class ClientData {
       'fillings': fillings.map((f) => f.toJson()).toList(),
       'nutritionInfos': nutritionInfos.map((n) => n.toJson()).toList(),
       'deliveryConditions': deliveryConditions.map((d) => d.toJson()).toList(),
-      'clientCategories':
-          clientCategories.map((c) => c.toJson()).toList(), // 🔥
+      'clientCategories': clientCategories.map((c) => c.toJson()).toList(),
+      'clients': clients.map((c) => c.toJson()).toList(), // 🔥
       'cart': cart,
     };
   }

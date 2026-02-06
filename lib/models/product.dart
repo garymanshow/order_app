@@ -9,10 +9,12 @@ class Product {
   final double price;
   final String nutrition;
   final String storage;
-  final String packaging;
+  final String
+      packaging; // ← это название тары (например, "Транспортный контейнер")
   final int multiplicity;
   final String categoryName;
   final String _categoryId; // ← приватное поле
+  final int wastePercentage; // ← НОВОЕ ПОЛЕ: процент издержек
 
   Product({
     required this.id,
@@ -28,12 +30,18 @@ class Product {
     this.multiplicity = 1,
     this.categoryName = '',
     String categoryId = '',
+    this.wastePercentage = 10, // ← по умолчанию 10%
   }) : _categoryId = categoryId;
 
   // 🔥 ЯВНЫЙ ГЕТТЕР
   String get categoryId => _categoryId;
   String getCategoryId() {
     return _categoryId;
+  }
+
+  // Метод для получения коэффициента издержек
+  double getWasteMultiplier() {
+    return 1 + (wastePercentage / 100.0);
   }
 
   // Остальные геттеры
@@ -54,7 +62,8 @@ class Product {
       'packaging': packaging,
       'multiplicity': multiplicity,
       'categoryName': categoryName,
-      'categoryId': _categoryId, // ← используем приватное поле
+      'categoryId': _categoryId,
+      'wastePercentage': wastePercentage, // ← добавлено
     };
   }
 
@@ -73,10 +82,18 @@ class Product {
       multiplicity: json['multiplicity'] as int? ?? 1,
       categoryName: json['categoryName'] as String? ?? '',
       categoryId: json['categoryId'] as String? ?? '',
+      wastePercentage: json['wastePercentage'] as int? ?? 10, // ← добавлено
     );
   }
 
   factory Product.fromMap(Map<String, dynamic> map) {
+    // Вспомогательная функция для парсинга процента издержек
+    int parseWastePercentage(String? value) {
+      if (value == null || value.isEmpty) return 10;
+      final parsed = int.tryParse(value);
+      return parsed ?? 10;
+    }
+
     return Product(
       id: map['ID']?.toString() ?? '',
       name: map['Название']?.toString() ?? '',
@@ -87,10 +104,12 @@ class Product {
       price: double.tryParse(map['Цена']?.toString() ?? '0') ?? 0.0,
       nutrition: map['Пищевая ценность']?.toString() ?? '',
       storage: map['Условия хранения']?.toString() ?? '',
-      packaging: map['Упаковка']?.toString() ?? '',
+      packaging: map['Упаковка']?.toString() ?? '', // ← это название тары
       multiplicity: int.tryParse(map['Кратность']?.toString() ?? '1') ?? 1,
       categoryName: map['Категория']?.toString() ?? '',
       categoryId: map['ID категории']?.toString() ?? '',
+      wastePercentage:
+          parseWastePercentage(map['Издержки']?.toString()), // ← добавлено
     );
   }
 
@@ -108,7 +127,8 @@ class Product {
       'Упаковка': packaging,
       'Кратность': multiplicity.toString(),
       'Категория': categoryName,
-      'ID категории': _categoryId, // ← используем приватное поле
+      'ID категории': _categoryId,
+      'Издержки': wastePercentage.toString(), // ← добавлено
     };
   }
 }

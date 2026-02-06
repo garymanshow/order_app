@@ -4,6 +4,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../models/order_item.dart';
 import '../models/sheet_metadata.dart';
+import '../models/status_update.dart';
+import '../models/warehouse_operation.dart';
 
 class ApiService {
   // 🔔 FCM: URL вашего веб-приложения Apps Script
@@ -239,6 +241,34 @@ class ApiService {
     }
   }
 
+  // 🔥 Обновление статусов по клиентам (для маршрутного листа)
+  Future<bool> updateOrderStatuses(List<StatusUpdate> updates) async {
+    final requestBody = {
+      'action': 'updateOrderStatuses',
+      'sheetName': 'Заказы',
+      'secret': dotenv.env['APPS_SCRIPT_SECRET'],
+      'updates': updates.map((update) => update.toJson()).toList(),
+    };
+
+    try {
+      final response = await http.post(
+        Uri.parse(_scriptUrl), // Используем ваш существующий _scriptUrl
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+
+      return false;
+    } catch (e) {
+      print('Ошибка обновления статусов заказов: $e');
+      return false;
+    }
+  }
+
   // 🔥 ЗАГРУЗКА МЕТАДАННЫХ
   Future<Map<String, SheetMetadata>?> fetchMetadata() async {
     try {
@@ -410,6 +440,24 @@ class ApiService {
       return false;
     } catch (e) {
       print('❌ Ошибка импорта данных: $e');
+      return false;
+    }
+  }
+
+  // Сохранение операций склада
+  Future<bool> addWarehouseOperation(WarehouseOperation operation) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'addWarehouseOperation',
+          'operation': operation.toMap(),
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('❌ Ошибка сохранения операции склада: $e');
       return false;
     }
   }
