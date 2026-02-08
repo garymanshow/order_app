@@ -32,6 +32,8 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   late TextEditingController _multiplicityController;
   late TextEditingController _photoUrlController;
   late TextEditingController _descriptionController;
+  late TextEditingController _categoryController; // ← ДОБАВЛЕНО
+  late TextEditingController _unitController; // ← ДОБАВЛЕНО
 
   String _photoSource = 'url'; // 'url' или 'camera'
   File? _selectedImage;
@@ -40,9 +42,8 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   List<String> _allProductNames = [];
   bool _isLoadingNames = false;
 
-  // 🔥 Состав и КБЖУ
-  List<Ingredient> _ingredients = [];
-  List<Nutrition> _nutritionItems = [];
+  List<IngredientInfo> _ingredients = [];
+  List<NutritionInfo> _nutritionItems = [];
   bool _isLoadingRelatedData = false;
 
   @override
@@ -64,6 +65,10 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           TextEditingController(text: widget.item!.photoUrl ?? '');
       _descriptionController =
           TextEditingController(text: widget.item!.description ?? '');
+      _categoryController =
+          TextEditingController(text: widget.item!.category); // ← ДОБАВЛЕНО
+      _unitController =
+          TextEditingController(text: widget.item!.unit); // ← ДОБАВЛЕНО
 
       if (widget.item!.photoUrl?.contains('drive.google.com') == true) {
         _photoSource = 'camera';
@@ -76,6 +81,8 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       _multiplicityController = TextEditingController(text: '1');
       _photoUrlController = TextEditingController();
       _descriptionController = TextEditingController();
+      _categoryController = TextEditingController(); // ← ДОБАВЛЕНО
+      _unitController = TextEditingController(text: 'шт'); // ← ДОБАВЛЕНО
     }
   }
 
@@ -86,6 +93,8 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     _multiplicityController.dispose();
     _photoUrlController.dispose();
     _descriptionController.dispose();
+    _categoryController.dispose(); // ← ДОБАВЛЕНО
+    _unitController.dispose(); // ← ДОБАВЛЕНО
     super.dispose();
   }
 
@@ -149,13 +158,13 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       final ingredientsData = await _sheetsService.read(sheetName: 'Состав');
       final filteredIngredients = ingredientsData
           .where((row) => row['ID Прайс-лист']?.toString() == widget.item!.id)
-          .map((row) => Ingredient.fromMap(row))
+          .map((row) => IngredientInfo.fromMap(row))
           .toList();
 
       final nutritionData = await _sheetsService.read(sheetName: 'КБЖУ');
       final filteredNutrition = nutritionData
           .where((row) => row['ID Прайс-лист']?.toString() == widget.item!.id)
-          .map((row) => Nutrition.fromMap(row))
+          .map((row) => NutritionInfo.fromMap(row))
           .toList();
 
       setState(() {
@@ -238,7 +247,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
   void _addIngredient() {
     setState(() {
-      _ingredients.add(Ingredient());
+      _ingredients.add(IngredientInfo(name: '', quantity: 0.0, unit: 'г'));
     });
   }
 
@@ -248,7 +257,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     });
   }
 
-  void _updateIngredient(int index, Ingredient updated) {
+  void _updateIngredient(int index, IngredientInfo updated) {
     setState(() {
       _ingredients[index] = updated;
     });
@@ -256,7 +265,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
   void _addNutrition() {
     setState(() {
-      _nutritionItems.add(Nutrition());
+      _nutritionItems.add(NutritionInfo());
     });
   }
 
@@ -266,14 +275,12 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     });
   }
 
-  void _updateNutrition(int index, Nutrition updated) {
+  void _updateNutrition(int index, NutritionInfo updated) {
     setState(() {
       _nutritionItems[index] = updated;
     });
   }
 
-  // 🔥 ОСНОВНОЙ МЕТОД С BATCH-ОБНОВЛЕНИЕМ
-// 🔥 ОСНОВНОЙ МЕТОД С BATCH-ОБНОВЛЕНИЕМ
   Future<void> _saveItem() async {
     if (_photoSource == 'camera' &&
         _selectedImage != null &&
@@ -288,9 +295,11 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final item = PriceItem(
-      id: '', // ID будет сгенерирован Apps Script
+      id: '',
       name: _nameController.text.trim(),
       price: double.parse(_priceController.text),
+      category: _categoryController.text.trim(), // ← ОБЯЗАТЕЛЬНОЕ ПОЛЕ
+      unit: _unitController.text.trim(), // ← ОБЯЗАТЕЛЬНОЕ ПОЛЕ
       multiplicity: int.parse(_multiplicityController.text),
       photoUrl: _photoUrlController.text.trim().isNotEmpty
           ? _photoUrlController.text.trim()
@@ -304,9 +313,6 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       await _sheetsService.init();
 
       if (widget.item != null) {
-        // 🔥 BATCH ОБНОВЛЕНИЕ ВСЕХ СВЯЗАННЫХ ДАННЫХ
-
-        // 1. Находим rowIndex основной записи
         final mainRowIndex = await _sheetsService.findRowIndexByFilters(
           sheetName: 'Прайс-лист',
           filters: [
@@ -318,10 +324,8 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           throw Exception('Не найдена основная запись для обновления');
         }
 
-        // 2. Собираем все запросы
         final requests = <sheets.Request>[];
 
-        // Обновление основной записи
         requests.add(
           await _sheetsService.createUpdateRowRequest(
             sheetName: 'Прайс-лист',
@@ -330,7 +334,6 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           ),
         );
 
-        // Удаление старых записей Состава
         final currentIngredients =
             await _sheetsService.read(sheetName: 'Состав');
         final existingIngredientRows = currentIngredients
@@ -341,7 +344,6 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
             .map((entry) => entry.key + 2)
             .toList();
 
-        // 🔥 Используем публичный метод
         final compositionSheetId = await _sheetsService.getSheetId('Состав');
         final nutritionSheetId = await _sheetsService.getSheetId('КБЖУ');
 
@@ -360,16 +362,14 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           );
         }
 
-        // Добавление новых записей Состава
         final compositionRecords = <List<dynamic>>[];
         for (final ingredient in _ingredients) {
-          if (ingredient.ingredient != null &&
-              ingredient.ingredient!.isNotEmpty) {
+          if (ingredient.name.isNotEmpty) {
             compositionRecords.add([
               widget.item!.id,
-              ingredient.ingredient ?? '',
-              ingredient.quantity ?? '',
-              ingredient.unit ?? '',
+              ingredient.name,
+              ingredient.quantity.toString(),
+              ingredient.unit,
             ]);
           }
         }
@@ -383,7 +383,6 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           );
         }
 
-        // Удаление старых записей КБЖУ
         final currentNutrition = await _sheetsService.read(sheetName: 'КБЖУ');
         final existingNutritionRows = currentNutrition
             .asMap()
@@ -408,21 +407,15 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           );
         }
 
-        // Добавление новых записей КБЖУ
         final nutritionRecords = <List<dynamic>>[];
         for (final nutrition in _nutritionItems) {
-          if (nutrition.calories != null ||
-              nutrition.proteins != null ||
-              nutrition.fats != null ||
-              nutrition.carbohydrates != null) {
-            nutritionRecords.add([
-              widget.item!.id,
-              nutrition.calories ?? '',
-              nutrition.proteins ?? '',
-              nutrition.fats ?? '',
-              nutrition.carbohydrates ?? '',
-            ]);
-          }
+          nutritionRecords.add([
+            widget.item!.id,
+            nutrition.calories ?? '',
+            nutrition.proteins ?? '',
+            nutrition.fats ?? '',
+            nutrition.carbohydrates ?? '',
+          ]);
         }
 
         if (nutritionRecords.isNotEmpty) {
@@ -434,13 +427,14 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           );
         }
 
-        // 🔥 ВЫПОЛНЯЕМ ВСЁ В ОДНОМ ЗАПРОСЕ!
         await _sheetsService.batchUpdate(requests);
 
         final updatedItem = PriceItem(
           id: widget.item!.id,
           name: item.name,
           price: item.price,
+          category: item.category, // ← ОБЯЗАТЕЛЬНОЕ ПОЛЕ
+          unit: item.unit, // ← ОБЯЗАТЕЛЬНОЕ ПОЛЕ
           multiplicity: item.multiplicity,
           photoUrl: item.photoUrl,
           description: item.description,
@@ -448,11 +442,12 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
         Navigator.pop(context, updatedItem);
       } else {
-        // Создание новой позиции (без связанных данных)
         final record = [
           '',
           item.name,
           item.price.toString(),
+          item.category, // ← ДОБАВЛЕНО
+          item.unit, // ← ДОБАВЛЕНО
           item.multiplicity.toString(),
           item.photoUrl ?? '',
           item.description ?? '',
@@ -552,6 +547,21 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                   return null;
                 },
               ),
+
+              TextFormField(
+                controller: _categoryController,
+                decoration: InputDecoration(labelText: 'Категория *'),
+                validator: (value) =>
+                    value!.trim().isEmpty ? 'Обязательное поле' : null,
+              ),
+
+              TextFormField(
+                controller: _unitController,
+                decoration: InputDecoration(labelText: 'Единица измерения *'),
+                validator: (value) =>
+                    value!.trim().isEmpty ? 'Обязательное поле' : null,
+              ),
+
               TextFormField(
                 controller: _multiplicityController,
                 decoration: InputDecoration(labelText: 'Кратность *'),
@@ -667,13 +677,12 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                   decoration:
                                       InputDecoration(hintText: 'Ингредиент'),
                                   controller: TextEditingController(
-                                      text: ingredient.ingredient ?? ''),
+                                      text: ingredient.name),
                                   onChanged: (value) {
                                     _updateIngredient(
                                         index,
-                                        Ingredient(
-                                          priceListId: widget.item!.id,
-                                          ingredient: value,
+                                        IngredientInfo(
+                                          name: value,
                                           quantity: ingredient.quantity,
                                           unit: ingredient.unit,
                                         ));
@@ -687,14 +696,15 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                   decoration:
                                       InputDecoration(hintText: 'Кол-во'),
                                   controller: TextEditingController(
-                                      text: ingredient.quantity ?? ''),
+                                      text: ingredient.quantity.toString()),
                                   onChanged: (value) {
+                                    final parsedValue =
+                                        double.tryParse(value) ?? 0.0;
                                     _updateIngredient(
                                         index,
-                                        Ingredient(
-                                          priceListId: widget.item!.id,
-                                          ingredient: ingredient.ingredient,
-                                          quantity: value,
+                                        IngredientInfo(
+                                          name: ingredient.name,
+                                          quantity: parsedValue,
                                           unit: ingredient.unit,
                                         ));
                                   },
@@ -706,13 +716,12 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                 child: TextField(
                                   decoration: InputDecoration(hintText: 'Ед.'),
                                   controller: TextEditingController(
-                                      text: ingredient.unit ?? ''),
+                                      text: ingredient.unit),
                                   onChanged: (value) {
                                     _updateIngredient(
                                         index,
-                                        Ingredient(
-                                          priceListId: widget.item!.id,
-                                          ingredient: ingredient.ingredient,
+                                        IngredientInfo(
+                                          name: ingredient.name,
                                           quantity: ingredient.quantity,
                                           unit: value,
                                         ));
@@ -778,7 +787,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                   onChanged: (value) {
                                     _updateNutrition(
                                         index,
-                                        Nutrition(
+                                        NutritionInfo(
                                           priceListId: widget.item!.id,
                                           calories: value,
                                           proteins: nutrition.proteins,
@@ -799,7 +808,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                   onChanged: (value) {
                                     _updateNutrition(
                                         index,
-                                        Nutrition(
+                                        NutritionInfo(
                                           priceListId: widget.item!.id,
                                           calories: nutrition.calories,
                                           proteins: value,
@@ -819,7 +828,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                   onChanged: (value) {
                                     _updateNutrition(
                                         index,
-                                        Nutrition(
+                                        NutritionInfo(
                                           priceListId: widget.item!.id,
                                           calories: nutrition.calories,
                                           proteins: nutrition.proteins,
@@ -840,7 +849,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                   onChanged: (value) {
                                     _updateNutrition(
                                         index,
-                                        Nutrition(
+                                        NutritionInfo(
                                           priceListId: widget.item!.id,
                                           calories: nutrition.calories,
                                           proteins: nutrition.proteins,

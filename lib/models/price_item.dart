@@ -12,6 +12,7 @@ class PriceItem {
   final Map<String, dynamic> nutrition;
   final String? photoUrl; // ← ДОБАВЛЕНО
   final int multiplicity; // ← ДОБАВЛЕНО
+  final String? description;
 
   PriceItem({
     required this.id,
@@ -24,6 +25,7 @@ class PriceItem {
     this.nutrition = const {},
     this.photoUrl, // ← ДОБАВЛЕНО
     this.multiplicity = 1, // ← ДОБАВЛЕНО (по умолчанию 1)
+    this.description,
   });
 
   factory PriceItem.fromJson(Map<String, dynamic> json) {
@@ -42,8 +44,9 @@ class PriceItem {
       weight: json['weight'] as double? ?? 0.0,
       ingredients: ingredients,
       nutrition: json['nutrition'] as Map<String, dynamic>? ?? {},
-      photoUrl: json['photoUrl'] as String?, // ← ДОБАВЛЕНО
-      multiplicity: json['multiplicity'] as int? ?? 1, // ← ДОБАВЛЕНО
+      photoUrl: json['photoUrl'] as String?,
+      multiplicity: json['multiplicity'] as int? ?? 1,
+      description: json['description'] as String?,
     );
   }
 
@@ -57,8 +60,9 @@ class PriceItem {
       'weight': weight,
       'ingredients': ingredients.map((i) => i.toJson()).toList(),
       'nutrition': nutrition,
-      'photoUrl': photoUrl, // ← ДОБАВЛЕНО
-      'multiplicity': multiplicity, // ← ДОБАВЛЕНО
+      'photoUrl': photoUrl,
+      'multiplicity': multiplicity,
+      'description': description,
     };
   }
 
@@ -71,8 +75,9 @@ class PriceItem {
       'Категория': category,
       'Ед.изм.': unit,
       'Вес': weight.toString(),
-      'Фото URL': photoUrl ?? '', // ← ДОБАВЛЕНО
-      'Кратность': multiplicity.toString(), // ← ДОБАВЛЕНО
+      'Фото URL': photoUrl ?? '',
+      'Кратность': multiplicity.toString(),
+      'Описание': description.toString(),
     };
   }
 
@@ -89,6 +94,9 @@ class PriceItem {
           : null, // ← ДОБАВЛЕНО
       multiplicity:
           int.tryParse(map['Кратность']?.toString() ?? '1') ?? 1, // ← ДОБАВЛЕНО
+      description: map['Описание']?.toString().isNotEmpty == true
+          ? map['Описание']?.toString()
+          : null, // ← ДОБАВЬТЕ СЮДА
     );
   }
 }

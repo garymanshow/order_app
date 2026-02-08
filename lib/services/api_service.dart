@@ -10,7 +10,7 @@ import '../models/warehouse_operation.dart';
 class ApiService {
   // 🔔 FCM: URL вашего веб-приложения Apps Script
   static const String _scriptUrl =
-      'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+      'https://script.google.com/macros/s/AKfycbwMFNoa4KdrixvWrx7YnTWslZCM4upPiPRMjzlgUBg2LmaBqFOt8Z7SkERlAvO8GpPQMA/exec';
 
   // 🔔 FCM: метод отправки токена (если нужно отдельно от логина)
   Future<Map<String, dynamic>> sendFcmToken({
