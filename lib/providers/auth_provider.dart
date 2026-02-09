@@ -96,6 +96,15 @@ class AuthProvider with ChangeNotifier {
 
   // 🔔 FCM: подписка на обновление токена (вызывается один раз при старте приложения)
   void subscribeToFcmTokenRefresh() {
+    // FCM не поддерживается на десктопных платформах (Linux, Windows, macOS)
+    if (defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      print(
+          '⚠️ FCM не поддерживается на десктопных платформах. Пропускаем инициализацию.');
+      return;
+    }
+
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       print('🔄 FCM Token обновлён: ${newToken.substring(0, 20)}...');
 
@@ -266,22 +275,34 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGOUT С ПОЛНОЙ ОЧИСТКОЙ
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    // Очищаем все связанные данные
-    await prefs.remove('auth_user');
-    await prefs.remove('auth_timestamp');
-    await prefs.remove('local_metadata');
-    await prefs.remove('client_data');
-    await prefs.remove('fcm_token'); // 🔔 FCM: очищаем токен
-
+    // Сначала очищаем состояние
     _currentUser = null;
     _clientData = null;
     _metadata = null;
     _availableRoles = null;
-    _fcmToken = null; // 🔔 FCM: очищаем из памяти
+    _fcmToken = null;
+
+    // Уведомляем слушателей до асинхронных операций
     notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Полная очистка всех ключей, связанных с авторизацией
+      await prefs.remove('auth_user');
+      await prefs.remove('auth_timestamp');
+      await prefs.remove('local_metadata');
+      await prefs.remove('client_data');
+      await prefs.remove('fcm_token');
+      await prefs.remove('selected_client_id');
+      await prefs.remove('current_user_phone');
+
+      print('✅ Выход выполнен успешно');
+    } catch (e) {
+      print('❌ Ошибка при выходе: $e');
+    }
   }
 
   Future<void> clearAllCache() async {

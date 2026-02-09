@@ -1,0 +1,11 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/administrator/Project/Flutter/order_app/order_app/linux/build/cmake_install.cmake",
+		"/home/administrator/Project/Flutter/order_app/order_app/linux/build/flutter/cmake_install.cmake",
+		"/home/administrator/Project/Flutter/order_app/order_app/linux/build/runner/cmake_install.cmake",
+		"/home/administrator/Project/Flutter/order_app/order_app/linux/build/plugins/charset_converter/cmake_install.cmake",
+		"/home/administrator/Project/Flutter/order_app/order_app/linux/build/plugins/file_selector_linux/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

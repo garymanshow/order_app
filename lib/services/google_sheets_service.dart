@@ -22,12 +22,9 @@ class GoogleSheetsService {
       json.decode(jsonKey),
     );
 
-    // 🔥 УБРАТЬ ЛИШНИЙ ПРОБЕЛ В SCOPE
     final authClient = await auth.clientViaServiceAccount(
       credentials,
-      [
-        'https://www.googleapis.com/auth/spreadsheets'
-      ], // ← убран пробел в конце
+      ['https://www.googleapis.com/auth/spreadsheets'],
     );
 
     _sheetsApi = sheets.SheetsApi(authClient);
