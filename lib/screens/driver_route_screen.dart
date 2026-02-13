@@ -75,6 +75,7 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
           statusUpdates.add(StatusUpdate(
             client: client.name,
             phone: client.phone,
+            oldStatus: 'готов к отправке',
             newStatus: newStatus,
           ));
         }

@@ -5,11 +5,13 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:contacts_service/contacts_service.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/google_drive_service.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../utils/phone_validator.dart';
+import '../models/client.dart';
+import 'role_selection_screen.dart';
+import 'client_selection_screen.dart';
 import 'dart:math';
 import 'dart:io' show Platform;
 
@@ -21,14 +23,13 @@ class AuthPhoneScreen extends StatefulWidget {
 class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
   late Future<Uint8List?> _backgroundImageBytes;
   final TextEditingController _phoneController = TextEditingController();
-  String? _fcmToken;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _backgroundImageBytes = _loadRandomBackgroundImage();
-    _initializeFcm();
+    // Firebase больше не инициализируется здесь
   }
 
   Future<Uint8List?> _loadRandomBackgroundImage() async {
@@ -49,18 +50,6 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
     } catch (e) {
       print('Ошибка загрузки фона: $e');
       return null;
-    }
-  }
-
-  // 🔥 Инициализация FCM
-  Future<void> _initializeFcm() async {
-    try {
-      final fcmToken = await FirebaseMessaging.instance.getToken();
-      setState(() {
-        _fcmToken = fcmToken;
-      });
-    } catch (e) {
-      print('Ошибка получения FCM токена: $e');
     }
   }
 
@@ -105,7 +94,6 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
     );
   }
 
-  // 🔥 Вставка из буфера обмена
   Future<void> _pastePhoneFromClipboard() async {
     try {
       final clipboardData = await Clipboard.getData('text/plain');
@@ -122,12 +110,10 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
     }
   }
 
-  // 🔥 Проверка мобильной платформы
   bool get _isMobilePlatform {
     return Platform.isAndroid || Platform.isIOS;
   }
 
-  // 🔥 Запрос разрешения на контакты
   Future<bool> _requestContactPermission() async {
     var status = await Permission.contacts.status;
     if (status.isDenied) {
@@ -136,7 +122,6 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
     return status.isGranted;
   }
 
-  // 🔥 Выбор контакта
   Future<void> _pickContact() async {
     if (!_isMobilePlatform) return;
 
@@ -257,6 +242,72 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
     }
   }
 
+  Future<void> _handleLogin() async {
+    if (_isLoading) return;
+
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Введите номер телефона')),
+      );
+      return;
+    }
+
+    final error = PhoneValidator.validatePhone(phone);
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      // Передаем null вместо FCM токена - AuthProvider сам решит, нужно ли его получать
+      await authProvider.login(phone, fcmToken: null);
+
+      if (!mounted) return;
+
+      // Навигация после успешной авторизации
+      if (authProvider.hasMultipleRoles) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+              builder: (_) =>
+                  RoleSelectionScreen(roles: authProvider.availableRoles!)),
+        );
+      } else if (authProvider.currentUser is Client &&
+          authProvider.clientData!.clients.length > 1) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ClientSelectionScreen(
+              phone: phone,
+              clients: authProvider.clientData!.clients,
+            ),
+          ),
+        );
+      } else {
+        Navigator.pushReplacementNamed(context, '/price');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка авторизации: $error')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -283,10 +334,9 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
               if (snapshot.connectionState != ConnectionState.waiting)
                 Positioned.fill(
                   child: Container(
-                    color: Color.fromRGBO(0, 0, 0, 0.3), // ← ИСПРАВЛЕНО
+                    color: Color.fromRGBO(0, 0, 0, 0.3),
                   ),
                 ),
-              // Кнопка выбора темы
               Positioned(
                 top: 40,
                 right: 20,
@@ -317,8 +367,7 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
                           hintText: '+7 XXX XXX XX XX',
                           hintStyle: TextStyle(color: Colors.white70),
                           filled: true,
-                          fillColor: Color.fromRGBO(
-                              255, 255, 255, 0.2), // ← ИСПРАВЛЕНО
+                          fillColor: Color.fromRGBO(255, 255, 255, 0.2),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide(color: Colors.white),
@@ -348,7 +397,6 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
                         ),
                         style: TextStyle(color: Colors.white, fontSize: 18),
                         keyboardType: TextInputType.phone,
-                        // 🔥 Валидация при потере фокуса
                         onEditingComplete: () {
                           final phone = _phoneController.text.trim();
                           if (phone.isNotEmpty) {
@@ -363,46 +411,7 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
                       ),
                       SizedBox(height: 24),
                       ElevatedButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () {
-                                final phone = _phoneController.text.trim();
-                                if (phone.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content:
-                                            Text('Введите номер телефона')),
-                                  );
-                                  return;
-                                }
-
-                                final error =
-                                    PhoneValidator.validatePhone(phone);
-                                if (error != null) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(error)),
-                                  );
-                                  return;
-                                }
-
-                                // 🔥 Отправка с FCM токеном
-                                setState(() {
-                                  _isLoading = true;
-                                });
-                                Provider.of<AuthProvider>(context,
-                                        listen: false)
-                                    .login(phone, fcmToken: _fcmToken)
-                                    .catchError((error) {
-                                  setState(() {
-                                    _isLoading = false;
-                                  });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content:
-                                            Text('Ошибка авторизации: $error')),
-                                  );
-                                });
-                              },
+                        onPressed: _isLoading ? null : _handleLogin,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           minimumSize: Size(200, 50),

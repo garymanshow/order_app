@@ -42,6 +42,8 @@ credentials.json
 
 # Temp LibreOffice
 .~*.*
+# Файлы без расширений
+*.*[!.]*
 
 # Symbolication related
 app.*.symbols

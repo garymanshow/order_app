@@ -48,8 +48,7 @@ class AuthProvider with ChangeNotifier {
 
         if (status.authorizationStatus != AuthorizationStatus.authorized) {
           print('⚠️ Пользователь не разрешил уведомления');
-          // Возвращаем null, но не прерываем авторизацию
-          // Пользователь может разрешить уведомления позже
+          return null;
         }
       }
 
@@ -58,11 +57,6 @@ class AuthProvider with ChangeNotifier {
       if (token != null) {
         _fcmToken = token;
         print('✅ FCM Token получен: ${token.substring(0, 20)}...');
-
-        // Сохраняем в кэш для восстановления после перезапуска
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('fcm_token', token);
-
         return token;
       } else {
         print('⚠️ FCM Token не получен (token is null)');
@@ -76,7 +70,6 @@ class AuthProvider with ChangeNotifier {
 
   // 🔔 FCM: метод отправки токена на сервер (безопасная работа с nullable)
   Future<void> sendFcmTokenToServer(String? phoneNumber, String? token) async {
-    // Прерываем, если нет номера или токена
     if (phoneNumber == null ||
         phoneNumber.isEmpty ||
         token == null ||
@@ -90,7 +83,6 @@ class AuthProvider with ChangeNotifier {
       print('✅ FCM Token отправлен на сервер для $phoneNumber');
     } catch (e) {
       print('❌ Ошибка отправки FCM токена на сервер: $e');
-      // Не прерываем работу приложения — токен будет отправлен при следующем входе
     }
   }
 
@@ -110,12 +102,10 @@ class AuthProvider with ChangeNotifier {
 
       _fcmToken = newToken;
 
-      // Если пользователь авторизован — отправляем новый токен на сервер
       if (_currentUser != null && _currentUser!.phone?.isNotEmpty == true) {
         await sendFcmTokenToServer(_currentUser!.phone, newToken);
       }
 
-      // Сохраняем в кэш
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('fcm_token', newToken);
 
@@ -132,15 +122,11 @@ class AuthProvider with ChangeNotifier {
     final timestamp = prefs.getString('auth_timestamp');
     final cachedToken = prefs.getString('fcm_token');
 
-    // 🔔 FCM: получаем актуальный токен в фоне (не блокируем инициализацию)
-    // Подписываемся на обновления токена
     subscribeToFcmTokenRefresh();
 
-    // Получаем текущий токен
     getFcmToken().then((token) {
       _fcmToken = token ?? cachedToken;
 
-      // Если токен обновился и пользователь авторизован — отправляем новый токен
       if (token != null &&
           token != cachedToken &&
           _currentUser != null &&
@@ -169,27 +155,24 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // 🔥 ОБНОВЛЕННЫЙ МЕТОД LOGIN С ПОДДЕРЖКОЙ FCM-ТОКЕНА И МНОЖЕСТВЕННЫХ РОЛЕЙ
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN С ПОЛНЫМ ОТКЛЮЧЕНИЕМ FCM НА ДЕСКТОПЕ
   Future<void> login(String phone, {String? fcmToken}) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // 🔔 FCM: если токен не передан — получаем его
-      // Важно: не прерываем авторизацию, если токен не получен
-      String? tokenToUse = fcmToken;
+      // 🔥 ПОЛНОЕ ОТКЛЮЧЕНИЕ FCM НА ДЕСКТОПНЫХ ПЛАТФОРМАХ
+      String? tokenToUse;
 
-      if (tokenToUse == null) {
-        tokenToUse = await getFcmToken();
-        // Даже если токен null — продолжаем авторизацию
-        // Пользователь может разрешить уведомления позже
+      if (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS) {
+        // Только на мобильных платформах получаем FCM токен
+        tokenToUse = fcmToken ?? await getFcmToken();
       }
+      // На десктопе tokenToUse остается null
 
-      // Загружаем локальные метаданные
       final prefs = await SharedPreferences.getInstance();
       final localMetaJson = prefs.getString('local_metadata');
-      final cachedToken = prefs
-          .getString('fcm_token'); // 🔧 ИСПРАВЛЕНО: получаем cachedToken здесь
       Map<String, SheetMetadata> localMetadata = {};
 
       if (localMetaJson != null) {
@@ -198,40 +181,35 @@ class AuthProvider with ChangeNotifier {
             key, SheetMetadata.fromJson(value as Map<String, dynamic>)));
       }
 
-      // Вызываем API для аутентификации и получения данных
       final apiService = ApiService();
       final authResponse = await apiService.authenticate(
         phone: phone,
         localMetadata: localMetadata,
-        fcmToken: tokenToUse, // 🔔 FCM: передаём токен (может быть null)
+        fcmToken: tokenToUse, // Может быть null - это нормально
       );
 
       if (authResponse != null) {
         final userData = authResponse['user'];
 
-        // 🔥 ПРОВЕРКА: массив сотрудников или один пользователь
         if (userData is List) {
-          // Несколько ролей - сохраняем список
           _availableRoles = userData
               .map((item) => Employee.fromJson(item as Map<String, dynamic>))
               .toList();
-          _currentUser = null; // Пока не выбрана конкретная роль
+          _currentUser = null;
         } else {
-          // Один пользователь
           if (userData['role'] != null) {
             _currentUser = Employee.fromJson(userData);
-            _availableRoles = null; // Сбрасываем список ролей
+            _availableRoles = null;
           } else {
             _currentUser = Client.fromJson(userData);
-            _availableRoles = null; // Сбрасываем список ролей
+            _availableRoles = null;
           }
         }
 
         _clientData = authResponse['data'];
         _metadata = authResponse['metadata'];
-        _fcmToken = tokenToUse; // 🔔 FCM: сохраняем токен в памяти
+        _fcmToken = tokenToUse;
 
-        // Сохраняем данные в кэш
         await prefs.setString(
             'auth_user', jsonEncode(_currentUser?.toJson() ?? {}));
         await prefs.setString(
@@ -239,17 +217,11 @@ class AuthProvider with ChangeNotifier {
         await prefs.setString('local_metadata', jsonEncode(_metadata));
         await prefs.setString('client_data', jsonEncode(_clientData!.toJson()));
 
-        // 🔔 FCM: сохраняем токен в кэш (если он есть)
         if (tokenToUse != null) {
           await prefs.setString('fcm_token', tokenToUse);
         }
 
         print('✅ Авторизация успешна, данные загружены');
-
-        // 🔔 FCM: если токен был получен позже и ещё не отправлен — отправляем сейчас
-        if (tokenToUse != null && cachedToken != tokenToUse) {
-          await sendFcmTokenToServer(phone, tokenToUse);
-        }
       } else {
         throw Exception('Не удалось авторизоваться');
       }
@@ -262,14 +234,12 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД ДЛЯ ВЫБОРА РОЛИ
   void selectRole(Employee selectedRole) {
     _currentUser = selectedRole;
     _availableRoles = null;
     notifyListeners();
   }
 
-  // 🔥 НОВЫЙ МЕТОД ДЛЯ ОБНОВЛЕНИЯ КЛИЕНТА
   void setClient(Client client) {
     _currentUser = client;
     notifyListeners();
@@ -277,20 +247,16 @@ class AuthProvider with ChangeNotifier {
 
   // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGOUT С ПОЛНОЙ ОЧИСТКОЙ
   Future<void> logout() async {
-    // Сначала очищаем состояние
     _currentUser = null;
     _clientData = null;
     _metadata = null;
     _availableRoles = null;
     _fcmToken = null;
 
-    // Уведомляем слушателей до асинхронных операций
     notifyListeners();
 
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // Полная очистка всех ключей, связанных с авторизацией
       await prefs.remove('auth_user');
       await prefs.remove('auth_timestamp');
       await prefs.remove('local_metadata');
@@ -298,8 +264,6 @@ class AuthProvider with ChangeNotifier {
       await prefs.remove('fcm_token');
       await prefs.remove('selected_client_id');
       await prefs.remove('current_user_phone');
-
-      print('✅ Выход выполнен успешно');
     } catch (e) {
       print('❌ Ошибка при выходе: $e');
     }
@@ -316,7 +280,7 @@ class AuthProvider with ChangeNotifier {
     _clientData = null;
     _metadata = null;
     _availableRoles = null;
-    _fcmToken = null; // 🔔 FCM: очищаем из памяти
+    _fcmToken = null;
     notifyListeners();
   }
 }

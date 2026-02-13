@@ -9,37 +9,33 @@ import '../models/warehouse_operation.dart';
 
 class ApiService {
   // 🔔 FCM: URL вашего веб-приложения Apps Script
-  static const String _scriptUrl =
-      'https://script.google.com/macros/s/AKfycbwMFNoa4KdrixvWrx7YnTWslZCM4upPiPRMjzlgUBg2LmaBqFOt8Z7SkERlAvO8GpPQMA/exec';
+  static String get _scriptUrl =>
+      dotenv.env['APP_SCRIPT_URL'] ?? 'URL_NOT_FOUND';
+  static String get _secret =>
+      dotenv.env['APP_SCRIPT_SECRET'] ?? 'SECRET_NOT_FOUND';
 
-  // 🔔 FCM: метод отправки токена (если нужно отдельно от логина)
-  Future<Map<String, dynamic>> sendFcmToken({
-    required String phoneNumber,
-    required String fcmToken,
-    String? role, // null для клиентов, строка для сотрудников
-  }) async {
-    try {
-      final response = await http.post(
-        Uri.parse(_scriptUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'action': 'saveFcmToken',
-          'phoneNumber': phoneNumber,
-          'fcmToken': fcmToken,
-          'role': role, // для автоматического определения листа
-        }),
-      );
+// 1. Добавьте этот метод в класс ApiService
+  Future<http.Response> _postWithRedirect(Uri url,
+      {Map<String, String>? headers, Object? body}) async {
+    var request = http.Request('POST', url);
+    if (headers != null) request.headers.addAll(headers);
+    if (body != null) request.body = body as String;
 
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body) as Map<String, dynamic>;
-        return result;
-      } else {
-        throw Exception('Ошибка сохранения FCM токена: ${response.statusCode}');
+    // Запрещаем автоматический редирект, чтобы обработать его вручную
+    request.followRedirects = false;
+
+    var streamedResponse = await request.send();
+    var response = await http.Response.fromStream(streamedResponse);
+
+    // Если Google вернул 302, делаем GET запрос по новому адресу (как делает curl -L)
+    if (response.statusCode == 302) {
+      final location = response.headers['location'];
+      if (location != null) {
+        return await http.get(Uri.parse(location), headers: headers);
       }
-    } catch (e) {
-      print('❌ Ошибка отправки FCM токена: $e');
-      rethrow;
     }
+
+    return response;
   }
 
   // 🔥 АУТЕНТИФИКАЦИЯ С ПЕРЕДАЧЕЙ FCM-ТОКЕНА
@@ -49,11 +45,12 @@ class ApiService {
     String? fcmToken, // 🔔 FCM: новый параметр
   }) async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'authenticate',
+          'secret': _secret,
           'phone': phone,
           'localMetadata': localMetadata.map(
             (key, value) => MapEntry(key, value.toJson()),
@@ -64,6 +61,8 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        print('Отправленный секрет: ${_secret}');
+        print('🔍 Ответ от сервера: ${jsonEncode(data)}');
 
         // Проверяем успешность аутентификации
         if (data['success'] == true && data['user'] != null) {
@@ -85,14 +84,46 @@ class ApiService {
     }
   }
 
+  // 🔔 FCM: метод отправки токена (если нужно отдельно от логина)
+  Future<Map<String, dynamic>> sendFcmToken({
+    required String phoneNumber,
+    required String fcmToken,
+    String? role, // null для клиентов, строка для сотрудников
+  }) async {
+    try {
+      final response = await _postWithRedirect(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'saveFcmToken',
+          'secret': _secret,
+          'phoneNumber': phoneNumber,
+          'fcmToken': fcmToken,
+          'role': role, // для автоматического определения листа
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body) as Map<String, dynamic>;
+        return result;
+      } else {
+        throw Exception('Ошибка сохранения FCM токена: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Ошибка отправки FCM токена: $e');
+      rethrow;
+    }
+  }
+
   // 🔥 ЗАГРУЗКА ДАННЫХ КЛИЕНТА
   Future<Map<String, dynamic>?> fetchClientData(String phone) async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'fetchClientData',
+          'secret': _secret,
           'phone': phone,
         }),
       );
@@ -118,11 +149,12 @@ class ApiService {
     try {
       final payload = {
         'action': 'fetchProducts',
+        'secret': _secret,
         if (category != null) 'category': category,
         if (clientId != null) 'clientId': clientId,
       };
 
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
@@ -152,11 +184,12 @@ class ApiService {
     String? comment,
   }) async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'createOrder',
+          'secret': _secret,
           'clientId': clientId,
           'employeeId': employeeId,
           'items': items,
@@ -188,12 +221,13 @@ class ApiService {
     try {
       final payload = {
         'action': 'fetchOrders',
+        'secret': _secret,
         if (clientId != null) 'clientId': clientId,
         if (employeeId != null) 'employeeId': employeeId,
         if (status != null) 'status': status,
       };
 
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
@@ -219,11 +253,12 @@ class ApiService {
     String? comment,
   }) async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'updateOrderStatus',
+          'secret': _secret,
           'orderId': orderId,
           'newStatus': newStatus,
           if (comment != null) 'comment': comment,
@@ -246,12 +281,12 @@ class ApiService {
     final requestBody = {
       'action': 'updateOrderStatuses',
       'sheetName': 'Заказы',
-      'secret': dotenv.env['APPS_SCRIPT_SECRET'],
+      'secret': _secret,
       'updates': updates.map((update) => update.toJson()).toList(),
     };
 
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl), // Используем ваш существующий _scriptUrl
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
@@ -272,10 +307,13 @@ class ApiService {
   // 🔥 ЗАГРУЗКА МЕТАДАННЫХ
   Future<Map<String, SheetMetadata>?> fetchMetadata() async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': 'fetchMetadata'}),
+        body: jsonEncode({
+          'action': 'fetchMetadata',
+          'secret': _secret,
+        }),
       );
 
       if (response.statusCode == 200) {
@@ -296,11 +334,12 @@ class ApiService {
   // 🔥 ОБНОВЛЕНИЕ МЕТАДАННЫХ (после изменений в таблице)
   Future<bool> updateMetadata(String sheetName) async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'updateMetadata',
+          'secret': _secret,
           'sheetName': sheetName,
         }),
       );
@@ -325,11 +364,12 @@ class ApiService {
     String? role, // null для клиентов, 'admin'/'manager' для сотрудников
   }) async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'sendNotification',
+          'secret': _secret,
           'targetPhone': targetPhone,
           'title': title,
           'body': body,
@@ -351,11 +391,12 @@ class ApiService {
   // 🔥 УДАЛЕНИЕ ЗАКАЗА (для администратора)
   Future<bool> deleteOrder(String orderId) async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'deleteOrder',
+          'secret': _secret,
           'orderId': orderId,
         }),
       );
@@ -374,10 +415,13 @@ class ApiService {
   // 🔥 ЭКСПОРТ/ИМПОРТ ДАННЫХ
   Future<Map<String, dynamic>?> exportData() async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': 'exportData'}),
+        body: jsonEncode({
+          'action': 'exportData',
+          'secret': _secret,
+        }),
       );
 
       if (response.statusCode == 200) {
@@ -393,19 +437,18 @@ class ApiService {
 
   // 🔥 НОВЫЙ МЕТОД: обновление заказов
   Future<bool> updateOrders(List<OrderItem> orders) async {
-    final url =
-        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}?action=updateOrders');
-
     // Используем toMap() для совместимости с Google Таблицами
     final ordersData = orders.map((order) => order.toMap()).toList();
 
     final requestBody = {
+      'action': 'updateOrders',
+      'secret': _secret,
       'orders': ordersData,
     };
 
     try {
-      final response = await http.post(
-        url,
+      final response = await _postWithRedirect(
+        Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
       );
@@ -424,11 +467,12 @@ class ApiService {
 
   Future<bool> importData(Map<String, dynamic> data) async {
     try {
-      final response = await http.post(
+      final response = await _postWithRedirect(
         Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'importData',
+          'secret': _secret,
           'data': data,
         }),
       );
@@ -447,11 +491,12 @@ class ApiService {
   // Сохранение операций склада
   Future<bool> addWarehouseOperation(WarehouseOperation operation) async {
     try {
-      final response = await http.post(
-        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}'),
+      final response = await _postWithRedirect(
+        Uri.parse(_scriptUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'addWarehouseOperation',
+          'secret': _secret,
           'operation': operation.toMap(),
         }),
       );
