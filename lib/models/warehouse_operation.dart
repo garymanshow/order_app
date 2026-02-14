@@ -79,7 +79,7 @@ class WarehouseOperation {
       'Срок годности': expiryDate?.toIso8601String() ?? '',
       'Цена': price?.toString() ?? '',
       'Поставщик': supplier ?? '',
-      'Заказ_ID': relatedOrderId ?? '',
+      'Платежный документ': relatedOrderId ?? '',
       'Примечания': notes ?? '',
     };
   }
@@ -104,7 +104,7 @@ class WarehouseOperation {
       expiryDate: parseDate(map['Срок годности']?.toString()),
       price: double.tryParse(map['Цена']?.toString() ?? '0'),
       supplier: map['Поставщик']?.toString(),
-      relatedOrderId: map['Заказ_ID']?.toString(),
+      relatedOrderId: map['Платежный документ']?.toString(),
       notes: map['Примечания']?.toString(),
     );
   }
