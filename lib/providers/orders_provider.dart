@@ -108,7 +108,7 @@ class OrdersProvider with ChangeNotifier {
 
   Future<void> completeProduction(OrderItem order) async {
     if (order.isInProgress) {
-      await _updateOrderStatus(order, 'готов к отправке');
+      await _updateOrderStatus(order, 'готов');
     }
   }
 
@@ -155,7 +155,7 @@ class OrdersProvider with ChangeNotifier {
 
   Future<void> approveOrderForProduction(OrderItem order) async {
     if (order.canBeApprovedByAdmin) {
-      await _updateOrderStatus(order, 'в производство');
+      await _updateOrderStatus(order, 'производство');
       // Отправляем уведомление менеджеру
       await _sendNotificationToManager(order);
     }

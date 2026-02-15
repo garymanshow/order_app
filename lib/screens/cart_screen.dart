@@ -5,8 +5,7 @@ import '../models/client.dart';
 import '../models/product.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
-import '../providers/products_provider.dart';
-import '../services/api_service.dart'; // ← ДОБАВЛЕН ИМПОРТ
+import '../services/api_service.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({Key? key}) : super(key: key);
@@ -17,41 +16,58 @@ class CartScreen extends StatefulWidget {
 
 class _CartScreenState extends State<CartScreen> {
   bool _isSubmitting = false;
+  bool _isInitialized = false;
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ProductsProvider>(
-      builder: (context, productsProvider, child) {
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        final client = authProvider.currentUser as Client?;
-
-        if (client == null) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Ошибка')),
-            body: const Center(child: Text('Не авторизован')),
-          );
-        }
-
-        // Загружаем продукты если нужно
-        if (productsProvider.products.isEmpty && !productsProvider.isLoading) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            productsProvider.loadProducts();
-          });
-        }
-
-        // Показываем загрузку пока продукты не готовы
-        if (productsProvider.products.isEmpty) {
+    return Consumer2<AuthProvider, CartProvider>(
+      builder: (context, authProvider, cartProvider, child) {
+        // Проверка авторизации
+        if (!authProvider.isAuthenticated || authProvider.isLoading) {
           return Scaffold(
             appBar: AppBar(title: const Text('Корзина')),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
 
-        final cartProvider = Provider.of<CartProvider>(context, listen: false);
+        // 🔥 ИНИЦИАЛИЗАЦИЯ CartProvider при первом рендере
+        if (!_isInitialized && authProvider.clientData != null) {
+          _isInitialized = true;
+          cartProvider.setClientData(authProvider.clientData);
+          if (authProvider.currentUser is Client) {
+            cartProvider.setClient(authProvider.currentUser as Client);
+          }
+        }
+
+        final client = authProvider.currentUser as Client?;
+        final clientData = authProvider.clientData;
+
+        // Проверка наличия данных
+        if (client == null || clientData == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Ошибка')),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('Данные не загружены'),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await authProvider
+                          .login(authProvider.currentUser!.phone!);
+                    },
+                    child: const Text('Повторить загрузку'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final products = clientData.products;
         final discount = (client.discount ?? 0) / 100.0;
         final minOrderAmount = client.minOrderAmount ?? 0.0;
-        final total =
-            cartProvider.getTotal(productsProvider.products, discount);
+        final total = cartProvider.getTotal(products, discount);
         final isOrderValid = total >= minOrderAmount && total > 0;
 
         return Scaffold(
@@ -59,7 +75,7 @@ class _CartScreenState extends State<CartScreen> {
           body: Column(
             children: [
               Expanded(
-                child: _buildCartItems(cartProvider, productsProvider.products),
+                child: _buildCartItems(cartProvider, products),
               ),
               _buildOrderSummary(client, discount, total, minOrderAmount),
               _buildSubmitButton(isOrderValid),
@@ -211,17 +227,17 @@ class _CartScreenState extends State<CartScreen> {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final client = authProvider.currentUser as Client;
-      final productsProvider =
-          Provider.of<ProductsProvider>(context, listen: false);
+      final clientData = authProvider.clientData;
 
-      if (productsProvider.products.isEmpty) {
-        await productsProvider.loadProducts();
+      if (clientData == null) {
+        throw Exception('Данные клиента недоступны');
       }
 
-      // 🔥 ИСПРАВЛЕНО: передаем оба аргумента
+      final products = clientData.products;
       final apiService = ApiService();
+
       await Provider.of<CartProvider>(context, listen: false)
-          .submitOrder(productsProvider.products, apiService);
+          .submitOrder(products, apiService);
 
       _showSuccessMessage(context);
 

@@ -4,8 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../providers/auth_provider.dart';
 import '../models/order_item.dart';
+import '../providers/auth_provider.dart';
+import '../utils/parsing_utils.dart';
 
 class AdminOrdersCalendarScreen extends StatefulWidget {
   @override
@@ -74,7 +75,7 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
     DateTime? maxDate;
 
     for (var order in _orders) {
-      final date = _parseOrderDate(order.date);
+      final date = ParsingUtils.parseDate(order.date);
       if (date != null) {
         if (minDate == null || date.isBefore(minDate)) {
           minDate = date;
@@ -93,23 +94,6 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
     } else if (DateTime.now().isAfter(_maxDate!)) {
       _focusedDay = DateTime(_maxDate!.year, _maxDate!.month, 1);
     }
-  }
-
-  DateTime? _parseOrderDate(String dateStr) {
-    try {
-      final parts = dateStr.split('.');
-      if (parts.length == 3) {
-        final day = int.tryParse(parts[0]);
-        final month = int.tryParse(parts[1]);
-        final year = int.tryParse(parts[2]);
-        if (day != null && month != null && year != null) {
-          return DateTime(year, month, day);
-        }
-      }
-    } catch (e) {
-      print('Ошибка парсинга даты: $e');
-    }
-    return null;
   }
 
   List<OrderItem> _getOrdersForDate(DateTime date) {
@@ -133,9 +117,9 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
     switch (status) {
       case 'оформлен':
         return Colors.blue;
-      case 'в производстве':
+      case 'производство':
         return Colors.orange;
-      case 'готов к отправке':
+      case 'готов':
         return Colors.purple;
       case 'доставлен':
         return Colors.green;
@@ -150,9 +134,9 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
     switch (status) {
       case 'оформлен':
         return 'Оформлен';
-      case 'в производстве':
+      case 'производство':
         return 'В работе';
-      case 'готов к отправке':
+      case 'готов':
         return 'Готов';
       case 'доставлен':
         return 'Доставлен';
@@ -210,11 +194,11 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
                 child: Text('Оформлен'),
               ),
               const PopupMenuItem<String>(
-                value: 'в производстве',
+                value: 'производство',
                 child: Text('В работе'),
               ),
               const PopupMenuItem<String>(
-                value: 'готов к отправке',
+                value: 'готов',
                 child: Text('Готов'),
               ),
               const PopupMenuItem<String>(

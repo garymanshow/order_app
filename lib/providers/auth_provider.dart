@@ -3,11 +3,13 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:convert';
-import '../models/user.dart';
 import '../models/client.dart';
-import '../models/employee.dart';
 import '../models/client_data.dart';
+import '../models/employee.dart';
+import '../models/order_item.dart';
+import '../models/product.dart';
 import '../models/sheet_metadata.dart';
+import '../models/user.dart';
 import '../services/api_service.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -113,6 +115,60 @@ class AuthProvider with ChangeNotifier {
     });
   }
 
+  // 🔥 ДЕСЕРИАЛИЗАЦИЯ ДАННЫХ КЛИЕНТА
+  ClientData _deserializeClientData(dynamic data) {
+    if (data == null || data is! Map<String, dynamic>) {
+      return ClientData();
+    }
+
+    print('🔍 Десериализация products: ${data['products']}');
+    print('🔍 Десериализация orders: ${data['orders']}');
+
+    final clientData = ClientData();
+    final clientDataMap = data; // Убран ненужный кастинг
+
+    if (clientDataMap['products'] != null) {
+      clientData.products = (clientDataMap['products'] as List?)
+              ?.map((item) => Product.fromJson(item as Map<String, dynamic>))
+              .toList() ??
+          [];
+    }
+
+    if (clientDataMap['orders'] != null) {
+      clientData.orders = (clientDataMap['orders'] as List?)
+              ?.map((item) => OrderItem.fromMap(item as Map<String, dynamic>))
+              .toList() ??
+          [];
+    }
+
+    if (clientDataMap['cart'] != null && clientDataMap['cart'] is Map) {
+      clientData.cart = clientDataMap['cart'] as Map<String, dynamic>;
+    }
+
+    return clientData;
+  }
+
+  // 🔥 ДЕСЕРИАЛИЗАЦИЯ МЕТАДАННЫХ
+  Map<String, SheetMetadata> _deserializeMetadata(dynamic metadata) {
+    if (metadata == null || metadata is! Map<String, dynamic>) {
+      return {};
+    }
+
+    final result = <String, SheetMetadata>{};
+    final metadataMap = metadata as Map<String, dynamic>;
+
+    for (final entry in metadataMap.entries) {
+      final key = entry.key;
+      final value = entry.value;
+
+      if (value is Map<String, dynamic>) {
+        result[key] = SheetMetadata.fromJson(value);
+      }
+    }
+
+    return result;
+  }
+
   Future<void> init() async {
     _isLoading = true;
     notifyListeners();
@@ -155,7 +211,7 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN С ПОЛНЫМ ОТКЛЮЧЕНИЕМ FCM НА ДЕСКТОПЕ
+// 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN С ПОЛНЫМ ОТКЛЮЧЕНИЕМ FCM НА ДЕСКТОПЕ
   Future<void> login(String phone, {String? fcmToken}) async {
     _isLoading = true;
     notifyListeners();
@@ -185,7 +241,7 @@ class AuthProvider with ChangeNotifier {
       final authResponse = await apiService.authenticate(
         phone: phone,
         localMetadata: localMetadata,
-        fcmToken: tokenToUse, // Может быть null - это нормально
+        fcmToken: tokenToUse,
       );
 
       if (authResponse != null) {
@@ -206,16 +262,33 @@ class AuthProvider with ChangeNotifier {
           }
         }
 
-        _clientData = authResponse['data'];
-        _metadata = authResponse['metadata'];
+        // ✅ Проверяем, что данные действительно получены от сервера
+        final data = authResponse['data'];
+        final metadata = authResponse['metadata'];
+
+        if (data == null || metadata == null) {
+          throw Exception('Сервер не вернул данные или метаданные');
+        }
+
+        // ✅ Правильная десериализация
+        _clientData = _deserializeClientData(data);
+        _metadata = _deserializeMetadata(metadata);
         _fcmToken = tokenToUse;
+
+        // ✅ УДАЛЕНО: установка CartProvider (делается в экранах)
+
+        // ✅ Дополнительная проверка, что десериализация прошла успешно
+        if (_clientData == null || _metadata == null || _metadata!.isEmpty) {
+          throw Exception('Ошибка десериализации данных');
+        }
 
         await prefs.setString(
             'auth_user', jsonEncode(_currentUser?.toJson() ?? {}));
         await prefs.setString(
             'auth_timestamp', DateTime.now().toIso8601String());
         await prefs.setString('local_metadata', jsonEncode(_metadata));
-        await prefs.setString('client_data', jsonEncode(_clientData!.toJson()));
+
+        // ✅ Безопасное сохранение ClientData
 
         if (tokenToUse != null) {
           await prefs.setString('fcm_token', tokenToUse);
@@ -223,10 +296,15 @@ class AuthProvider with ChangeNotifier {
 
         print('✅ Авторизация успешна, данные загружены');
       } else {
-        throw Exception('Не удалось авторизоваться');
+        throw Exception('Сервер вернул null ответ');
       }
     } catch (e) {
       print('Ошибка входа: $e');
+      // ❌ Сбрасываем состояние при ошибке
+      _currentUser = null;
+      _clientData = null;
+      _metadata = null;
+      _fcmToken = null;
       rethrow;
     } finally {
       _isLoading = false;

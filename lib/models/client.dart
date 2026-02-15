@@ -1,6 +1,7 @@
 // lib/models/client.dart
 import 'user.dart';
-import 'client_data.dart'; // ← ТОЛЬКО client_data нужен
+import 'client_data.dart';
+import '../utils/parsing_utils.dart';
 
 class Client extends User {
   final String? firm;
@@ -12,6 +13,7 @@ class Client extends User {
   final String? comment;
   final double? latitude;
   final double? longitude;
+  final String? fcmToken;
 
   Client({
     String? name,
@@ -25,6 +27,7 @@ class Client extends User {
     this.comment,
     this.latitude,
     this.longitude,
+    this.fcmToken,
     double? discount,
     double? minOrderAmount,
   }) : super(
@@ -59,53 +62,82 @@ class Client extends User {
       phone: map['Телефон']?.toString(),
       firm: map['ФИРМА']?.toString(),
       postalCode: map['Почтовый индекс']?.toString(),
-      legalEntity: _parseBool(map['Юридическое лицо']?.toString()),
+      legalEntity: ParsingUtils.parseBool(map['Юридическое лицо']?.toString()),
       city: map['Город']?.toString(),
       deliveryAddress: map['Адрес доставки']?.toString(),
-      delivery: _parseBool(map['Доставка']?.toString()),
+      delivery: ParsingUtils.parseBool(map['Доставка']?.toString()),
       comment: map['Комментарий']?.toString(),
-      latitude: _parseDouble(map['latitude']?.toString()),
-      longitude: _parseDouble(map['longitude']?.toString()),
-      discount: _parseDiscount(map['Скидка']?.toString() ?? ''),
+      latitude: ParsingUtils.parseDouble(map['latitude']?.toString()),
+      longitude: ParsingUtils.parseDouble(map['longitude']?.toString()),
+      discount: ParsingUtils.parseDiscount(map['Скидка']?.toString() ?? ''),
       minOrderAmount:
           double.tryParse(map['Сумма миним.заказа']?.toString() ?? '0') ?? 0.0,
     );
   }
 
   factory Client.fromJson(Map<String, dynamic> json) {
+    print('🔍 name: ${json['name']} (тип: ${json['name'].runtimeType})');
+    print('🔍 phone: ${json['phone']} (тип: ${json['phone'].runtimeType})');
+    print('🔍 firm: ${json['firm']} (тип: ${json['firm'].runtimeType})');
+    print(
+        '🔍 postalCode: ${json['postalCode']} (тип: ${json['postalCode'].runtimeType})');
+    print(
+        '🔍 isLegalEntity: ${json['isLegalEntity']} (тип: ${json['isLegalEntity'].runtimeType})');
+    print('🔍 city: ${json['city']} (тип: ${json['city'].runtimeType})');
+    print(
+        '🔍 deliveryAddress: ${json['deliveryAddress']} (тип: ${json['deliveryAddress'].runtimeType})');
+    print(
+        '🔍 hasDelivery: ${json['hasDelivery']} (тип: ${json['hasDelivery'].runtimeType})');
+    print(
+        '🔍 comment: ${json['comment']} (тип: ${json['comment'].runtimeType})');
+    print(
+        '🔍 latitude: ${json['latitude']} (тип: ${json['latitude'].runtimeType})');
+    print(
+        '🔍 longitude: ${json['longitude']} (тип: ${json['longitude'].runtimeType})');
+    print(
+        '🔍 discount: ${json['discount']} (тип: ${json['discount'].runtimeType})');
+    print(
+        '🔍 minOrderAmount: ${json['minOrderAmount']} (тип: ${json['minOrderAmount'].runtimeType})');
+    print(
+        '🔍 fcmToken: ${json['fcmToken']} (тип: ${json['fcmToken'].runtimeType})');
+
     return Client(
-      name: json['name'] as String?,
-      phone: json['phone'] as String?,
-      firm: json['firm'] as String?,
-      postalCode: json['postalCode'] as String?,
-      legalEntity: json['legalEntity'] as bool?,
-      city: json['city'] as String?,
-      deliveryAddress: json['deliveryAddress'] as String?,
-      delivery: json['delivery'] as bool?,
-      comment: json['comment'] as String?,
-      latitude: json['latitude'] as double?,
-      longitude: json['longitude'] as double?,
-      discount: json['discount'] as double?,
-      minOrderAmount: json['minOrderAmount'] as double?,
+      name: json['name']?.toString(),
+      phone: json['phone']?.toString(),
+      firm: json['firm']?.toString(),
+      postalCode: json['postalCode']?.toString(),
+      legalEntity: ParsingUtils.parseBool(json['isLegalEntity']?.toString()),
+      city: json['city']?.toString(),
+      deliveryAddress: json['deliveryAddress']?.toString(),
+      delivery: json['hasDelivery'] is bool
+          ? json['hasDelivery'] as bool?
+          : ParsingUtils.parseBool(json['hasDelivery']?.toString()),
+      comment: json['comment']?.toString(),
+      latitude: ParsingUtils.parseDouble(json['latitude']),
+      longitude: ParsingUtils.parseDouble(json['longitude']),
+      fcmToken: json['fcmToken']?.toString(),
+      discount: ParsingUtils.parseDouble(json['discount']),
+      minOrderAmount:
+          ParsingUtils.parseDouble(json['minOrderAmount']) ?? 3000.0,
     );
   }
-
   @override
   Map<String, dynamic> toJson() {
     return {
-      'name': name,
-      'phone': phone,
-      'firm': firm,
-      'postalCode': postalCode,
-      'legalEntity': legalEntity,
-      'city': city,
-      'deliveryAddress': deliveryAddress,
-      'delivery': delivery,
-      'comment': comment,
-      'latitude': latitude,
-      'longitude': longitude,
-      'discount': discount,
-      'minOrderAmount': minOrderAmount,
+      'name': name ?? '',
+      'phone': phone ?? '',
+      'firm': firm ?? '',
+      'postalCode': postalCode ?? '',
+      'legalEntity': legalEntity?.toString() ?? 'false',
+      'city': city ?? '',
+      'deliveryAddress': deliveryAddress ?? '',
+      'delivery': delivery?.toString() ?? 'false',
+      'comment': comment ?? '',
+      'latitude': latitude?.toString() ?? '',
+      'longitude': longitude?.toString() ?? '',
+      'fcmToken': fcmToken ?? '',
+      'discount': discount?.toString() ?? '0',
+      'minOrderAmount': minOrderAmount?.toString() ?? '3000',
     };
   }
 
@@ -125,29 +157,7 @@ class Client extends User {
       'longitude': longitude?.toString() ?? '',
       'Скидка': discount?.toString() ?? '',
       'Сумма миним.заказа': minOrderAmount?.toString() ?? '0',
+      'FCM': fcmToken ?? '', // ← ДОБАВЛЕНО!
     };
-  }
-
-  static double? _parseDouble(String? value) {
-    if (value == null || value.isEmpty) return null;
-    return double.tryParse(value);
-  }
-
-  static bool? _parseBool(String? value) {
-    if (value == null) return null;
-    final str = value.toLowerCase().trim();
-    return str == 'true' || str == '1' || str == 'да' || str == 'yes';
-  }
-
-  static double? _parseDiscount(String raw) {
-    if (raw.isEmpty) return null;
-    final cleaned = raw.replaceAll(RegExp(r'[^\d,]'), '');
-    if (cleaned.isEmpty) return null;
-    final normalized = cleaned.replaceAll(',', '.');
-    try {
-      return double.parse(normalized);
-    } catch (e) {
-      return null;
-    }
   }
 }

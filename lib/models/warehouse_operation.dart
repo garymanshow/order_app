@@ -1,4 +1,6 @@
 // lib/models/warehouse_operation.dart
+import '../utils/parsing_utils.dart';
+
 class WarehouseOperation {
   final String id;
   final String name; // Наименование (ингредиент или упаковка)
@@ -40,11 +42,11 @@ class WarehouseOperation {
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       operation: json['operation'] as String? ?? 'приход',
-      quantity: json['quantity'] as double? ?? 0.0,
+      quantity: ParsingUtils.parseDouble(json['quantity']) ?? 0.0,
       unit: json['unit'] as String? ?? 'шт',
       date: parseDate(json['date'] as String? ?? '') ?? DateTime.now(),
       expiryDate: parseDate(json['expiryDate'] as String?),
-      price: json['price'] as double?,
+      price: ParsingUtils.parseDouble(json['price']) ?? 0.0,
       supplier: json['supplier'] as String?,
       relatedOrderId: json['relatedOrderId'] as String?,
       notes: json['notes'] as String?,

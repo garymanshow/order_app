@@ -1,7 +1,6 @@
 // lib/services/auth_service.dart
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 // Models
@@ -12,15 +11,30 @@ import '../models/sheet_metadata.dart';
 import '../models/product.dart';
 import '../models/order_item.dart';
 
+// Services
+import '../services/api_service.dart';
+
+// Utils
+import '../utils/phone_validator.dart';
+
 class AuthService {
-  /// Нормализует телефон: добавляет '+' если отсутствует
-  String _normalizePhone(String phone) {
-    final trimmed = phone.trim();
-    return trimmed.startsWith('+') ? trimmed : '+$trimmed';
-  }
+  static String get _secret =>
+      dotenv.env['APP_SCRIPT_SECRET'] ?? 'SECRET_NOT_FOUND';
 
   Future<AuthResponse?> authenticate(String phone) async {
-    final normalizedPhone = _normalizePhone(phone);
+    // 🔥 Используем утилиту PhoneValidator для нормализации
+    final normalizedPhone = PhoneValidator.normalizePhone(phone);
+
+    if (normalizedPhone == null) {
+      print('❌ Неверный формат телефона: $phone');
+      return null;
+    }
+
+    // 🔥 Дополнительная валидация для авторизации
+    if (!PhoneValidator.isValidAuthPhone(normalizedPhone)) {
+      print('❌ Телефон не прошел валидацию для авторизации: $normalizedPhone');
+      return null;
+    }
 
     try {
       // 🔥 ПОЛУЧАЕМ ЛОКАЛЬНЫЕ МЕТАДАННЫЕ
@@ -35,86 +49,43 @@ class AuthService {
             key, SheetMetadata.fromJson(value as Map<String, dynamic>)));
       }
 
-      // 🔥 СОСТАВНОЙ ЗАПРОС К APPS SCRIPT
-      final response = await _makeCompositeRequest(
+      // 🔥 ИСПОЛЬЗУЕМ ApiService вместо собственного HTTP-запроса
+      final apiService = ApiService();
+      final authResponse = await apiService.authenticate(
         phone: normalizedPhone,
         localMetadata: localMetadata, // ← ИСПРАВЛЕНО: правильное имя параметра
+        fcmToken: null, // FCM обрабатывается в AuthProvider
       );
 
-      if (response == null) return null;
+      if (authResponse == null) return null;
 
       // Сохраняем обновленные метаданные
-      await prefs.setString('local_metadata', jsonEncode(response.metadata));
+      await prefs.setString(
+          'local_metadata', jsonEncode(authResponse['metadata']));
 
-      return AuthResponse(
-        user: response.user,
-        metadata: response.metadata,
-        clientData: response.clientData,
-        timestamp: DateTime.now().toIso8601String(),
-      );
-    } catch (e) {
-      print('Ошибка авторизации: $e');
-      return null;
-    }
-  }
-
-  // 🔥 НОВЫЙ МЕТОД: Составной запрос к Apps Script
-  Future<AuthResponse?> _makeCompositeRequest({
-    required String phone,
-    required Map<String, SheetMetadata> localMetadata,
-  }) async {
-    final url =
-        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}?action=authenticate');
-
-    final requestBody = {
-      'phone': phone,
-      'localMetadata': localMetadata
-          .map((key, value) => MapEntry(key, value.toJson()))
-          .cast<String, dynamic>(), // ← ДОБАВЛЕНО: приведение типов
-    };
-
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        if (data['success'] != true) {
-          return null;
-        }
-
-        // Десериализация пользователя
-        final userData = data['user'];
-        User user;
-        if (userData['role'] != null) {
-          user = Employee.fromJson(userData);
-        } else {
-          user = Client.fromJson(userData);
-        }
-
-        // Десериализация метаданных
-        final metadataData = data['metadata'] as Map<String, dynamic>;
-        final metadata = metadataData.map((key, value) => MapEntry(
-            key, SheetMetadata.fromJson(value as Map<String, dynamic>)));
-
-        // Десериализация данных клиента
-        final clientDataObj = _deserializeClientData(data['clientData']);
-
-        return AuthResponse(
-          user: user,
-          metadata: metadata, // ← ИСПРАВЛЕНО: правильное имя параметра
-          clientData: clientDataObj,
-          timestamp: DateTime.now().toIso8601String(),
-        );
+      // Десериализация пользователя
+      final userData = authResponse['user'];
+      User user;
+      if (userData['role'] != null) {
+        user = Employee.fromJson(userData);
+      } else {
+        user = Client.fromJson(userData);
       }
 
-      return null;
+      // Десериализация данных клиента
+      final clientDataObj = _deserializeClientData(authResponse['data']);
+
+      final result = AuthResponse(
+        user: user,
+        metadata: authResponse['metadata'] as Map<String,
+            SheetMetadata>, // ← ИСПРАВЛЕНО: правильное имя параметра
+        clientData: clientDataObj,
+        timestamp: DateTime.now().toIso8601String(),
+      );
+
+      return result;
     } catch (e) {
-      print('Ошибка составного запроса: $e');
+      print('Ошибка авторизации: $e');
       return null;
     }
   }

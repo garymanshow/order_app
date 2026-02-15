@@ -58,10 +58,10 @@ class _AdminClientsWithOrdersScreenState
   String? _getNextStatusForFilter(String currentFilter) {
     switch (currentFilter) {
       case 'оформлен':
-        return 'в производстве';
-      case 'в производстве':
-        return 'готов к отправке';
-      case 'готов к отправке':
+        return 'производство';
+      case 'производство':
+        return 'готов';
+      case 'готов':
         return 'доставлен';
       case 'доставлен':
         return 'оплачен';
@@ -106,9 +106,9 @@ class _AdminClientsWithOrdersScreenState
     switch (status) {
       case 'оформлен':
         return Colors.blue;
-      case 'в производстве':
+      case 'производство':
         return Colors.orange;
-      case 'готов к отправке':
+      case 'готов':
         return Colors.purple;
       case 'доставлен':
         return Colors.green;
@@ -123,9 +123,9 @@ class _AdminClientsWithOrdersScreenState
     switch (status) {
       case 'оформлен':
         return 'Оформлен';
-      case 'в производстве':
+      case 'производство':
         return 'В работе';
-      case 'готов к отправке':
+      case 'готов':
         return 'Готов';
       case 'доставлен':
         return 'Доставлен';
@@ -273,8 +273,8 @@ class _AdminClientsWithOrdersScreenState
                 children: [
                   _buildStatusFilterButton('all', 'Все'),
                   _buildStatusFilterButton('оформлен', 'Оформлен'),
-                  _buildStatusFilterButton('в производстве', 'В работе'),
-                  _buildStatusFilterButton('готов к отправке', 'Готов'),
+                  _buildStatusFilterButton('производство', 'В работе'),
+                  _buildStatusFilterButton('готов', 'Готов'),
                   _buildStatusFilterButton('доставлен', 'Доставлен'),
                   _buildStatusFilterButton('оплачен', 'Оплачен'),
                 ],

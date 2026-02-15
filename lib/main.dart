@@ -14,7 +14,6 @@ import 'screens/client_orders_screen.dart';
 // Providers
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
-import 'providers/products_provider.dart';
 import 'providers/theme_provider.dart';
 
 void main() async {
@@ -52,7 +51,6 @@ class MyApp extends StatelessWidget {
             return provider;
           },
         ),
-        ChangeNotifierProvider(create: (context) => ProductsProvider()),
         ChangeNotifierProvider(create: (context) => CartProvider()),
       ],
       child: MyAppContent(),

@@ -1,17 +1,7 @@
 {
-    "cmake.sourceDirectory": "/home/administrator/Project/Flutter/order_app/order_app/linux"
+    "cmake.sourceDirectory": "/home/administrator/Project/Flutter/order_app/order_app/linux",
+    "cSpell.language": "en, ru"
 
 // Глобальные настройки VS Code
-    "files.exclude": {
-        "**/*.docx": true,
-        "**/*.doc": true,
-        "**/*.xlsx": true,
-        "**/*.xls": true,
-        "**/.git": true,
-        "**/.svn": true,
-        "**/.hg": true,
-        "**/CVS": true,
-        "**/.DS_Store": true,
-        "**/Thumbs.db": true
-    }
+
 }

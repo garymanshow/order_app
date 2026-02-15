@@ -170,10 +170,12 @@ class CartProvider with ChangeNotifier {
 
     // 🔥 ИСПРАВЛЕНО: безопасное получение условий доставки
     _deliveryCondition = null;
-    final deliveryConditions = clientData?.deliveryConditions;
-    if (client.city != null && deliveryConditions != null) {
-      _deliveryCondition = deliveryConditions
-          .firstWhereOrNull((cond) => cond.location == client.city);
+    if (clientData != null && client.city != null) {
+      final deliveryConditions = clientData!.deliveryConditions;
+      if (deliveryConditions != null) {
+        _deliveryCondition = deliveryConditions
+            .firstWhereOrNull((cond) => cond.location == client.city);
+      }
     }
 
     _cartItems.clear();
@@ -187,10 +189,12 @@ class CartProvider with ChangeNotifier {
     clientData = data;
     if (_client != null && _client!.city != null) {
       // Обновляем условия доставки при изменении данных
-      final deliveryConditions = clientData?.deliveryConditions;
-      if (deliveryConditions != null) {
-        _deliveryCondition = deliveryConditions
-            .firstWhereOrNull((cond) => cond.location == _client!.city);
+      if (clientData != null) {
+        final deliveryConditions = clientData!.deliveryConditions;
+        if (deliveryConditions != null) {
+          _deliveryCondition = deliveryConditions
+              .firstWhereOrNull((cond) => cond.location == _client!.city);
+        }
       }
     }
   }
@@ -200,7 +204,7 @@ class CartProvider with ChangeNotifier {
     await prefs.remove(_getCartKey());
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД ОТПРАВКИ ЗАКАЗА (используем createOrder вместо несуществующего submitOrder)
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД ОТПРАВКИ ЗАКАЗА
   Future<bool> submitOrder(
       List<Product> products, ApiService apiService) async {
     // 🔒 Проверка наличия клиента
@@ -224,20 +228,30 @@ class CartProvider with ChangeNotifier {
       return false;
     }
 
-    // Преобразуем заказы в формат для API
-    final items = orders.map((item) => item.toJson()).toList();
+    // 🔥 ПРАВИЛЬНЫЙ ФОРМАТ ДЛЯ СЕРВЕРА
+    final items = orders.map((order) {
+      return {
+        'status': order.status,
+        'productName': order.productName,
+        'quantity': order.quantity,
+        'totalPrice': order.totalPrice,
+        'date': order.date,
+        'clientPhone': order.clientPhone,
+        'clientName': order.clientName,
+        'priceListId': order.priceListId,
+      };
+    }).toList();
 
     // Отправляем заказ через ApiService.createOrder
     try {
       final result = await apiService.createOrder(
         clientId: _client!.phone!,
-        employeeId:
-            'автомат', // Специальное значение для заказов, созданных клиентом
+        employeeId: 'автомат',
         items: items,
         totalAmount: total,
         deliveryCity: _deliveryCondition?.location ?? _client!.city,
-        deliveryAddress: '', // Пока не реализовано — оставляем пустым
-        comment: '', // Пока не реализовано — оставляем пустым
+        deliveryAddress: _client!.deliveryAddress ?? '',
+        comment: '',
       );
 
       final success = result?['success'] == true;

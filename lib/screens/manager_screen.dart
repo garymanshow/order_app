@@ -5,9 +5,9 @@ import '../providers/auth_provider.dart';
 import '../models/employee.dart';
 import '../models/order_item.dart';
 import '../models/product_category.dart';
-import '../models/warehouse_operation.dart'; // ← новый импорт
+import '../models/warehouse_operation.dart';
 import '../services/api_service.dart';
-import '../services/ingredients_service.dart'; // ← новый импорт
+import '../services/ingredients_service.dart';
 
 class ManagerScreen extends StatefulWidget {
   @override
@@ -35,7 +35,7 @@ class _ManagerScreenState extends State<ManagerScreen> {
         final ordersData =
             await ApiService().fetchOrders(employeeId: employee.phone);
         if (ordersData != null) {
-          final orders = (ordersData as List)
+          final orders = (ordersData)
               .map((order) => OrderItem.fromMap(order as Map<String, dynamic>))
               .where((order) => order.status == 'оформлен')
               .toList();
@@ -63,7 +63,6 @@ class _ManagerScreenState extends State<ManagerScreen> {
     }
 
     final categories = metadata['productCategories'] as List<dynamic>;
-    // Преобразуем в List<ProductCategory>
     final productCategories = categories
         .map((cat) => ProductCategory.fromMap(cat as Map<String, dynamic>))
         .toList();
@@ -72,9 +71,21 @@ class _ManagerScreenState extends State<ManagerScreen> {
     final ingredientsService = IngredientsService();
     final apiService = ApiService();
 
+    // ИСПРАВЛЕНО: правильный вызов addWarehouseOperation
     Future<void> saveOperations(List<WarehouseOperation> operations) async {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final phone = authProvider.currentUser?.phone;
+
+      if (phone == null) {
+        throw Exception('Пользователь не авторизован');
+      }
+
       for (var operation in operations) {
-        await apiService.addWarehouseOperation(operation);
+        // ИСПРАВЛЕНО: используем именованные параметры
+        await apiService.addWarehouseOperation(
+          phone: phone,
+          operationData: operation.toMap(),
+        );
       }
     }
 
@@ -95,7 +106,8 @@ class _ManagerScreenState extends State<ManagerScreen> {
 
   // Начало производства
   Future<void> _startProduction(OrderItem order) async {
-    final updatedOrder = order.copyWith(status: 'в производстве');
+    final updatedOrder = order.copyWith(status: 'производство');
+
     final success = await ApiService().updateOrders([updatedOrder]);
 
     if (success) {
@@ -150,7 +162,7 @@ class _ManagerScreenState extends State<ManagerScreen> {
                       subtitle: Text('Клиент: ${order.clientName}'),
                       trailing: ElevatedButton(
                         onPressed: () => _startProduction(order),
-                        child: Text('В производство'),
+                        child: Text('производство'),
                       ),
                     );
                   },

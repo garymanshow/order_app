@@ -1,4 +1,6 @@
 // lib/models/product_category.dart
+import '../utils/parsing_utils.dart';
+
 class ProductCategory {
   final String id;
   final String name;
@@ -22,11 +24,11 @@ class ProductCategory {
     return ProductCategory(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
-      packagingQuantity: json['packagingQuantity'] as int? ?? 1,
+      packagingQuantity: ParsingUtils.parseInt(json['packagingQuantity']) ?? 1,
       packagingName: json['packagingName'] as String? ?? '',
-      weight: json['weight'] as double? ?? 0.0,
+      weight: ParsingUtils.parseDouble(json['weight']) ?? 0.0,
       unit: json['unit'] as String? ?? 'г',
-      wastePercentage: json['wastePercentage'] as int? ?? 10,
+      wastePercentage: ParsingUtils.parseInt(json['wastePercentage']) ?? 10,
     );
   }
 

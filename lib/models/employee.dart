@@ -1,5 +1,6 @@
 // lib/models/employee.dart
 import 'user.dart';
+import '../utils/parsing_utils.dart';
 
 // Сотрудники
 class Employee extends User {
@@ -21,7 +22,7 @@ class Employee extends User {
       name: map['Сотрудник']?.toString(),
       phone: map['Телефон']?.toString(),
       role: map['Роль']?.toString(),
-      twoFactorAuth: _parseBool(map['2FA']?.toString()) ?? false,
+      twoFactorAuth: ParsingUtils.parseBool(map['2FA']?.toString()) ?? false,
       fcm: map['FCM']?.toString(),
     );
   }
@@ -58,13 +59,6 @@ class Employee extends User {
       '2FA': twoFactorAuth.toString(),
       'FCM': fcm ?? '',
     };
-  }
-
-  // Вспомогательный метод для парсинга boolean
-  static bool? _parseBool(String? value) {
-    if (value == null) return null;
-    final str = value.toLowerCase().trim();
-    return str == 'true' || str == '1' || str == 'да' || str == 'yes';
   }
 
   // Проверка, требуется ли 2FA

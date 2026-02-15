@@ -1,5 +1,6 @@
 // lib/models/price_item.dart
 import 'ingredient_info.dart';
+import '../utils/parsing_utils.dart';
 
 class PriceItem {
   final String id;
@@ -38,14 +39,14 @@ class PriceItem {
     return PriceItem(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
-      price: json['price'] as double? ?? 0.0,
+      price: ParsingUtils.parseDouble(json['price']) ?? 0.0,
       category: json['category'] as String? ?? '',
       unit: json['unit'] as String? ?? 'шт',
-      weight: json['weight'] as double? ?? 0.0,
+      weight: ParsingUtils.parseDouble(json['weight']) ?? 0.0,
       ingredients: ingredients,
       nutrition: json['nutrition'] as Map<String, dynamic>? ?? {},
       photoUrl: json['photoUrl'] as String?,
-      multiplicity: json['multiplicity'] as int? ?? 1,
+      multiplicity: ParsingUtils.parseInt(json['multiplicity']) ?? 1,
       description: json['description'] as String?,
     );
   }

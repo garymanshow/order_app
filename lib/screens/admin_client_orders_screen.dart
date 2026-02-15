@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../services/google_sheets_service.dart';
 import '../models/admin_order.dart';
+import '../utils/parsing_utils.dart';
 
 class AdminClientOrdersScreen extends StatefulWidget {
   final String phone;
@@ -56,10 +57,25 @@ class _AdminClientOrdersScreenState extends State<AdminClientOrdersScreen> {
 
       // Сортировка: новые даты сверху, затем по статусу
       orders.sort((a, b) {
-        final dateA = _parseDate(a.date);
-        final dateB = _parseDate(b.date);
-        if (dateA != dateB) return dateB.compareTo(dateA);
+        final dateA = ParsingUtils.parseDate(a.date);
+        final dateB = ParsingUtils.parseDate(b.date);
 
+        // Обработка null-дат: null считается "старее", т.е. идет вниз списка
+        if (dateA == null && dateB == null) {
+          // Обе даты null — сортируем по статусу
+        } else if (dateA == null) {
+          return 1; // a идет после b
+        } else if (dateB == null) {
+          return -1; // b идет после a
+        } else {
+          // Обе даты не null — сортируем по дате (новые сверху)
+          final dateComparison = dateB.compareTo(dateA);
+          if (dateComparison != 0) {
+            return dateComparison;
+          }
+        }
+
+        // Сортировка по статусу
         final statusOrder = {
           'оформлен': 0,
           'производство': 1,
@@ -73,20 +89,6 @@ class _AdminClientOrdersScreenState extends State<AdminClientOrdersScreen> {
 
       return orders;
     });
-  }
-
-  DateTime _parseDate(String dateStr) {
-    try {
-      final parts = dateStr.split('.');
-      if (parts.length == 3) {
-        return DateTime(
-          int.parse(parts[2]),
-          int.parse(parts[1]),
-          int.parse(parts[0]),
-        );
-      }
-    } catch (e) {}
-    return DateTime(2000);
   }
 
   // 🔥 Обновление существующей строки (не создание новой!)
@@ -196,7 +198,7 @@ class _AdminClientOrdersScreenState extends State<AdminClientOrdersScreen> {
                 },
               ),
               ListTile(
-                title: Text('Готов к отправке'),
+                title: Text('Готов'),
                 onTap: () {
                   Navigator.pop(context);
                   _updateAllOrdersStatus('готов');

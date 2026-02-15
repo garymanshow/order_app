@@ -110,7 +110,7 @@ class OrderCard extends StatelessWidget {
         if (onApprove != null)
           ElevatedButton(
             onPressed: onApprove,
-            child: Text('В производство'),
+            child: Text('производство'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
             ),
@@ -123,11 +123,11 @@ class OrderCard extends StatelessWidget {
     switch (status) {
       case 'оформлен':
         return Colors.blue;
-      case 'в производстве':
+      case 'производство':
         return Colors.orange;
       case 'в работе':
         return Colors.orange;
-      case 'готов к отправке':
+      case 'готов':
         return Colors.purple;
       case 'доставлен':
         return Colors.green;
@@ -140,12 +140,12 @@ class OrderCard extends StatelessWidget {
     switch (status) {
       case 'оформлен':
         return 'Оформлен';
-      case 'в производстве':
-        return 'В производстве';
+      case 'производство':
+        return 'производство';
       case 'в работе':
         return 'В работе';
-      case 'готов к отправке':
-        return 'Готов к отправке';
+      case 'готов':
+        return 'Готов';
       case 'доставлен':
         return 'Доставлен';
       default:

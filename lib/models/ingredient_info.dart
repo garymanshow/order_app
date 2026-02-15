@@ -1,4 +1,6 @@
 // lib/models/ingredient_info.dart
+import '../utils/parsing_utils.dart';
+
 class IngredientInfo {
   final String name;
   final double quantity;
@@ -13,7 +15,7 @@ class IngredientInfo {
   factory IngredientInfo.fromJson(Map<String, dynamic> json) {
     return IngredientInfo(
       name: json['name'] as String? ?? '',
-      quantity: json['quantity'] as double? ?? 0.0,
+      quantity: ParsingUtils.parseDouble(json['quantity']) ?? 0.0,
       unit: json['unit'] as String? ?? 'г',
     );
   }

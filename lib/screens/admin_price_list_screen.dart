@@ -1,6 +1,5 @@
 // lib/screens/admin_price_list_screen.dart
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../services/google_sheets_service.dart';
 import '../models/price_item.dart';

@@ -2,14 +2,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../models/order_item.dart';
-import '../providers/auth_provider.dart'; // ← ДОБАВЛЕН ИМПОРТ
+import '../utils/parsing_utils.dart';
 
 class ClientOrdersScreen extends StatefulWidget {
-  // УДАЛЕН ОБЯЗАТЕЛЬНЫЙ ПАРАМЕТР client
   const ClientOrdersScreen({super.key});
 
   @override
@@ -20,9 +19,6 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
   late CalendarFormat _calendarFormat;
   late DateTime _focusedDay;
   late DateTime _selectedDay;
-  List<OrderItem> _orders = [];
-  DateTime? _minDate;
-  DateTime? _maxDate;
 
   @override
   void initState() {
@@ -31,47 +27,58 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     _calendarFormat = CalendarFormat.month;
     _focusedDay = today;
     _selectedDay = today;
-
-    _loadOrdersFromCache();
   }
 
-  Future<void> _loadOrdersFromCache() async {
-    final prefs = await SharedPreferences.getInstance();
-    final ordersJson = prefs.getString('client_orders_data');
+  // 🔥 Получаем заказы из AuthProvider
+  List<OrderItem> _getOrdersForDate(DateTime date) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final client = authProvider.currentUser;
+    final clientData = authProvider.clientData;
 
-    if (ordersJson != null) {
-      final orders = _deserializeOrders(ordersJson);
-      setState(() {
-        _orders = orders;
-        _calculateDateRange();
-      });
-    }
+    if (client == null || clientData == null) return [];
+
+    final dateString = '${date.day}.${date.month}.${date.year}';
+    return clientData.orders
+        .where((order) =>
+            order.date == dateString &&
+            order.clientPhone == client.phone &&
+            order.clientName == client.name)
+        .toList();
   }
 
-  List<OrderItem> _deserializeOrders(String json) {
-    try {
-      final list = jsonDecode(json) as List;
-      return list
-          .map((item) => OrderItem.fromMap(item as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      print('Ошибка десериализации заказов: $e');
-      return [];
-    }
-  }
-
+  // 🔥 Рассчитываем диапазон дат из актуальных данных
   void _calculateDateRange() {
-    if (_orders.isEmpty) {
-      _minDate = DateTime.now().subtract(const Duration(days: 30));
-      _maxDate = DateTime.now().add(const Duration(days: 30));
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final clientData = authProvider.clientData;
+    final client = authProvider.currentUser;
+
+    if (clientData == null || client == null) {
+      setState(() {
+        _focusedDay = DateTime.now();
+        _selectedDay = DateTime.now();
+      });
+      return;
+    }
+
+    final clientOrders = clientData.orders
+        .where((order) =>
+            order.clientPhone == client.phone &&
+            order.clientName == client.name)
+        .toList();
+
+    if (clientOrders.isEmpty) {
+      setState(() {
+        _focusedDay = DateTime.now();
+        _selectedDay = DateTime.now();
+      });
       return;
     }
 
     DateTime? minDate;
     DateTime? maxDate;
 
-    for (var order in _orders) {
-      final date = _parseOrderDate(order.date);
+    for (var order in clientOrders) {
+      final date = ParsingUtils.parseDate(order.date);
       if (date != null) {
         if (minDate == null || date.isBefore(minDate)) {
           minDate = date;
@@ -82,67 +89,25 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
       }
     }
 
-    _minDate = minDate ?? DateTime.now().subtract(const Duration(days: 30));
-    _maxDate = maxDate ?? DateTime.now().add(const Duration(days: 30));
-
-    if (DateTime.now().isBefore(_minDate!)) {
-      _focusedDay = DateTime(_minDate!.year, _minDate!.month, 1);
-    } else if (DateTime.now().isAfter(_maxDate!)) {
-      _focusedDay = DateTime(_maxDate!.year, _maxDate!.month, 1);
+    if (minDate != null && maxDate != null) {
+      setState(() {
+        _focusedDay = DateTime.now().isBefore(minDate!)
+            ? DateTime(minDate!.year, minDate!.month, 1)
+            : DateTime.now().isAfter(maxDate!)
+                ? DateTime(maxDate!.year, maxDate!.month, 1)
+                : DateTime.now();
+        _selectedDay = DateTime.now();
+      });
     }
-  }
-
-  DateTime? _parseOrderDate(String dateStr) {
-    try {
-      final parts = dateStr.split('.');
-      if (parts.length == 3) {
-        final day = int.tryParse(parts[0]);
-        final month = int.tryParse(parts[1]);
-        final year = int.tryParse(parts[2]);
-        if (day != null && month != null && year != null) {
-          return DateTime(year, month, day);
-        }
-      }
-    } catch (e) {
-      print('Ошибка парсинга даты: $e');
-    }
-    return null;
-  }
-
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД - получаем клиента из AuthProvider
-  List<OrderItem> _getOrdersForDate(DateTime date) {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final client = authProvider.currentUser;
-
-    if (client == null) return [];
-
-    final dateString = '${date.day}.${date.month}.${date.year}';
-    return _orders
-        .where((order) =>
-            order.date == dateString &&
-            order.clientPhone == client.phone &&
-            order.clientName == client.name)
-        .toList();
-  }
-
-  Color? _getDayColor(DateTime day) {
-    final orders = _getOrdersForDate(day);
-    if (orders.isEmpty) return null;
-
-    for (var order in orders) {
-      final color = _getStatusColor(order.status);
-      if (color != null) return color;
-    }
-    return null;
   }
 
   Color? _getStatusColor(String status) {
     switch (status) {
       case 'оформлен':
         return Colors.blue;
-      case 'в производстве':
+      case 'производство':
         return Colors.orange;
-      case 'готов к отправке':
+      case 'готов':
         return Colors.purple;
       case 'доставлен':
         return Colors.green;
@@ -157,9 +122,9 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     switch (status) {
       case 'оформлен':
         return 'Оформлен';
-      case 'в производстве':
+      case 'производство':
         return 'В производстве';
-      case 'готов к отправке':
+      case 'готов':
         return 'Готов';
       case 'доставлен':
         return 'Получен';
@@ -170,14 +135,15 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     }
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД - получаем клиента из AuthProvider
+  // 🔥 Расчёт долга из актуальных данных
   double _calculateDebt() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final client = authProvider.currentUser;
+    final clientData = authProvider.clientData;
 
-    if (client == null) return 0.0;
+    if (client == null || clientData == null) return 0.0;
 
-    final clientOrders = _orders
+    final clientOrders = clientData.orders
         .where((order) =>
             order.clientPhone == client.phone &&
             order.clientName == client.name)
@@ -195,8 +161,45 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final debt = _calculateDebt();
-    final hasDebt = debt > 0;
+    // 🔥 Слушаем AuthProvider для обновления
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    // Проверка состояния авторизации
+    if (!authProvider.isAuthenticated || authProvider.isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Мои заказы')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Проверка наличия данных
+    final clientData = authProvider.clientData;
+    if (clientData == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Ошибка')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Данные заказов не загружены'),
+              ElevatedButton(
+                onPressed: () async {
+                  await authProvider.login(authProvider.currentUser!.phone!);
+                },
+                child: const Text('Повторить загрузку'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Автоматически пересчитываем диапазон дат
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _calculateDateRange();
+    });
+
+    final hasDebt = _calculateDebt() > 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -215,7 +218,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                   Icon(Icons.warning, color: Colors.red),
                   const SizedBox(width: 8),
                   Text(
-                    'Задолженность: ${debt.toStringAsFixed(2)} ₽',
+                    'Задолженность: ${_calculateDebt().toStringAsFixed(2)} ₽',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -226,8 +229,8 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
               ),
             ),
           TableCalendar(
-            firstDay: _minDate ?? DateTime.utc(2020, 1, 1),
-            lastDay: _maxDate ?? DateTime.utc(2030, 12, 31),
+            firstDay: DateTime.utc(2020, 1, 1),
+            lastDay: DateTime.utc(2030, 12, 31),
             focusedDay: _focusedDay,
             selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
             onDaySelected: (selectedDay, focusedDay) {
@@ -293,7 +296,11 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
                 );
               },
               markerBuilder: (context, day, events) {
-                final color = _getDayColor(day);
+                final orders = _getOrdersForDate(day);
+                if (orders.isEmpty) return null;
+
+                // Берем цвет первого заказа в день
+                final color = _getStatusColor(orders.first.status);
                 if (color == null) return null;
 
                 return Container(

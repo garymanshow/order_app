@@ -1,5 +1,6 @@
 // lib/models/admin_order.dart
 import 'package:flutter/material.dart';
+import '../utils/parsing_utils.dart';
 
 class AdminOrder {
   final String id;
@@ -28,8 +29,8 @@ class AdminOrder {
       id: json['id'] as String,
       status: json['status'] as String,
       productName: json['productName'] as String,
-      quantity: json['quantity'] as int,
-      totalPrice: json['totalPrice'] as double,
+      quantity: ParsingUtils.parseInt(json['quantity']) ?? 0,
+      totalPrice: ParsingUtils.parseDouble(json['totalPrice']) ?? 0.00,
       date: json['date'] as String,
       phone: json['phone'] as String,
       clientName: json['clientName'] as String,
@@ -86,12 +87,12 @@ class AdminOrder {
   List<String> getAvailableStatuses() {
     switch (status) {
       case 'оформлен':
-        return ['в производство'];
-      case 'в производство':
+        return ['производство'];
+      case 'производство':
         return ['в работе'];
       case 'в работе':
-        return ['готов к отправке'];
-      case 'готов к отправке':
+        return ['готов'];
+      case 'готов':
         return ['доставлен'];
       case 'доставлен':
         return [];
@@ -104,11 +105,11 @@ class AdminOrder {
     switch (status) {
       case 'оформлен':
         return Colors.orange;
-      case 'в производство':
+      case 'производство':
         return Colors.blue;
       case 'в работе':
         return Colors.cyan;
-      case 'готов к отправке':
+      case 'готов':
         return Colors.purple;
       case 'доставлен':
         return Colors.green;
@@ -123,12 +124,12 @@ class AdminOrder {
     switch (status) {
       case 'оформлен':
         return 'Оформлен';
-      case 'в производство':
-        return 'В производство';
+      case 'производство':
+        return 'производство';
       case 'в работе':
         return 'В работе';
-      case 'готов к отправке':
-        return 'Готов к отправке';
+      case 'готов':
+        return 'Готов';
       case 'доставлен':
         return 'Доставлен';
       default:

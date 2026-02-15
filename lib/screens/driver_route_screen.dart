@@ -25,12 +25,10 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
     final allOrders = authProvider.clientData?.orders ?? [];
     final allClients = authProvider.clientData?.clients ?? [];
 
-    // Найти всех клиентов, у которых есть заказы "готов к отправке"
+    // Найти всех клиентов, у которых есть заказы "готов"
     final clientNamesFromOrders = <String>{};
     for (var order in allOrders) {
-      if (order.status == 'готов к отправке' &&
-          order.clientName != null &&
-          order.clientName.isNotEmpty) {
+      if (order.status == 'готов' && order.clientName.isNotEmpty) {
         clientNamesFromOrders.add(order.clientName);
       }
     }
@@ -75,7 +73,7 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
           statusUpdates.add(StatusUpdate(
             client: client.name,
             phone: client.phone,
-            oldStatus: 'готов к отправке',
+            oldStatus: 'готов',
             newStatus: newStatus,
           ));
         }

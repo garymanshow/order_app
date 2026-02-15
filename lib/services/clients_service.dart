@@ -2,6 +2,7 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/client.dart';
 import './google_sheets_service.dart';
+import '../utils/parsing_utils.dart';
 
 class ClientsService {
   Future<List<Client>> fetchClientsByPhone(String phone) async {
@@ -30,42 +31,19 @@ class ClientsService {
         name: row['Клиент']?.toString(), // ← имя клиента в параметре name
         firm: row['ФИРМА']?.toString(),
         postalCode: row['Почтовый индекс']?.toString(),
-        legalEntity: _parseBool(row['Юридическое лицо']?.toString()),
+        legalEntity:
+            ParsingUtils.parseBool(row['Юридическое лицо']?.toString()),
         city: row['Город']?.toString(),
         deliveryAddress: row['Адрес доставки']?.toString(),
-        delivery: _parseBool(row['Доставка']?.toString()),
+        delivery: ParsingUtils.parseBool(row['Доставка']?.toString()),
         comment: row['Комментарий']?.toString(),
-        latitude: _parseDouble(row['latitude']?.toString()),
-        longitude: _parseDouble(row['longitude']?.toString()),
-        discount: _parseDiscount(row['Скидка']?.toString() ?? ''),
+        latitude: ParsingUtils.parseDouble(row['latitude']?.toString()),
+        longitude: ParsingUtils.parseDouble(row['longitude']?.toString()),
+        discount: ParsingUtils.parseDiscount(row['Скидка']?.toString() ?? ''),
         minOrderAmount:
             double.tryParse(row['Сумма миним.заказа']?.toString() ?? '0') ??
                 0.0,
       );
     }).toList();
-  }
-
-  double? _parseDiscount(String raw) {
-    // ← изменено на double?
-    if (raw.isEmpty) return null;
-    final cleaned = raw.replaceAll(RegExp(r'[^\d,]'), '');
-    if (cleaned.isEmpty) return null;
-    final normalized = cleaned.replaceAll(',', '.');
-    try {
-      return double.parse(normalized);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  static double? _parseDouble(String? value) {
-    if (value == null || value.isEmpty) return null;
-    return double.tryParse(value);
-  }
-
-  static bool? _parseBool(String? value) {
-    if (value == null) return null;
-    final str = value.toLowerCase().trim();
-    return str == 'true' || str == '1' || str == 'да' || str == 'yes';
   }
 }

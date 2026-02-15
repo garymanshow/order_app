@@ -1,4 +1,6 @@
 // lib/models/user.dart
+import '../utils/parsing_utils.dart';
+
 class User {
   final String? phone;
   final String? name;
@@ -12,13 +14,12 @@ class User {
     this.minOrderAmount,
   });
 
-  // 🔥 ДОБАВЬТЕ МЕТОД fromJson
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      phone: json['phone'] as String?,
-      name: json['name'] as String?,
-      discount: json['discount'] as double?,
-      minOrderAmount: json['minOrderAmount'] as double?,
+      phone: json['phone']?.toString(),
+      name: json['name']?.toString(),
+      discount: ParsingUtils.parseDouble(json['discount']),
+      minOrderAmount: ParsingUtils.parseDouble(json['minOrderAmount']) ?? 0.0,
     );
   }
 

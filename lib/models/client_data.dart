@@ -50,66 +50,74 @@ class ClientData {
   }
 
   factory ClientData.fromJson(Map<String, dynamic> json) {
+    print('🔍 ClientData.fromJson keys: ${json.keys}');
     final clientData = ClientData();
 
-    if (json['products'] != null) {
+    // 🔥 Безопасная обработка списка продуктов
+    if (json['products'] is List) {
       clientData.products = (json['products'] as List)
           .map((item) => Product.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
-    if (json['orders'] != null) {
+    // 🔥 Безопасная обработка заказов
+    if (json['orders'] is List) {
       clientData.orders = (json['orders'] as List)
           .map((item) => OrderItem.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
-    if (json['compositions'] != null) {
+    // 🔥 Безопасная обработка составов
+    if (json['compositions'] is List) {
       clientData.compositions = (json['compositions'] as List)
           .map((item) => Composition.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
-    if (json['fillings'] != null) {
+    // 🔥 Безопасная обработка начинок
+    if (json['fillings'] is List) {
       clientData.fillings = (json['fillings'] as List)
           .map((item) => Filling.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
-    if (json['nutritionInfos'] != null) {
+    // 🔥 Безопасная обработка КБЖУ
+    if (json['nutritionInfos'] is List) {
       clientData.nutritionInfos = (json['nutritionInfos'] as List)
           .map((item) => NutritionInfo.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
-    if (json['deliveryConditions'] != null) {
+    // 🔥 Безопасная обработка условий доставки
+    if (json['deliveryConditions'] is List) {
       clientData.deliveryConditions = (json['deliveryConditions'] as List)
           .map((item) =>
               DeliveryCondition.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
-    if (json['clientCategories'] != null) {
+    // 🔥 Безопасная обработка категорий клиентов
+    if (json['clientCategories'] is List) {
       clientData.clientCategories = (json['clientCategories'] as List)
           .map((item) => ClientCategory.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
-    // 🔥 ЗАГРУЗКА КЛИЕНТОВ
-    if (json['clients'] != null) {
+    // 🔥 Безопасная обработка клиентов
+    if (json['clients'] is List) {
       clientData.clients = (json['clients'] as List)
           .map((item) => Client.fromJson(item as Map<String, dynamic>))
           .toList();
     }
 
-    if (json['cart'] != null) {
+    // 🔥 Безопасная обработка корзины
+    if (json['cart'] is Map) {
       clientData.cart = json['cart'] as Map<String, dynamic>;
     }
 
     clientData.buildIndexes();
     return clientData;
   }
-
   Map<String, dynamic> toJson() {
     return {
       'products': products.map((p) => p.toJson()).toList(),

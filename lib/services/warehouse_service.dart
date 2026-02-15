@@ -1,29 +1,47 @@
 // lib/services/warehouse_service.dart
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert'; // ← ДОБАВЛЕНО: для jsonDecode
+
 import '../models/warehouse_operation.dart';
-import '../models/product_category.dart';
+import '../services/api_service.dart';
 
 class WarehouseService {
+  final ApiService _apiService = ApiService();
+
   // Получить все операции склада
   Future<List<WarehouseOperation>> getAllOperations() async {
     try {
-      final response = await http.post(
-        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'action': 'fetchWarehouseOperations',
-        }),
-      );
+      // Получаем телефон текущего пользователя из SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final authUserJson = prefs.getString('auth_user');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true && data['operations'] != null) {
-          return (data['operations'] as List)
-              .map((op) =>
-                  WarehouseOperation.fromMap(op as Map<String, dynamic>))
-              .toList();
+      if (authUserJson == null) {
+        print('❌ Пользователь не авторизован');
+        return [];
+      }
+
+      final userData = jsonDecode(authUserJson);
+      final phone = userData['phone'] as String?;
+
+      if (phone == null) {
+        print('❌ Не найден телефон пользователя');
+        return [];
+      }
+
+      // Поскольку у нас нет метода fetchWarehouseOperations,
+      // получаем все данные через fetchClientData и фильтруем
+      final clientDataResponse = await _apiService.fetchClientData(phone);
+
+      if (clientDataResponse != null && clientDataResponse['success'] == true) {
+        final clientData = clientDataResponse['data'];
+        if (clientData is Map<String, dynamic>) {
+          final warehouseOps = clientData['warehouseOperations'] as List?;
+          if (warehouseOps != null) {
+            return warehouseOps
+                .map((op) =>
+                    WarehouseOperation.fromMap(op as Map<String, dynamic>))
+                .toList();
+          }
         }
       }
       return [];
@@ -129,6 +147,23 @@ class WarehouseService {
     String? notes,
   }) async {
     try {
+      // Получаем телефон текущего пользователя
+      final prefs = await SharedPreferences.getInstance();
+      final authUserJson = prefs.getString('auth_user');
+
+      if (authUserJson == null) {
+        print('❌ Пользователь не авторизован');
+        return false;
+      }
+
+      final userData = jsonDecode(authUserJson);
+      final phone = userData['phone'] as String?;
+
+      if (phone == null) {
+        print('❌ Не найден телефон пользователя');
+        return false;
+      }
+
       final newOperation = WarehouseOperation(
         id: 'receipt_${DateTime.now().millisecondsSinceEpoch}',
         name: name,
@@ -142,16 +177,13 @@ class WarehouseService {
         notes: notes,
       );
 
-      final response = await http.post(
-        Uri.parse('${dotenv.env['APPS_SCRIPT_URL']}'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'action': 'addWarehouseOperation',
-          'operation': newOperation.toMap(),
-        }),
+      // Используем существующий метод addWarehouseOperation из ApiService
+      final success = await _apiService.addWarehouseOperation(
+        phone: phone,
+        operationData: newOperation.toMap(),
       );
 
-      return response.statusCode == 200;
+      return success;
     } catch (e) {
       print('❌ Ошибка добавления прихода: $e');
       return false;

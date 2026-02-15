@@ -91,7 +91,7 @@ class IngredientsService {
     List<Composition> compositions,
     Function(List<WarehouseOperation>) saveOperations,
   ) async {
-    if (order.status == 'в производстве') {
+    if (order.status == 'производство') {
       final deductions =
           createIngredientsDeductions(order, categories, compositions);
       await saveOperations(deductions);

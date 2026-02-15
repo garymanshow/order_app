@@ -1,4 +1,6 @@
 // lib/models/delivery_condition.dart
+import '../utils/parsing_utils.dart';
+
 //Условия доставки
 class DeliveryCondition {
   final String location; // Пункт доставки (город, поселок и т.д.)
@@ -16,15 +18,15 @@ class DeliveryCondition {
       location: map['Пункт']?.toString() ?? '',
       deliveryAmount:
           double.tryParse(map['Сумма доставки']?.toString() ?? '0') ?? 0.0,
-      hiddenMarkup: _parseMarkup(map['Транпортные']?.toString()),
+      hiddenMarkup: ParsingUtils.parseMarkup(map['Транпортные']?.toString()),
     );
   }
 
   factory DeliveryCondition.fromJson(Map<String, dynamic> json) {
     return DeliveryCondition(
       location: json['location'] as String,
-      deliveryAmount: json['deliveryAmount'] as double,
-      hiddenMarkup: json['hiddenMarkup'] as double?,
+      deliveryAmount: ParsingUtils.parseDouble(json['deliveryAmount']) ?? 0.00,
+      hiddenMarkup: ParsingUtils.parseDouble(json['hiddenMarkup']) ?? 0.00,
     );
   }
 
@@ -51,20 +53,5 @@ class DeliveryCondition {
       return originalPrice;
     }
     return originalPrice * (1 + hiddenMarkup! / 100);
-  }
-
-  // Парсинг наценки из строки типа "10%"
-  static double? _parseMarkup(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return null;
-    }
-
-    final trimmed = value.trim();
-    if (trimmed.endsWith('%')) {
-      final numberStr = trimmed.substring(0, trimmed.length - 1).trim();
-      return double.tryParse(numberStr);
-    }
-
-    return double.tryParse(trimmed);
   }
 }

@@ -1,4 +1,6 @@
 // lib/models/product.dart
+import '../utils/parsing_utils.dart';
+
 class Product {
   final String id;
   final String name;
@@ -75,14 +77,15 @@ class Product {
       imageBase64: json['imageBase64'] as String?,
       composition: json['composition'] as String? ?? '',
       weight: json['weight'] as String? ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      price: ParsingUtils.parseDouble(json['price']) ?? 0.0,
       nutrition: json['nutrition'] as String? ?? '',
       storage: json['storage'] as String? ?? '',
       packaging: json['packaging'] as String? ?? '',
-      multiplicity: json['multiplicity'] as int? ?? 1,
+      multiplicity: ParsingUtils.parseInt(json['multiplicity']) ?? 1,
       categoryName: json['categoryName'] as String? ?? '',
       categoryId: json['categoryId'] as String? ?? '',
-      wastePercentage: json['wastePercentage'] as int? ?? 10, // ← добавлено
+      wastePercentage:
+          ParsingUtils.parseInt(json['wastePercentage']) ?? 10, // ← добавлено
     );
   }
 

@@ -1,4 +1,6 @@
 // lib/models/order_item.dart
+import '../utils/parsing_utils.dart';
+
 // Заказы
 class OrderItem {
   final String status;
@@ -61,14 +63,15 @@ class OrderItem {
     return OrderItem(
       status: json['status'] as String? ?? 'оформлен',
       productName: json['productName'] as String? ?? '',
-      quantity: json['quantity'] as int? ?? 0,
-      totalPrice: json['totalPrice'] as double? ?? 0.0,
+      quantity: ParsingUtils.parseInt(json['quantity']) ?? 0,
+      totalPrice: ParsingUtils.parseDouble(json['totalPrice']) ?? 0.0,
       date: json['date'] as String? ?? '',
       clientPhone: json['clientPhone'] as String? ?? '',
       clientName: json['clientName'] as String? ?? '',
-      paymentAmount: json['paymentAmount'] as double? ?? 0.0,
+      paymentAmount: ParsingUtils.parseDouble(json['paymentAmount']) ?? 0.0,
       paymentDocument: json['paymentDocument'] as String? ?? '',
-      notificationSent: json['notificationSent'] as bool? ?? false,
+      notificationSent:
+          ParsingUtils.parseBool(json['notificationSent']) ?? false,
       priceListId: json['priceListId'] as String? ?? '',
     );
   }
@@ -137,9 +140,9 @@ class OrderItem {
   bool get isCompleted => isDelivered && isPaid;
 
   bool get isPendingApproval => status == 'оформлен';
-  bool get isSentToProduction => status == 'в производство';
+  bool get isSentToProduction => status == 'производство';
   bool get isInProgress => status == 'в работе';
-  bool get isReadyForDelivery => status == 'готов к отправке';
+  bool get isReadyForDelivery => status == 'готов';
   bool get isManufacturing => status == 'изготовление';
   bool get isInReserve => status == 'запас';
 
