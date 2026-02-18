@@ -9,7 +9,7 @@ class NumberUtils {
 }
 
 class ParsingUtils {
-  /// Парсит строку в double с поддержкой русских форматов (запятая как десятичный разделитель)
+  // Парсит строку в double с поддержкой русских форматов (запятая как десятичный разделитель)
   static double? parseDiscount(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
     final cleaned = raw.replaceAll(RegExp(r'[^\d,.-]'), '');
