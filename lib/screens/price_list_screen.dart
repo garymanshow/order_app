@@ -111,14 +111,8 @@ class _PriceListScreenState extends State<PriceListScreen> {
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: () {
-                // Просто возвращаемся назад
-                if (Navigator.canPop(context)) {
-                  Navigator.of(context).pop();
-                } else {
-                  // Если не можем вернуться, идем на главный экран
-                  Navigator.pushNamedAndRemoveUntil(
-                      context, '/', (route) => false);
-                }
+                // Просто возвращаемся на предыдущий экран
+                Navigator.of(context).pop();
               },
             ),
             actions: [

@@ -84,6 +84,21 @@ class ClientSelectionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
+        // Проверяем, есть ли данные
+        if (authProvider.clientData == null) {
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('Загрузка данных...'),
+                  CircularProgressIndicator(),
+                ],
+              ),
+            ),
+          );
+        }
+
         // Рассчитываем суммы для каждого клиента
         final clientsWithTotals = clients.map((client) {
           final total = client.getActiveOrdersTotal(authProvider.clientData);

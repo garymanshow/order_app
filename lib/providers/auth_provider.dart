@@ -249,14 +249,21 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> init() async {
+    print('🟢 AuthProvider.init() START');
     _isLoading = true;
     notifyListeners();
 
     final prefs = await SharedPreferences.getInstance();
+    print('🟢 SharedPreferences получены');
     final userData = prefs.getString('auth_user');
     final timestamp = prefs.getString('auth_timestamp');
     final cachedToken = prefs.getString('fcm_token');
     final cachedClientData = prefs.getString('client_data');
+
+    print('🟢 userData: ${userData != null}');
+    print('🟢 timestamp: ${timestamp != null}');
+    print('🟢 cachedToken: ${cachedToken != null}');
+    print('🟢 cachedClientData: ${cachedClientData != null}');
 
     subscribeToFcmTokenRefresh();
 
@@ -308,6 +315,7 @@ class AuthProvider with ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+    print('🟢 AuthProvider.init() END');
   }
 
   // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN С ПОЛНЫМ ОТКЛЮЧЕНИЕМ FCM НА ДЕСКТОПЕ
