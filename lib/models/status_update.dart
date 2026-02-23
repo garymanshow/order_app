@@ -12,12 +12,23 @@ class StatusUpdate {
     required this.newStatus,
   });
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'client': client,
-      'phone': phone,
-      'oldStatus': oldStatus,
-      'newStatus': newStatus,
+      'client': client ?? '',
+      'phone': phone ?? '',
+      'oldStatus': oldStatus ?? '',
+      'newStatus': newStatus ?? '',
     };
+  }
+
+  // 🔥 ДОБАВЛЕНО: фабричный конструктор fromJson (на всякий случай)
+  factory StatusUpdate.fromJson(Map<String, dynamic> json) {
+    return StatusUpdate(
+      client: json['client']?.toString() ?? '',
+      phone: json['phone']?.toString() ?? '',
+      oldStatus: json['oldStatus']?.toString() ?? '',
+      newStatus: json['newStatus']?.toString() ?? '',
+    );
   }
 }

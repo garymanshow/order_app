@@ -28,6 +28,7 @@ class WarehouseOperation {
     this.notes,
   });
 
+  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory WarehouseOperation.fromJson(Map<String, dynamic> json) {
     DateTime? parseDate(String? dateStr) {
       if (dateStr == null || dateStr.isEmpty) return null;
@@ -39,27 +40,28 @@ class WarehouseOperation {
     }
 
     return WarehouseOperation(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      operation: json['operation'] as String? ?? 'приход',
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      operation: json['operation']?.toString() ?? 'приход',
       quantity: ParsingUtils.parseDouble(json['quantity']) ?? 0.0,
-      unit: json['unit'] as String? ?? 'шт',
-      date: parseDate(json['date'] as String? ?? '') ?? DateTime.now(),
-      expiryDate: parseDate(json['expiryDate'] as String?),
-      price: ParsingUtils.parseDouble(json['price']) ?? 0.0,
-      supplier: json['supplier'] as String?,
-      relatedOrderId: json['relatedOrderId'] as String?,
-      notes: json['notes'] as String?,
+      unit: json['unit']?.toString() ?? 'шт',
+      date: parseDate(json['date']?.toString()) ?? DateTime.now(),
+      expiryDate: parseDate(json['expiryDate']?.toString()),
+      price: ParsingUtils.parseDouble(json['price']),
+      supplier: json['supplier']?.toString(),
+      relatedOrderId: json['relatedOrderId']?.toString(),
+      notes: json['notes']?.toString(),
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
-      'name': name,
-      'operation': operation,
+      'id': id ?? '',
+      'name': name ?? '',
+      'operation': operation ?? 'приход',
       'quantity': quantity,
-      'unit': unit,
+      'unit': unit ?? 'шт',
       'date': date.toIso8601String(),
       'expiryDate': expiryDate?.toIso8601String(),
       'price': price,
@@ -69,14 +71,14 @@ class WarehouseOperation {
     };
   }
 
-  // Для Google Таблиц
+  // 🔥 ИСПРАВЛЕНО: безопасный toMap для Google Таблиц
   Map<String, dynamic> toMap() {
     return {
-      'ID': id,
-      'Наименование': name,
-      'Операция': operation,
+      'ID': id ?? '',
+      'Наименование': name ?? '',
+      'Операция': operation ?? 'приход',
       'Количество': quantity.toString(),
-      'Ед.изм.': unit,
+      'Ед.изм.': unit ?? 'шт',
       'Дата': date.toIso8601String(),
       'Срок годности': expiryDate?.toIso8601String() ?? '',
       'Цена': price?.toString() ?? '',
@@ -86,6 +88,7 @@ class WarehouseOperation {
     };
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный fromMap
   factory WarehouseOperation.fromMap(Map<String, dynamic> map) {
     DateTime? parseDate(String? dateStr) {
       if (dateStr == null || dateStr.isEmpty) return null;
@@ -104,7 +107,7 @@ class WarehouseOperation {
       unit: map['Ед.изм.']?.toString() ?? 'шт',
       date: parseDate(map['Дата']?.toString()) ?? DateTime.now(),
       expiryDate: parseDate(map['Срок годности']?.toString()),
-      price: double.tryParse(map['Цена']?.toString() ?? '0'),
+      price: double.tryParse(map['Цена']?.toString() ?? ''),
       supplier: map['Поставщик']?.toString(),
       relatedOrderId: map['Платежный документ']?.toString(),
       notes: map['Примечания']?.toString(),

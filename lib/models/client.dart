@@ -58,20 +58,21 @@ class Client extends User {
 
   factory Client.fromMap(Map<String, dynamic> map) {
     return Client(
-      name: map['Клиент']?.toString(),
-      phone: map['Телефон']?.toString(),
-      firm: map['ФИРМА']?.toString(),
-      postalCode: map['Почтовый индекс']?.toString(),
-      legalEntity: ParsingUtils.parseBool(map['Юридическое лицо']?.toString()),
-      city: map['Город']?.toString(),
-      deliveryAddress: map['Адрес доставки']?.toString(),
-      delivery: ParsingUtils.parseBool(map['Доставка']?.toString()),
-      comment: map['Комментарий']?.toString(),
-      latitude: ParsingUtils.parseDouble(map['latitude']?.toString()),
-      longitude: ParsingUtils.parseDouble(map['longitude']?.toString()),
-      discount: ParsingUtils.parseDiscount(map['Скидка']?.toString() ?? ''),
+      name: ParsingUtils.safeString(map['Клиент']),
+      phone: ParsingUtils.safeString(map['Телефон']),
+      firm: ParsingUtils.safeString(map['ФИРМА']),
+      postalCode: ParsingUtils.safeString(map['Почтовый индекс']),
+      legalEntity: ParsingUtils.parseBool(map['Юридическое лицо']),
+      city: ParsingUtils.safeString(map['Город']),
+      deliveryAddress: ParsingUtils.safeString(map['Адрес доставки']),
+      delivery: ParsingUtils.parseBool(map['Доставка']),
+      comment: ParsingUtils.safeString(map['Комментарий']),
+      latitude: ParsingUtils.parseDouble(map['latitude']),
+      longitude: ParsingUtils.parseDouble(map['longitude']),
+      fcmToken: ParsingUtils.safeString(map['FCM']),
+      discount: ParsingUtils.parseDiscount(map['Скидка']),
       minOrderAmount:
-          double.tryParse(map['Сумма миним.заказа']?.toString() ?? '0') ?? 0.0,
+          ParsingUtils.parseDouble(map['Сумма миним.заказа']) ?? 3000.0,
     );
   }
 
@@ -101,26 +102,57 @@ class Client extends User {
     print(
         '🔍 fcmToken: ${json['fcmToken']} (тип: ${json['fcmToken'].runtimeType})');
 
+    // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ СТРОКИ
+    String? _safeString(dynamic value) {
+      if (value == null) return null;
+      if (value is String) return value.isEmpty ? null : value;
+      return value.toString();
+    }
+
+    // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ ЧИСЛА
+    double? _safeDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) {
+        final trimmed = value.trim();
+        if (trimmed.isEmpty) return null;
+        return double.tryParse(trimmed);
+      }
+      return null;
+    }
+
+    // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ BOOL
+    bool? _safeBool(dynamic value) {
+      if (value == null) return null;
+      if (value is bool) return value;
+      if (value is num) return value == 1;
+      if (value is String) {
+        final str = value.toLowerCase().trim();
+        if (str.isEmpty) return null;
+        return str == 'true' || str == '1' || str == 'да' || str == 'yes';
+      }
+      return null;
+    }
+
     return Client(
-      name: json['name']?.toString(),
-      phone: json['phone']?.toString(),
-      firm: json['firm']?.toString(),
-      postalCode: json['postalCode']?.toString(),
-      legalEntity: ParsingUtils.parseBool(json['isLegalEntity']?.toString()),
-      city: json['city']?.toString(),
-      deliveryAddress: json['deliveryAddress']?.toString(),
-      delivery: json['hasDelivery'] is bool
-          ? json['hasDelivery'] as bool?
-          : ParsingUtils.parseBool(json['hasDelivery']?.toString()),
-      comment: json['comment']?.toString(),
-      latitude: ParsingUtils.parseDouble(json['latitude']),
-      longitude: ParsingUtils.parseDouble(json['longitude']),
-      fcmToken: json['fcmToken']?.toString(),
-      discount: ParsingUtils.parseDouble(json['discount']),
-      minOrderAmount:
-          ParsingUtils.parseDouble(json['minOrderAmount']) ?? 3000.0,
+      name: _safeString(json['name']),
+      phone: _safeString(json['phone']),
+      firm: _safeString(json['firm']),
+      postalCode: _safeString(json['postalCode']),
+      legalEntity: _safeBool(json['isLegalEntity']),
+      city: _safeString(json['city']),
+      deliveryAddress: _safeString(json['deliveryAddress']),
+      delivery: _safeBool(json['hasDelivery']),
+      comment: _safeString(json['comment']),
+      latitude: _safeDouble(json['latitude']),
+      longitude: _safeDouble(json['longitude']),
+      fcmToken: _safeString(json['fcmToken']),
+      discount: _safeDouble(json['discount']),
+      minOrderAmount: _safeDouble(json['minOrderAmount']) ?? 3000.0,
     );
   }
+
   @override
   Map<String, dynamic> toJson() {
     return {

@@ -118,8 +118,19 @@ class ClientData {
     clientData.buildIndexes();
     return clientData;
   }
+
   Map<String, dynamic> toJson() {
-    return {
+    print('🟢 ClientData.toJson() START');
+    print('   - products: ${products.length}');
+    print('   - orders: ${orders.length}');
+    print('   - compositions: ${compositions.length}');
+    print('   - fillings: ${fillings.length}');
+    print('   - nutritionInfos: ${nutritionInfos.length}');
+    print('   - deliveryConditions: ${deliveryConditions.length}');
+    print('   - clientCategories: ${clientCategories.length}');
+    print('   - clients: ${clients.length}');
+
+    final json = {
       'products': products.map((p) => p.toJson()).toList(),
       'orders': orders.map((o) => o.toJson()).toList(),
       'compositions': compositions.map((c) => c.toJson()).toList(),
@@ -127,8 +138,11 @@ class ClientData {
       'nutritionInfos': nutritionInfos.map((n) => n.toJson()).toList(),
       'deliveryConditions': deliveryConditions.map((d) => d.toJson()).toList(),
       'clientCategories': clientCategories.map((c) => c.toJson()).toList(),
-      'clients': clients.map((c) => c.toJson()).toList(), // 🔥
+      'clients': clients.map((c) => c.toJson()).toList(),
       'cart': cart,
     };
+
+    print('🟢 ClientData.toJson() END');
+    return json;
   }
 }

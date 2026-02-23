@@ -22,25 +22,28 @@ class DeliveryCondition {
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory DeliveryCondition.fromJson(Map<String, dynamic> json) {
     return DeliveryCondition(
-      location: json['location'] as String,
-      deliveryAmount: ParsingUtils.parseDouble(json['deliveryAmount']) ?? 0.00,
-      hiddenMarkup: ParsingUtils.parseDouble(json['hiddenMarkup']) ?? 0.00,
+      location: json['location']?.toString() ?? '',
+      deliveryAmount: ParsingUtils.parseDouble(json['deliveryAmount']) ?? 0.0,
+      hiddenMarkup: ParsingUtils.parseDouble(json['hiddenMarkup']),
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'location': location,
+      'location': location ?? '',
       'deliveryAmount': deliveryAmount,
       'hiddenMarkup': hiddenMarkup,
     };
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toMap
   Map<String, dynamic> toMap() {
     return {
-      'Пункт': location,
+      'Пункт': location ?? '',
       'Сумма доставки': deliveryAmount.toString(),
       'Транпортные':
           hiddenMarkup != null ? '${hiddenMarkup!.toStringAsFixed(0)}%' : '',

@@ -61,51 +61,52 @@ class OrderItem {
   // 🔥 ДОБАВЛЕН МЕТОД fromJson
   factory OrderItem.fromJson(Map<String, dynamic> json) {
     return OrderItem(
-      status: json['status'] as String? ?? 'оформлен',
-      productName: json['productName'] as String? ?? '',
+      status: json['status']?.toString() ?? 'оформлен',
+      productName: json['productName']?.toString() ?? '',
       quantity: ParsingUtils.parseInt(json['quantity']) ?? 0,
       totalPrice: ParsingUtils.parseDouble(json['totalPrice']) ?? 0.0,
-      date: json['date'] as String? ?? '',
-      clientPhone: json['clientPhone'] as String? ?? '',
-      clientName: json['clientName'] as String? ?? '',
+      date: json['date']?.toString() ?? '',
+      clientPhone: json['clientPhone']?.toString() ?? '',
+      clientName: json['clientName']?.toString() ?? '',
       paymentAmount: ParsingUtils.parseDouble(json['paymentAmount']) ?? 0.0,
-      paymentDocument: json['paymentDocument'] as String? ?? '',
+      paymentDocument: json['paymentDocument']?.toString() ?? '',
       notificationSent:
           ParsingUtils.parseBool(json['notificationSent']) ?? false,
-      priceListId: json['priceListId'] as String? ?? '',
+      priceListId: json['priceListId']?.toString() ?? '',
     );
   }
 
   // 🔥 МЕТОД ДЛЯ GOOGLE ТАБЛИЦ
   Map<String, dynamic> toMap() {
     return {
-      'Статус': status,
-      'Название': productName,
+      'Статус': status ?? '',
+      'Название': productName ?? '',
       'Количество': quantity.toString(),
       'Итоговая цена': totalPrice.toString(),
-      'Дата': date,
-      'Телефон': clientPhone,
-      'Клиент': clientName,
+      'Дата': date ?? '',
+      'Телефон': clientPhone ?? '',
+      'Клиент': clientName ?? '',
       'Оплата': paymentAmount.toString(),
-      'Платежный документ': paymentDocument,
+      'Платежный документ': paymentDocument ?? '',
       'Уведомление отправлено': notificationSent.toString(),
-      'ID Прайс-лист': priceListId,
+      'ID Прайс-лист': priceListId ?? '',
     };
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'status': status,
-      'productName': productName,
+      'status': status ?? '',
+      'productName': productName ?? '',
       'quantity': quantity,
       'totalPrice': totalPrice,
-      'date': date,
-      'clientPhone': clientPhone,
-      'clientName': clientName,
+      'date': date ?? '',
+      'clientPhone': clientPhone ?? '',
+      'clientName': clientName ?? '',
       'paymentAmount': paymentAmount,
-      'paymentDocument': paymentDocument,
+      'paymentDocument': paymentDocument ?? '',
       'notificationSent': notificationSent,
-      'priceListId': priceListId,
+      'priceListId': priceListId ?? '',
     };
   }
 
@@ -125,7 +126,7 @@ class OrderItem {
         paymentAmount: double.tryParse(map['Оплата']?.toString() ?? '0') ?? 0.0,
         paymentDocument: map['Платежный документ']?.toString() ?? '',
         notificationSent: (map['Уведомление отправлено']?.toString() == 'true'),
-        priceListId: map['ID Прайс-лист']?.toString() ?? '', // ← ИЗ GOOGLE
+        priceListId: map['ID Прайс-лист']?.toString() ?? '',
       );
     } else {
       // Данные из кэша (JSON) - теперь можно использовать fromJson

@@ -1,4 +1,4 @@
-//  lib/utils/parsing_utils.dart
+// lib/utils/parsing_utils.dart
 import 'dart:typed_data';
 
 class NumberUtils {
@@ -9,11 +9,46 @@ class NumberUtils {
 }
 
 class ParsingUtils {
-  // Парсит строку в double с поддержкой русских форматов (запятая как десятичный разделитель)
-  static double? parseDiscount(String? raw) {
-    if (raw == null || raw.trim().isEmpty) return null;
-    final cleaned = raw.replaceAll(RegExp(r'[^\d,.-]'), '');
+  // 🔥 УНИВЕРСАЛЬНЫЙ МЕТОД: принимает dynamic и конвертирует в double
+  static double? toDouble(dynamic value) {
+    if (value == null) return null;
+
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      return double.tryParse(trimmed);
+    }
+
+    return null;
+  }
+
+  // 🔥 ИСПРАВЛЕН: парсит скидку с поддержкой русских форматов, принимает dynamic
+  static double? parseDiscount(dynamic raw) {
+    if (raw == null) return null;
+
+    // Если уже число - возвращаем как double
+    if (raw is double) return raw;
+    if (raw is int) return raw.toDouble();
+    if (raw is num) return raw.toDouble();
+
+    // Если строка - обрабатываем
+    String str;
+    if (raw is String) {
+      str = raw.trim();
+    } else {
+      str = raw.toString().trim();
+    }
+
+    if (str.isEmpty) return null;
+
+    // Удаляем все, кроме цифр, запятых, точек и минуса
+    final cleaned = str.replaceAll(RegExp(r'[^\d,.-]'), '');
     if (cleaned.isEmpty) return null;
+
     final normalized = cleaned.replaceAll(',', '.');
     try {
       return double.parse(normalized);
@@ -22,49 +57,88 @@ class ParsingUtils {
     }
   }
 
-  /// Парсит строку в bool с поддержкой нескольких форматов
-  static bool? parseBool(String? value) {
+  /// 🔥 ИСПРАВЛЕН: парсит строку в bool с поддержкой нескольких форматов, принимает dynamic
+  static bool? parseBool(dynamic value) {
     if (value == null) return null;
-    final str = value.toLowerCase().trim();
-    return str == 'true' || str == '1' || str == 'да' || str == 'yes';
+
+    // Если уже bool
+    if (value is bool) return value;
+
+    // Если число
+    if (value is num) {
+      return value == 1;
+    }
+
+    // Если строка
+    final str = value.toString().toLowerCase().trim();
+    if (str.isEmpty) return null;
+
+    return str == 'true' ||
+        str == '1' ||
+        str == 'да' ||
+        str == 'yes' ||
+        str == 'истина';
   }
 
-  /// Безопасное преобразование строки в double (универсальный метод)
-  static double? parseDouble(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    try {
-      return double.tryParse(value.trim());
-    } catch (e) {
-      return null;
+  /// 🔥 ИСПРАВЛЕН: безопасное преобразование в double, принимает dynamic
+  static double? parseDouble(dynamic value) {
+    if (value == null) return null;
+
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      return double.tryParse(trimmed);
     }
+
+    return null;
   }
 
-  /// Безопасное преобразование строки в int
-  static int? parseInt(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    try {
-      return int.tryParse(value.trim());
-    } catch (e) {
-      return null;
+  /// 🔥 ИСПРАВЛЕН: безопасное преобразование в int, принимает dynamic
+  static int? parseInt(dynamic value) {
+    if (value == null) return null;
+
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is num) return value.toInt();
+
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      return int.tryParse(trimmed);
     }
+
+    return null;
   }
 
   /// Парсит наценку/скидку, поддерживающую суффикс "%"
   /// Примеры: "15", "20%", " 25.5 % "
-  static double? parseMarkup(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    final trimmed = value.trim();
-    String numberStr;
-    if (trimmed.endsWith('%')) {
-      numberStr = trimmed.substring(0, trimmed.length - 1).trim();
+  static double? parseMarkup(dynamic value) {
+    if (value == null) return null;
+
+    String str;
+    if (value is String) {
+      str = value.trim();
     } else {
-      numberStr = trimmed;
+      str = value.toString().trim();
     }
+
+    if (str.isEmpty) return null;
+
+    String numberStr;
+    if (str.endsWith('%')) {
+      numberStr = str.substring(0, str.length - 1).trim();
+    } else {
+      numberStr = str;
+    }
+
     return parseDouble(numberStr);
   }
 
   /// Парсит строку вида "1,2,3,4" в Uint8List
-  /// Используется, например, для хранения бинарных данных в Google Таблицах
   static Uint8List? parseByteList(String? input) {
     if (input == null || input.trim().isEmpty) return null;
     try {
@@ -82,7 +156,6 @@ class ParsingUtils {
   }
 
   /// Парсит дату в формате DD.MM.YYYY → DateTime
-  /// Если не удаётся — возвращает заглушку (можно изменить на null)
   static DateTime? parseDate(String? dateStr) {
     if (dateStr == null || dateStr.trim().isEmpty) return null;
     try {
@@ -98,6 +171,29 @@ class ParsingUtils {
     } catch (e) {
       // ignore
     }
-    return null; // или DateTime(2000, 1, 1), если нужна заглушка
+    return null;
+  }
+
+  /// 🔥 НОВЫЙ: универсальный метод для безопасного получения строки
+  static String? safeString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) {
+      // Если строка пустая или состоит только из пробелов - возвращаем null
+      return value.trim().isEmpty ? null : value.trim();
+    }
+    final str = value.toString().trim();
+    return str.isEmpty ? null : str;
+  }
+
+  /// Универсальный метод для безопасного получения числа
+  static num? safeNumber(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value;
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      return num.tryParse(trimmed);
+    }
+    return null;
   }
 }

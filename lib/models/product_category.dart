@@ -20,26 +20,28 @@ class ProductCategory {
     required this.wastePercentage, // Теперь обязательный параметр
   });
 
+  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory ProductCategory.fromJson(Map<String, dynamic> json) {
     return ProductCategory(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
       packagingQuantity: ParsingUtils.parseInt(json['packagingQuantity']) ?? 1,
-      packagingName: json['packagingName'] as String? ?? '',
+      packagingName: json['packagingName']?.toString() ?? '',
       weight: ParsingUtils.parseDouble(json['weight']) ?? 0.0,
-      unit: json['unit'] as String? ?? 'г',
+      unit: json['unit']?.toString() ?? 'г',
       wastePercentage: ParsingUtils.parseInt(json['wastePercentage']) ?? 10,
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
-      'name': name,
+      'id': id ?? '',
+      'name': name ?? '',
       'packagingQuantity': packagingQuantity,
-      'packagingName': packagingName,
+      'packagingName': packagingName ?? '',
       'weight': weight,
-      'unit': unit,
+      'unit': unit ?? 'г',
       'wastePercentage': wastePercentage,
     };
   }
@@ -47,12 +49,12 @@ class ProductCategory {
   // Для Google Таблиц
   Map<String, dynamic> toMap() {
     return {
-      'ID': id,
-      'Наименование': name,
+      'ID': id ?? '',
+      'Наименование': name ?? '',
       'Фасовка в таре': packagingQuantity.toString(),
-      'Тара': packagingName,
+      'Тара': packagingName ?? '',
       'Вес': weight.toString(),
-      'Ед.изм.': unit,
+      'Ед.изм.': unit ?? 'г',
       'Издержки': wastePercentage.toString(),
     };
   }

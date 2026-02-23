@@ -31,39 +31,42 @@ class StorageCondition {
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасное преобразование из JSON
   factory StorageCondition.fromJson(Map<String, dynamic> json) {
     return StorageCondition(
-      sheetName: json['sheetName'] as String,
-      entityId: json['entityId'] as String,
-      storageLocation: json['storageLocation'] as String,
-      temperature: json['temperature'] as String,
-      humidity: json['humidity'] as String,
-      shelfLife: json['shelfLife'] as String,
-      unit: json['unit'] as String,
+      sheetName: json['sheetName']?.toString() ?? '',
+      entityId: json['entityId']?.toString() ?? '',
+      storageLocation: json['storageLocation']?.toString() ?? '',
+      temperature: json['temperature']?.toString() ?? '',
+      humidity: json['humidity']?.toString() ?? '',
+      shelfLife: json['shelfLife']?.toString() ?? '',
+      unit: json['unit']?.toString() ?? '',
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'sheetName': sheetName,
-      'entityId': entityId,
-      'storageLocation': storageLocation,
-      'temperature': temperature,
-      'humidity': humidity,
-      'shelfLife': shelfLife,
-      'unit': unit,
+      'sheetName': sheetName ?? '',
+      'entityId': entityId ?? '',
+      'storageLocation': storageLocation ?? '',
+      'temperature': temperature ?? '',
+      'humidity': humidity ?? '',
+      'shelfLife': shelfLife ?? '',
+      'unit': unit ?? '',
     };
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toMap
   Map<String, dynamic> toMap() {
     return {
-      'Лист': sheetName,
-      'ID сущности': entityId,
-      'Место хранения': storageLocation,
-      'Температура': temperature,
-      'Влажность': humidity,
-      'Срок': shelfLife,
-      'Ед.изм.': unit,
+      'Лист': sheetName ?? '',
+      'ID сущности': entityId ?? '',
+      'Место хранения': storageLocation ?? '',
+      'Температура': temperature ?? '',
+      'Влажность': humidity ?? '',
+      'Срок': shelfLife ?? '',
+      'Ед.изм.': unit ?? '',
     };
   }
 }

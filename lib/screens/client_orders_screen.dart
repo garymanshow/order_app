@@ -1,5 +1,4 @@
 // lib/screens/client_orders_screen.dart
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
@@ -92,9 +91,9 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     if (minDate != null && maxDate != null) {
       setState(() {
         _focusedDay = DateTime.now().isBefore(minDate!)
-            ? DateTime(minDate!.year, minDate!.month, 1)
+            ? DateTime(minDate.year, minDate.month, 1)
             : DateTime.now().isAfter(maxDate!)
-                ? DateTime(maxDate!.year, maxDate!.month, 1)
+                ? DateTime(maxDate.year, maxDate.month, 1)
                 : DateTime.now();
         _selectedDay = DateTime.now();
       });

@@ -70,29 +70,31 @@ class Filling {
 
   factory Filling.fromJson(Map<String, dynamic> json) {
     return Filling(
-      sheetName: json['sheetName'] as String,
-      entityId: json['entityId'] as String,
-      name: json['name'] as String,
-      quantity: json['quantity'] as String?,
-      unit: json['unit'] as String?,
+      sheetName: json['sheetName']?.toString() ?? '',
+      entityId: json['entityId']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      quantity: json['quantity']?.toString(),
+      unit: json['unit']?.toString(),
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'sheetName': sheetName,
-      'entityId': entityId,
-      'name': name,
+      'sheetName': sheetName ?? '',
+      'entityId': entityId ?? '',
+      'name': name ?? '',
       'quantity': quantity,
       'unit': unit,
     };
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toMap
   Map<String, dynamic> toMap() {
     return {
-      'Лист': sheetName,
-      'ID сущности': entityId,
-      'Наименование': name,
+      'Лист': sheetName ?? '',
+      'ID сущности': entityId ?? '',
+      'Наименование': name ?? '',
       'Количество': quantity ?? '',
       'Ед.изм.': unit ?? '',
     };

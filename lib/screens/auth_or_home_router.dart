@@ -12,7 +12,7 @@ import 'driver_screen.dart';
 import 'manager_screen.dart';
 import 'warehouse_screen.dart';
 import 'client_selection_screen.dart';
-import 'role_selection_screen.dart'; // ← ДОБАВЛЕН ИМПОРТ
+import 'role_selection_screen.dart';
 
 class AuthOrHomeRouter extends StatelessWidget {
   @override
@@ -49,7 +49,7 @@ class AuthOrHomeRouter extends StatelessWidget {
       }
     }
 
-    // 🔥 ДЛЯ КЛИЕНТОВ — ПРОВЕРКА ПО ТЕЛЕФОНУ
+    // 🔥 ДЛЯ КЛИЕНТОВ — ИСПОЛЬЗУЕМ УЖЕ ЗАГРУЖЕННЫЕ ДАННЫЕ
     return ClientAddressOrPriceListScreen();
   }
 }
@@ -124,75 +124,90 @@ class _ClientAddressOrPriceListScreenState
       );
     }
 
-    // 🔥 ГЛАВНЫЙ КРИТЕРИЙ: КОЛИЧЕСТВО КЛИЕНТОВ С ОДНИМ ТЕЛЕФОНОМ
-    return FutureBuilder<List<Client>>(
-      future: ClientsService().fetchClientsByPhone(phone),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
+    // 🔥 ИСПОЛЬЗУЕМ УЖЕ ЗАГРУЖЕННЫЕ ДАННЫЕ ИЗ AuthProvider
+    try {
+      // Получаем всех клиентов из уже загруженных данных
+      final allClients = authProvider.clientData?.clients ?? [];
 
-        if (snapshot.hasError) {
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('❌ Ошибка загрузки данных'),
-                  SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      authProvider.logout();
-                      Navigator.pushNamedAndRemoveUntil(
-                          context, '/', (route) => false);
-                    },
-                    child: Text('Попробовать снова'),
-                  ),
-                ],
-              ),
+      print('📞 Всего клиентов в данных: ${allClients.length}');
+      print('📞 Ищем клиентов с телефоном: $phone');
+
+      // Фильтруем клиентов по телефону
+      final clientsWithPhone =
+          allClients.where((c) => c.phone == phone).toList();
+
+      print('📞 Найдено клиентов с этим телефоном: ${clientsWithPhone.length}');
+
+      if (clientsWithPhone.isEmpty) {
+        return Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Клиент не найден в загруженных данных'),
+                SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    authProvider.logout();
+                    Navigator.pushNamedAndRemoveUntil(
+                        context, '/', (route) => false);
+                  },
+                  child: Text('Вернуться к авторизации'),
+                ),
+              ],
             ),
+          ),
+        );
+      }
+
+      // 🔥 КЛЮЧЕВАЯ ЛОГИКА:
+      // Если найден только один клиент → прямой переход
+      // Если найдено несколько клиентов → показываем выбор
+// В ClientAddressOrPriceListScreen, найдите блок с clientsWithPhone.length == 1 и else
+      if (clientsWithPhone.length == 1) {
+        // Обновляем текущего клиента в AuthProvider
+        authProvider.setClient(clientsWithPhone.first);
+        // Используем Navigator.pushNamed для перехода
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Navigator.pushNamed(context, '/price');
+        });
+        return Container(); // временный пустой виджет
+      } else {
+        // Несколько клиентов с одним телефоном → выбор
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Navigator.pushNamed(
+            context,
+            '/clientSelection',
+            arguments: {
+              'phone': phone,
+              'clients': clientsWithPhone,
+            },
           );
-        }
-
-        final clients = snapshot.data ?? [];
-
-        if (clients.isEmpty) {
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('Клиент не найден'),
-                  SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      authProvider.logout();
-                      Navigator.pushNamedAndRemoveUntil(
-                          context, '/', (route) => false);
-                    },
-                    child: Text('Вернуться к авторизации'),
-                  ),
-                ],
+        });
+        return Container(); // временный пустой виджет
+      }
+    } catch (e) {
+      print('❌ Ошибка при обработке клиентов: $e');
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('❌ Ошибка загрузки данных в auth_or_home_router'),
+              Text('${e.toString()}'),
+              SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  authProvider.logout();
+                  Navigator.pushNamedAndRemoveUntil(
+                      context, '/', (route) => false);
+                },
+                child: Text('Попробовать снова'),
               ),
-            ),
-          );
-        }
-
-        // 🔥 КЛЮЧЕВАЯ ЛОГИКА:
-        // Если найден только один клиент → прямой переход
-        // Если найдено несколько клиентов → показываем выбор
-        if (clients.length == 1) {
-          // Обновляем текущего клиента в AuthProvider
-          authProvider.setClient(clients.first);
-          return PriceListScreen();
-        } else {
-          // Несколько клиентов с одним телефоном → выбор
-          return ClientSelectionScreen(
-            phone: phone,
-            clients: clients,
-          );
-        }
-      },
-    );
+            ],
+          ),
+        ),
+      );
+    }
   }
 }

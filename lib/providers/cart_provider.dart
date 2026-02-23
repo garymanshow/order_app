@@ -172,10 +172,8 @@ class CartProvider with ChangeNotifier {
     _deliveryCondition = null;
     if (clientData != null && client.city != null) {
       final deliveryConditions = clientData!.deliveryConditions;
-      if (deliveryConditions != null) {
-        _deliveryCondition = deliveryConditions
-            .firstWhereOrNull((cond) => cond.location == client.city);
-      }
+      _deliveryCondition = deliveryConditions
+          .firstWhereOrNull((cond) => cond.location == client.city);
     }
 
     _cartItems.clear();
@@ -191,10 +189,8 @@ class CartProvider with ChangeNotifier {
       // Обновляем условия доставки при изменении данных
       if (clientData != null) {
         final deliveryConditions = clientData!.deliveryConditions;
-        if (deliveryConditions != null) {
-          _deliveryCondition = deliveryConditions
-              .firstWhereOrNull((cond) => cond.location == _client!.city);
-        }
+        _deliveryCondition = deliveryConditions
+            .firstWhereOrNull((cond) => cond.location == _client!.city);
       }
     }
   }

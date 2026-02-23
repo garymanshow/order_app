@@ -139,7 +139,7 @@ class ClientSelectionScreen extends StatelessWidget {
                 iconColor: hasActiveOrders ? Colors.green : null,
                 onTap: () {
                   authProvider.setClient(clientWithTotal.client);
-                  Navigator.pushReplacementNamed(context, '/price');
+                  Navigator.pushNamed(context, '/price');
                 },
               );
             },

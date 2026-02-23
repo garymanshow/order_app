@@ -12,19 +12,21 @@ class IngredientInfo {
     required this.unit,
   });
 
+  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory IngredientInfo.fromJson(Map<String, dynamic> json) {
     return IngredientInfo(
-      name: json['name'] as String? ?? '',
+      name: json['name']?.toString() ?? '',
       quantity: ParsingUtils.parseDouble(json['quantity']) ?? 0.0,
-      unit: json['unit'] as String? ?? 'г',
+      unit: json['unit']?.toString() ?? 'г',
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'name': name,
+      'name': name ?? '',
       'quantity': quantity,
-      'unit': unit,
+      'unit': unit ?? 'г',
     };
   }
 

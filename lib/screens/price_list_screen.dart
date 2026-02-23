@@ -50,7 +50,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Ошибка загрузки данных'),
+                  Text('Ошибка загрузки данных в price_list_screen'),
                   ElevatedButton(
                     onPressed: () async {
                       // Повторная авторизация
@@ -67,6 +67,15 @@ class _PriceListScreenState extends State<PriceListScreen> {
 
         final user = authProvider.currentUser!;
         final allProducts = clientData.products;
+        print('📊 PriceListScreen данные:');
+        print('   - allProducts length: ${allProducts.length}');
+        if (allProducts.isNotEmpty) {
+          print(
+              '   - Первый продукт: ${allProducts.first.name} - ${allProducts.first.price}');
+          print('   - ID первого продукта: ${allProducts.first.id}');
+          print(
+              '   - Категория первого продукта: ${allProducts.first.categoryId}');
+        }
         final clientName = user.name ?? '';
         final currentMode = cartProvider.priceListMode;
 
@@ -102,7 +111,14 @@ class _PriceListScreenState extends State<PriceListScreen> {
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: () {
-                Navigator.of(context).pop();
+                // Просто возвращаемся назад
+                if (Navigator.canPop(context)) {
+                  Navigator.of(context).pop();
+                } else {
+                  // Если не можем вернуться, идем на главный экран
+                  Navigator.pushNamedAndRemoveUntil(
+                      context, '/', (route) => false);
+                }
               },
             ),
             actions: [
