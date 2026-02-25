@@ -6,7 +6,8 @@ import 'filling.dart';
 import 'nutrition_info.dart';
 import 'delivery_condition.dart';
 import 'client_category.dart';
-import 'client.dart'; // ← ДОБАВЬТЕ ЭТОТ ИМПОРТ
+import 'client.dart';
+import 'storage_condition.dart';
 
 class ClientData {
   List<Product> products = [];
@@ -16,7 +17,8 @@ class ClientData {
   List<NutritionInfo> nutritionInfos = [];
   List<DeliveryCondition> deliveryConditions = [];
   List<ClientCategory> clientCategories = [];
-  List<Client> clients = []; // ← ДОБАВЬТЕ ЭТО ПОЛЕ
+  List<Client> clients = [];
+  List<StorageCondition> storageConditions = [];
   Map<String, dynamic> cart = {};
 
   // Индексы для быстрого поиска

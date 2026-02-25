@@ -120,7 +120,7 @@ class AuthProvider with ChangeNotifier {
     });
   }
 
-// 🔥 ДЕСЕРИАЛИЗАЦИЯ ДАННЫХ КЛИЕНТА
+  // 🔥 ДЕСЕРИАЛИЗАЦИЯ ДАННЫХ КЛИЕНТА
   ClientData _deserializeClientData(dynamic data) {
     if (data == null || data is! Map<String, dynamic>) {
       return ClientData();
@@ -198,6 +198,17 @@ class AuthProvider with ChangeNotifier {
 
     if (clientDataMap['cart'] != null && clientDataMap['cart'] is Map) {
       clientData.cart = clientDataMap['cart'] as Map<String, dynamic>;
+    }
+
+    // 🔥 ПРОВЕРКА ЗАКАЗОВ ПОСЛЕ ДЕСЕРИАЛИЗАЦИИ
+    print('🔍 Проверка заказов:');
+    if (clientData.orders.isNotEmpty) {
+      for (var order in clientData.orders) {
+        print(
+            '   - Заказ: ${order.productName}, статус: ${order.status}, цена: ${order.totalPrice}');
+      }
+    } else {
+      print('   - Заказы отсутствуют');
     }
 
     // Строим индексы для быстрого поиска

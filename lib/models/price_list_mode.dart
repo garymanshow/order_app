@@ -5,11 +5,11 @@ extension PriceListModeExtension on PriceListMode {
   String get label {
     switch (this) {
       case PriceListMode.full:
-        return 'Полный прайс';
+        return 'Полный';
       case PriceListMode.byCategory:
-        return 'По категориям';
+        return 'Категории';
       case PriceListMode.contractOnly:
-        return 'Только договорные';
+        return 'Договор';
     }
   }
 

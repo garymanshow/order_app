@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; // ← ДОБАВЛЕНО
 
 // Screens
 import 'screens/auth_or_home_router.dart';
@@ -20,6 +22,10 @@ import 'providers/theme_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Инициализация локализации дат для русского языка
+  await initializeDateFormatting('ru_RU', null);
+  print('✅ Локализация дат инициализирована');
+
   if (!kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS ||
@@ -32,8 +38,10 @@ void main() async {
 
   if (await envFile.exists()) {
     await dotenv.load(fileName: '$envPath/.env');
+    print('✅ .env файл загружен');
   } else {
-    print('Внимание: файл .env не найден. Используются значения по умолчанию.');
+    print(
+        '⚠️ Внимание: файл .env не найден. Используются значения по умолчанию.');
   }
 
   runApp(MyApp());
@@ -78,6 +86,19 @@ class MyAppContent extends StatelessWidget {
           themeMode: themeProvider.themeMode,
           home: AuthOrHomeRouter(),
           debugShowCheckedModeBanner: false,
+
+          // 🔥 Локализация Material-компонентов
+          locale: const Locale('ru', 'RU'),
+          supportedLocales: const [
+            Locale('ru', 'RU'),
+            Locale('en', 'US'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+
           routes: {
             '/price': (context) => PriceListScreen(),
             '/cart': (context) => CartScreen(),
