@@ -1,449 +1,251 @@
 // lib/screens/client_orders_screen.dart
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
+import 'package:table_calendar/table_calendar.dart';
 import '../models/order_item.dart';
-import '../utils/parsing_utils.dart';
+import '../models/client.dart';
+import '../providers/auth_provider.dart';
 
 class ClientOrdersScreen extends StatefulWidget {
   const ClientOrdersScreen({super.key});
 
   @override
-  _ClientOrdersScreenState createState() => _ClientOrdersScreenState();
+  State<ClientOrdersScreen> createState() => _ClientOrdersScreenState();
 }
 
 class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
-  late CalendarFormat _calendarFormat;
-  late DateTime _focusedDay;
-  late DateTime _selectedDay;
+  DateTime _focusedDay = DateTime.now();
+  DateTime? _selectedDay;
+  Map<DateTime, List<OrderItem>> _ordersByDate = {};
+  double _totalDebt = 0;
+  bool _isInitialized = false;
+
+  // Локализация
+  final DateFormat _dateFormat = DateFormat('d MMMM yyyy', 'ru_RU');
+  final DateFormat _monthYearFormat = DateFormat('MMMM yyyy', 'ru_RU');
 
   @override
   void initState() {
     super.initState();
-    final today = DateTime.now();
-    _calendarFormat = CalendarFormat.month;
-    _focusedDay = today;
-    _selectedDay = today;
+    _selectedDay = _focusedDay;
   }
 
-  // 🔥 Получаем заказы из AuthProvider
-  List<OrderItem> _getOrdersForDate(DateTime date) {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final client = authProvider.currentUser;
-    final clientData = authProvider.clientData;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
-    if (client == null || clientData == null) return [];
-
-    final dateString = '${date.day}.${date.month}.${date.year}';
-    return clientData.orders
-        .where((order) =>
-            order.date == dateString &&
-            order.clientPhone == client.phone &&
-            order.clientName == client.name)
-        .toList();
+    if (!_isInitialized) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadOrders();
+      });
+    }
   }
 
-  // 🔥 Рассчитываем диапазон дат из актуальных данных
-  void _calculateDateRange() {
+  void _loadOrders() {
+    if (_isInitialized) return;
+
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final clientData = authProvider.clientData;
-    final client = authProvider.currentUser;
+    final currentClient = authProvider.currentUser as Client?;
 
-    if (clientData == null || client == null) {
-      setState(() {
-        _focusedDay = DateTime.now();
-        _selectedDay = DateTime.now();
-      });
-      return;
-    }
+    if (currentClient == null) return;
 
-    final clientOrders = clientData.orders
+    final allOrders = authProvider.clientData?.orders ?? [];
+
+    final clientOrders = allOrders
         .where((order) =>
-            order.clientPhone == client.phone &&
-            order.clientName == client.name)
+            order.clientPhone == currentClient.phone &&
+            order.clientName == currentClient.name)
         .toList();
 
-    if (clientOrders.isEmpty) {
-      setState(() {
-        _focusedDay = DateTime.now();
-        _selectedDay = DateTime.now();
-      });
-      return;
-    }
-
-    DateTime? minDate;
-    DateTime? maxDate;
-
+    double debt = 0;
     for (var order in clientOrders) {
-      final date = ParsingUtils.parseDate(order.date);
-      if (date != null) {
-        if (minDate == null || date.isBefore(minDate)) {
-          minDate = date;
-        }
-        if (maxDate == null || date.isAfter(maxDate)) {
-          maxDate = date;
-        }
+      if (order.status == 'доставлен') {
+        debt += order.totalPrice;
       }
     }
 
-    if (minDate != null && maxDate != null) {
-      setState(() {
-        _focusedDay = DateTime.now().isBefore(minDate!)
-            ? DateTime(minDate!.year, minDate!.month, 1)
-            : DateTime.now().isAfter(maxDate!)
-                ? DateTime(maxDate!.year, maxDate!.month, 1)
-                : DateTime.now();
-        _selectedDay = DateTime.now();
-      });
-    }
-  }
+    final Map<DateTime, List<OrderItem>> ordersByDate = {};
 
-  Color? _getStatusColor(String status) {
-    switch (status) {
-      case 'оформлен':
-        return Colors.blue;
-      case 'производство':
-        return Colors.orange;
-      case 'готов':
-        return Colors.purple;
-      case 'доставлен':
-        return Colors.green;
-      case 'оплачен':
-        return Colors.yellow[700]!;
-      default:
-        return null;
-    }
-  }
-
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'оформлен':
-        return 'Оформлен';
-      case 'производство':
-        return 'В производстве';
-      case 'готов':
-        return 'Готов';
-      case 'доставлен':
-        return 'Получен';
-      case 'оплачен':
-        return 'Оплачен';
-      default:
-        return status;
-    }
-  }
-
-  // 🔥 Расчёт долга из актуальных данных
-  double _calculateDebt() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final client = authProvider.currentUser;
-    final clientData = authProvider.clientData;
-
-    if (client == null || clientData == null) return 0.0;
-
-    final clientOrders = clientData.orders
-        .where((order) =>
-            order.clientPhone == client.phone &&
-            order.clientName == client.name)
-        .toList();
-
-    double totalDebt = 0;
     for (var order in clientOrders) {
-      if (order.status == 'доставлен' &&
-          order.paymentAmount < order.totalPrice) {
-        totalDebt += order.totalPrice - order.paymentAmount;
+      if (order.status == 'оформлен') continue;
+
+      try {
+        final date = DateTime.parse(order.date);
+        final normalizedDate = DateTime(date.year, date.month, date.day);
+
+        ordersByDate.putIfAbsent(normalizedDate, () => []).add(order);
+      } catch (e) {
+        print('❌ Ошибка парсинга даты: ${order.date}');
       }
     }
-    return totalDebt;
+
+    setState(() {
+      _ordersByDate = ordersByDate;
+      _totalDebt = debt;
+      _isInitialized = true;
+    });
+
+    print('📅 Загружено заказов для календаря: ${clientOrders.length}');
+    print('📅 Долг: $_totalDebt');
+  }
+
+  List<OrderItem> _getOrdersForDay(DateTime day) {
+    final normalized = DateTime(day.year, day.month, day.day);
+    return _ordersByDate[normalized] ?? [];
   }
 
   @override
   Widget build(BuildContext context) {
-    // 🔥 Слушаем AuthProvider для обновления
-    final authProvider = Provider.of<AuthProvider>(context);
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, child) {
+        final currentClient = authProvider.currentUser as Client?;
 
-    // Проверка состояния авторизации
-    if (!authProvider.isAuthenticated || authProvider.isLoading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Мои заказы')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
+        if (currentClient == null) {
+          return const Scaffold(
+            body: Center(child: Text('Клиент не выбран')),
+          );
+        }
 
-    // Проверка наличия данных
-    final clientData = authProvider.clientData;
-    if (clientData == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Ошибка')),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        return Scaffold(
+          appBar: AppBar(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Мои заказы - ${currentClient.name}'),
+                if (_totalDebt > 0)
+                  Text(
+                    'Долг: ${_totalDebt.toStringAsFixed(2)} ₽',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.red[300],
+                      fontWeight: FontWeight.normal,
+                    ),
+                  ),
+              ],
+            ),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          body: Column(
             children: [
-              const Text('Данные заказов не загружены'),
-              ElevatedButton(
-                onPressed: () async {
-                  await authProvider.login(authProvider.currentUser!.phone!);
+              TableCalendar(
+                firstDay: DateTime.utc(2020, 1, 1),
+                lastDay: DateTime.utc(2030, 12, 31),
+                focusedDay: _focusedDay,
+                calendarFormat: CalendarFormat.month,
+                availableCalendarFormats: const {
+                  CalendarFormat.month: 'Месяц',
                 },
-                child: const Text('Повторить загрузку'),
+                locale: 'ru_RU',
+                // 🔥 Устанавливаем понедельник как первый день недели
+                startingDayOfWeek: StartingDayOfWeek.monday,
+                headerStyle: HeaderStyle(
+                  titleTextStyle: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  titleTextFormatter: (date, locale) =>
+                      _monthYearFormat.format(date),
+                  formatButtonVisible: false,
+                  leftChevronIcon: const Icon(Icons.chevron_left),
+                  rightChevronIcon: const Icon(Icons.chevron_right),
+                ),
+                calendarStyle: CalendarStyle(
+                  weekendTextStyle: const TextStyle(color: Colors.red),
+                  selectedDecoration: const BoxDecoration(
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                  todayDecoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  markersMaxCount: 1,
+                ),
+                daysOfWeekStyle: DaysOfWeekStyle(
+                  weekdayStyle: const TextStyle(fontWeight: FontWeight.bold),
+                  weekendStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
+                ),
+                selectedDayPredicate: (day) {
+                  return isSameDay(_selectedDay, day);
+                },
+                onDaySelected: (selectedDay, focusedDay) {
+                  setState(() {
+                    _selectedDay = selectedDay;
+                    _focusedDay = focusedDay;
+                  });
+                },
+                onPageChanged: (focusedDay) {
+                  _focusedDay = focusedDay;
+                },
+                calendarBuilders: CalendarBuilders(
+                  markerBuilder: (context, date, events) {
+                    final orders = _getOrdersForDay(date);
+                    if (orders.isEmpty) return const SizedBox();
+
+                    Color markerColor = Colors.grey;
+                    for (var order in orders) {
+                      final color = _getStatusColor(order.status);
+                      if (color != Colors.grey) {
+                        markerColor = color;
+                        break;
+                      }
+                    }
+
+                    return Positioned(
+                      bottom: 1,
+                      right: 1,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: markerColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Легенда
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Wrap(
+                  spacing: 16,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    _buildLegendItem('Производство', Colors.blue),
+                    _buildLegendItem('Готов', Colors.purple),
+                    _buildLegendItem('Доставлен', Colors.green),
+                    _buildLegendItem('Оплачен', Colors.grey),
+                  ],
+                ),
+              ),
+
+              const Divider(),
+
+              // Список заказов на выбранную дату
+              Expanded(
+                child: _buildOrderList(_selectedDay),
               ),
             ],
           ),
-        ),
-      );
-    }
-
-    // Автоматически пересчитываем диапазон дат
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _calculateDateRange();
-    });
-
-    final hasDebt = _calculateDebt() > 0;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Мои заказы'),
-        backgroundColor: hasDebt ? Colors.red[50] : null,
-      ),
-      body: Column(
-        children: [
-          if (hasDebt)
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.red[50],
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.warning, color: Colors.red),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Задолженность: ${_calculateDebt().toStringAsFixed(2)} ₽',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red[800],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          TableCalendar(
-            firstDay: DateTime.utc(2020, 1, 1),
-            lastDay: DateTime.utc(2030, 12, 31),
-            focusedDay: _focusedDay,
-            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-            onDaySelected: (selectedDay, focusedDay) {
-              if (!isSameDay(_selectedDay, selectedDay)) {
-                setState(() {
-                  _selectedDay = selectedDay;
-                  _focusedDay = focusedDay;
-                });
-              }
-            },
-            calendarFormat: _calendarFormat,
-            onFormatChanged: (format) {
-              if (_calendarFormat != format) {
-                setState(() {
-                  _calendarFormat = format;
-                });
-              }
-            },
-            startingDayOfWeek: StartingDayOfWeek.monday,
-            calendarStyle: CalendarStyle(
-              outsideDaysVisible: false,
-              defaultTextStyle: TextStyle(color: Colors.grey[400]),
-              weekendTextStyle: TextStyle(color: Colors.grey[400]),
-            ),
-            calendarBuilders: CalendarBuilders(
-              dowBuilder: (context, day) {
-                return Center(
-                  child: Text(
-                    DateFormat.E().format(day).substring(0, 1),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                );
-              },
-              defaultBuilder: (context, day, events) {
-                final hasOrders = _getOrdersForDate(day).isNotEmpty;
-                final isSelected = isSameDay(_selectedDay, day);
-
-                return GestureDetector(
-                  onTap: () {
-                    if (hasOrders) {
-                      setState(() {
-                        _selectedDay = day;
-                        _focusedDay = day;
-                      });
-                    }
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.blue[100] : Colors.transparent,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${day.day}',
-                        style: TextStyle(
-                          color: hasOrders ? Colors.black : Colors.grey[400],
-                          fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-              markerBuilder: (context, day, events) {
-                final orders = _getOrdersForDate(day);
-                if (orders.isEmpty) return null;
-
-                // Берем цвет первого заказа в день
-                final color = _getStatusColor(orders.first.status);
-                if (color == null) return null;
-
-                return Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
-                );
-              },
-            ),
-            eventLoader: (day) => _getOrdersForDate(day),
-          ),
-          _buildDetailedDayInfo(),
-          _buildLegend(),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildDetailedDayInfo() {
-    final orders = _getOrdersForDate(_selectedDay);
-    if (orders.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          'Нет заказов на ${_selectedDay.day}.${_selectedDay.month}.${_selectedDay.year}',
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    return Expanded(
-      child: ListView.builder(
-        itemCount: orders.length,
-        itemBuilder: (context, index) {
-          final order = orders[index];
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    order.productName,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Количество: ${order.quantity} шт'),
-                      Text('${order.totalPrice.toStringAsFixed(2)} ₽',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(order.status)
-                          ?.withAlpha((0.2 * 255).toInt()),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      _getStatusText(order.status),
-                      style: TextStyle(color: _getStatusColor(order.status)),
-                    ),
-                  ),
-                  if (order.status == 'доставлен' || order.isPaid)
-                    Column(
-                      children: [
-                        const SizedBox(height: 8),
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        if (order.paymentAmount > 0)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Оплачено:'),
-                              Text(
-                                  '${order.paymentAmount.toStringAsFixed(2)} ₽',
-                                  style: const TextStyle(color: Colors.green)),
-                            ],
-                          ),
-                        if (order.status == 'доставлен' && !order.isPaid)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('К оплате:'),
-                              Text(
-                                  '${(order.totalPrice - order.paymentAmount).toStringAsFixed(2)} ₽',
-                                  style: const TextStyle(color: Colors.red)),
-                            ],
-                          ),
-                        if (order.paymentDocument.isNotEmpty)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Платёжный документ:'),
-                              Flexible(
-                                child: Text(
-                                  order.paymentDocument,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildLegend() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Wrap(
-        spacing: 16,
-        runSpacing: 8,
-        children: [
-          _buildLegendItem('Оформлен', Colors.blue),
-          _buildLegendItem('В производстве', Colors.orange),
-          _buildLegendItem('Готов', Colors.purple),
-          _buildLegendItem('Получен', Colors.green),
-          _buildLegendItem('Оплачен', Colors.yellow[700]!),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(String text, Color color) {
+  Widget _buildLegendItem(String label, Color color) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -456,8 +258,107 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
           ),
         ),
         const SizedBox(width: 4),
-        Text(text, style: const TextStyle(fontSize: 12)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12),
+        ),
       ],
     );
+  }
+
+  Widget _buildOrderList(DateTime? selectedDay) {
+    if (selectedDay == null) {
+      return const Center(child: Text('Выберите дату'));
+    }
+
+    final orders = _getOrdersForDay(selectedDay);
+
+    if (orders.isEmpty) {
+      return Center(
+        child: Text(
+          'Нет заказов на ${_dateFormat.format(selectedDay)}',
+          style: const TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: orders.length,
+      padding: const EdgeInsets.all(16),
+      itemBuilder: (context, index) {
+        final order = orders[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: _getStatusColor(order.status),
+                shape: BoxShape.circle,
+              ),
+            ),
+            title: Text(
+              order.productName,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            subtitle: Text(
+              '${order.quantity} шт × ${(order.totalPrice / order.quantity).toStringAsFixed(2)} ₽',
+              style: const TextStyle(fontSize: 12),
+            ),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${order.totalPrice.toStringAsFixed(2)} ₽',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
+                Text(
+                  _getStatusText(order.status),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _getStatusColor(order.status).withOpacity(0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'производство':
+        return Colors.blue;
+      case 'готов':
+        return Colors.purple;
+      case 'доставлен':
+        return Colors.green;
+      case 'оплачен':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'производство':
+        return 'В производстве';
+      case 'готов':
+        return 'Готов';
+      case 'доставлен':
+        return 'Доставлен';
+      case 'оплачен':
+        return 'Оплачен';
+      default:
+        return status;
+    }
   }
 }

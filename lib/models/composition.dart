@@ -27,31 +27,33 @@ class Composition {
 
   factory Composition.fromJson(Map<String, dynamic> json) {
     return Composition(
-      sheetName: json['sheetName'] as String,
-      entityId: json['entityId'] as String,
-      ingredientName: json['ingredientName'] as String,
-      quantity: json['quantity'] as String,
-      unit: json['unit'] as String,
+      sheetName: json['sheetName']?.toString() ?? '',
+      entityId: json['entityId']?.toString() ?? '',
+      ingredientName: json['ingredientName']?.toString() ?? '',
+      quantity: json['quantity']?.toString() ?? '',
+      unit: json['unit']?.toString() ?? '',
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: добавляем защиту от null в toJson
   Map<String, dynamic> toJson() {
     return {
-      'sheetName': sheetName,
-      'entityId': entityId,
-      'ingredientName': ingredientName,
-      'quantity': quantity,
-      'unit': unit,
+      'sheetName': sheetName ?? '',
+      'entityId': entityId ?? '',
+      'ingredientName': ingredientName ?? '',
+      'quantity': quantity ?? '',
+      'unit': unit ?? '',
     };
   }
 
+  // 🔥 ИСПРАВЛЕНО: добавляем защиту от null в toMap
   Map<String, dynamic> toMap() {
     return {
-      'Лист': sheetName,
-      'ID сущности': entityId,
-      'Ингредиент': ingredientName,
-      'Количество': quantity,
-      'Ед.изм.': unit,
+      'Лист': sheetName ?? '',
+      'ID сущности': entityId ?? '',
+      'Ингредиент': ingredientName ?? '',
+      'Количество': quantity ?? '',
+      'Ед.изм.': unit ?? '',
     };
   }
 }

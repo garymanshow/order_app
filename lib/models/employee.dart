@@ -27,28 +27,41 @@ class Employee extends User {
     );
   }
 
-  // 🔥 fromJson для восстановления из кэша
+  // 🔥 БЕЗОПАСНЫЙ fromJson для восстановления из кэша
   factory Employee.fromJson(Map<String, dynamic> json) {
+    // Безопасное преобразование bool
+    bool safeBool(dynamic value) {
+      if (value == null) return false;
+      if (value is bool) return value;
+      if (value is num) return value == 1;
+      if (value is String) {
+        return value.toLowerCase() == 'true' || value == '1';
+      }
+      return false;
+    }
+
     return Employee(
-      name: json['name'] as String?,
-      phone: json['phone'] as String?,
-      role: json['role'] as String?,
-      twoFactorAuth: json['twoFactorAuth'] as bool? ?? false,
-      fcm: json['fcm'] as String?,
+      name: json['name']?.toString(),
+      phone: json['phone']?.toString(),
+      role: json['role']?.toString(),
+      twoFactorAuth: safeBool(json['twoFactorAuth']),
+      fcm: json['fcm']?.toString(),
     );
   }
 
-  // 🔥 toJson для сохранения в кэш
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson для сохранения в кэш
   @override
   Map<String, dynamic> toJson() {
     return {
       'name': name,
       'phone': phone,
-      'role': role, // ← ключевое поле для отличия от Client
+      'role': role,
       'twoFactorAuth': twoFactorAuth,
       'fcm': fcm,
     };
   }
+  // Здесь всё нормально, так как JSON допускает null значения
+  // name, phone, role, fcm могут быть null - это допустимо
 
   // 🔥 ДОБАВЛЕН toMap для Google Таблиц
   Map<String, dynamic> toMap() {

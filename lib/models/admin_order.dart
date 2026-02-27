@@ -23,20 +23,21 @@ class AdminOrder {
     required this.clientName,
   });
 
-  // 🔥 ДОБАВЛЕНЫ МЕТОДЫ СЕРИАЛИЗАЦИИ
+  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory AdminOrder.fromJson(Map<String, dynamic> json) {
     return AdminOrder(
-      id: json['id'] as String,
-      status: json['status'] as String,
-      productName: json['productName'] as String,
+      id: json['id']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'оформлен',
+      productName: json['productName']?.toString() ?? '',
       quantity: ParsingUtils.parseInt(json['quantity']) ?? 0,
-      totalPrice: ParsingUtils.parseDouble(json['totalPrice']) ?? 0.00,
-      date: json['date'] as String,
-      phone: json['phone'] as String,
-      clientName: json['clientName'] as String,
+      totalPrice: ParsingUtils.parseDouble(json['totalPrice']) ?? 0.0,
+      date: json['date']?.toString() ?? '',
+      phone: json['phone']?.toString() ?? '',
+      clientName: json['clientName']?.toString() ?? '',
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson (всегда возвращаем строки, а не null)
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -50,6 +51,7 @@ class AdminOrder {
     };
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный fromMap
   factory AdminOrder.fromMap(Map<String, dynamic> map) {
     // Поддержка данных из Google Таблиц
     if (map.containsKey('ID') || map.containsKey('Статус')) {

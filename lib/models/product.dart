@@ -11,12 +11,11 @@ class Product {
   final double price;
   final String nutrition;
   final String storage;
-  final String
-      packaging; // ← это название тары (например, "Транспортный контейнер")
+  final String packaging;
   final int multiplicity;
   final String categoryName;
-  final String _categoryId; // ← приватное поле
-  final int wastePercentage; // ← НОВОЕ ПОЛЕ: процент издержек
+  final String _categoryId;
+  final int wastePercentage;
 
   Product({
     required this.id,
@@ -32,21 +31,15 @@ class Product {
     this.multiplicity = 1,
     this.categoryName = '',
     String categoryId = '',
-    this.wastePercentage = 10, // ← по умолчанию 10%
+    this.wastePercentage = 10,
   }) : _categoryId = categoryId;
 
-  // 🔥 ЯВНЫЙ ГЕТТЕР
   String get categoryId => _categoryId;
-  String getCategoryId() {
-    return _categoryId;
-  }
 
-  // Метод для получения коэффициента издержек
   double getWasteMultiplier() {
     return 1 + (wastePercentage / 100.0);
   }
 
-  // Остальные геттеры
   bool get hasImageUrl => imageUrl != null && imageUrl!.isNotEmpty;
   bool get hasImageBase64 => imageBase64 != null && imageBase64!.isNotEmpty;
 
@@ -65,39 +58,40 @@ class Product {
       'multiplicity': multiplicity,
       'categoryName': categoryName,
       'categoryId': _categoryId,
-      'wastePercentage': wastePercentage, // ← добавлено
+      'wastePercentage': wastePercentage,
     };
   }
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      imageUrl: json['imageUrl'] as String?,
-      imageBase64: json['imageBase64'] as String?,
-      composition: json['composition'] as String? ?? '',
-      weight: json['weight'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      imageUrl: json['imageUrl']?.toString(),
+      imageBase64: json['imageBase64']?.toString(),
+      composition: json['composition']?.toString() ?? '',
+      weight: json['weight']?.toString() ?? '',
       price: ParsingUtils.parseDouble(json['price']) ?? 0.0,
-      nutrition: json['nutrition'] as String? ?? '',
-      storage: json['storage'] as String? ?? '',
-      packaging: json['packaging'] as String? ?? '',
+      nutrition: json['nutrition']?.toString() ?? '',
+      storage: json['storage']?.toString() ?? '',
+      packaging: json['packaging']?.toString() ?? '',
       multiplicity: ParsingUtils.parseInt(json['multiplicity']) ?? 1,
-      categoryName: json['categoryName'] as String? ?? '',
-      categoryId: json['categoryId'] as String? ?? '',
-      wastePercentage:
-          ParsingUtils.parseInt(json['wastePercentage']) ?? 10, // ← добавлено
+      categoryName: json['categoryName']?.toString() ?? '',
+      categoryId: json['categoryId']?.toString() ?? '',
+      wastePercentage: ParsingUtils.parseInt(json['wastePercentage']) ?? 10,
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: fromMap для данных из Google Sheets (с русскими ключами)
   factory Product.fromMap(Map<String, dynamic> map) {
-    // Вспомогательная функция для парсинга процента издержек
-    int parseWastePercentage(String? value) {
-      if (value == null || value.isEmpty) return 10;
-      final parsed = int.tryParse(value);
-      return parsed ?? 10;
-    }
+    print('🔄 Product.fromMap START');
+    print('   - Все ключи: ${map.keys}');
+    print('   - Название: ${map['Название']}');
+    print('   - ID: ${map['ID']}');
+    print('   - Цена: ${map['Цена']}');
+    print('   - Кратность: ${map['Кратность']}');
+    print('   - ID Категории прайса: ${map['ID Категории прайса']}');
 
-    return Product(
+    final product = Product(
       id: map['ID']?.toString() ?? '',
       name: map['Название']?.toString() ?? '',
       imageUrl: map['Фото']?.toString(),
@@ -107,31 +101,28 @@ class Product {
       price: double.tryParse(map['Цена']?.toString() ?? '0') ?? 0.0,
       nutrition: map['Пищевая ценность']?.toString() ?? '',
       storage: map['Условия хранения']?.toString() ?? '',
-      packaging: map['Упаковка']?.toString() ?? '', // ← это название тары
+      packaging: map['Упаковка']?.toString() ?? '',
       multiplicity: int.tryParse(map['Кратность']?.toString() ?? '1') ?? 1,
-      categoryName: map['Категория']?.toString() ?? '',
-      categoryId: map['ID категории']?.toString() ?? '',
-      wastePercentage:
-          parseWastePercentage(map['Издержки']?.toString()), // ← добавлено
+      categoryName: '', // пока нет в таблице
+      categoryId: map['ID Категории прайса']?.toString() ?? '',
+      wastePercentage: 10,
     );
+
+    print('   ✅ Создан продукт: ${product.name} - ${product.price}');
+    print('🔄 Product.fromMap END');
+
+    return product;
   }
 
   Map<String, dynamic> toMap() {
     return {
       'ID': id,
+      'ID Категории прайса': _categoryId,
       'Название': name,
-      'Фото': imageUrl ?? '',
-      'Фото_base64': imageBase64 ?? '',
-      'Состав': composition,
-      'Вес': weight,
       'Цена': price.toString(),
-      'Пищевая ценность': nutrition,
-      'Условия хранения': storage,
-      'Упаковка': packaging,
       'Кратность': multiplicity.toString(),
-      'Категория': categoryName,
-      'ID категории': _categoryId,
-      'Издержки': wastePercentage.toString(), // ← добавлено
+      'Фото': imageUrl ?? '',
+      'Описание': '', // пока нет в модели
     };
   }
 }

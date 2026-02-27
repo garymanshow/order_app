@@ -29,6 +29,7 @@ class PriceItem {
     this.description,
   });
 
+  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory PriceItem.fromJson(Map<String, dynamic> json) {
     final ingredientsList = json['ingredients'] as List?;
     final ingredients = ingredientsList
@@ -37,27 +38,28 @@ class PriceItem {
         [];
 
     return PriceItem(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
       price: ParsingUtils.parseDouble(json['price']) ?? 0.0,
-      category: json['category'] as String? ?? '',
-      unit: json['unit'] as String? ?? 'шт',
+      category: json['category']?.toString() ?? '',
+      unit: json['unit']?.toString() ?? 'шт',
       weight: ParsingUtils.parseDouble(json['weight']) ?? 0.0,
       ingredients: ingredients,
       nutrition: json['nutrition'] as Map<String, dynamic>? ?? {},
-      photoUrl: json['photoUrl'] as String?,
+      photoUrl: json['photoUrl']?.toString(),
       multiplicity: ParsingUtils.parseInt(json['multiplicity']) ?? 1,
-      description: json['description'] as String?,
+      description: json['description']?.toString(),
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
-      'name': name,
+      'id': id ?? '',
+      'name': name ?? '',
       'price': price,
-      'category': category,
-      'unit': unit,
+      'category': category ?? '',
+      'unit': unit ?? 'шт',
       'weight': weight,
       'ingredients': ingredients.map((i) => i.toJson()).toList(),
       'nutrition': nutrition,
@@ -70,15 +72,15 @@ class PriceItem {
   // Для Google Таблиц (если нужно)
   Map<String, dynamic> toMap() {
     return {
-      'ID': id,
-      'Наименование': name,
+      'ID': id ?? '',
+      'Наименование': name ?? '',
       'Цена': price.toString(),
-      'Категория': category,
-      'Ед.изм.': unit,
+      'Категория': category ?? '',
+      'Ед.изм.': unit ?? 'шт',
       'Вес': weight.toString(),
       'Фото URL': photoUrl ?? '',
       'Кратность': multiplicity.toString(),
-      'Описание': description.toString(),
+      'Описание': description ?? '',
     };
   }
 
@@ -92,12 +94,11 @@ class PriceItem {
       weight: double.tryParse(map['Вес']?.toString() ?? '0') ?? 0.0,
       photoUrl: map['Фото URL']?.toString().isNotEmpty == true
           ? map['Фото URL']?.toString()
-          : null, // ← ДОБАВЛЕНО
-      multiplicity:
-          int.tryParse(map['Кратность']?.toString() ?? '1') ?? 1, // ← ДОБАВЛЕНО
+          : null,
+      multiplicity: int.tryParse(map['Кратность']?.toString() ?? '1') ?? 1,
       description: map['Описание']?.toString().isNotEmpty == true
           ? map['Описание']?.toString()
-          : null, // ← ДОБАВЬТЕ СЮДА
+          : null,
     );
   }
 }

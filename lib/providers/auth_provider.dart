@@ -3,12 +3,17 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:convert';
+import '../models/client_category.dart';
 import '../models/client.dart';
 import '../models/client_data.dart';
+import '../models/composition.dart';
+import '../models/delivery_condition.dart';
 import '../models/employee.dart';
+import '../models/filling.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
 import '../models/sheet_metadata.dart';
+import '../models/nutrition_info.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 
@@ -123,13 +128,15 @@ class AuthProvider with ChangeNotifier {
 
     print('🔍 Десериализация products: ${data['products']}');
     print('🔍 Десериализация orders: ${data['orders']}');
+    print('🔍 Десериализация clients: ${data['clients']}');
 
     final clientData = ClientData();
-    final clientDataMap = data; // Убран ненужный кастинг
+    final clientDataMap = data;
 
     if (clientDataMap['products'] != null) {
+      print('🔍 Десериализация products (используем fromMap)');
       clientData.products = (clientDataMap['products'] as List?)
-              ?.map((item) => Product.fromJson(item as Map<String, dynamic>))
+              ?.map((item) => Product.fromMap(item as Map<String, dynamic>))
               .toList() ??
           [];
     }
@@ -141,42 +148,133 @@ class AuthProvider with ChangeNotifier {
           [];
     }
 
+    if (clientDataMap['compositions'] != null) {
+      clientData.compositions = (clientDataMap['compositions'] as List?)
+              ?.map(
+                  (item) => Composition.fromJson(item as Map<String, dynamic>))
+              .toList() ??
+          [];
+    }
+
+    if (clientDataMap['fillings'] != null) {
+      clientData.fillings = (clientDataMap['fillings'] as List?)
+              ?.map((item) => Filling.fromJson(item as Map<String, dynamic>))
+              .toList() ??
+          [];
+    }
+
+    if (clientDataMap['nutritionInfos'] != null) {
+      clientData.nutritionInfos = (clientDataMap['nutritionInfos'] as List?)
+              ?.map((item) =>
+                  NutritionInfo.fromJson(item as Map<String, dynamic>))
+              .toList() ??
+          [];
+    }
+
+    if (clientDataMap['deliveryConditions'] != null) {
+      clientData.deliveryConditions =
+          (clientDataMap['deliveryConditions'] as List?)
+                  ?.map((item) =>
+                      DeliveryCondition.fromJson(item as Map<String, dynamic>))
+                  .toList() ??
+              [];
+    }
+
+    if (clientDataMap['clientCategories'] != null) {
+      clientData.clientCategories = (clientDataMap['clientCategories'] as List?)
+              ?.map((item) =>
+                  ClientCategory.fromJson(item as Map<String, dynamic>))
+              .toList() ??
+          [];
+    }
+
+    // 🔥 ИСПРАВЛЕНИЕ: для клиентов используем fromMap, а не fromJson!
+    if (clientDataMap['clients'] != null) {
+      clientData.clients = (clientDataMap['clients'] as List?)
+              ?.map((item) => Client.fromMap(item as Map<String, dynamic>))
+              .toList() ??
+          [];
+    }
+
     if (clientDataMap['cart'] != null && clientDataMap['cart'] is Map) {
       clientData.cart = clientDataMap['cart'] as Map<String, dynamic>;
     }
+
+    // 🔥 ПРОВЕРКА ЗАКАЗОВ ПОСЛЕ ДЕСЕРИАЛИЗАЦИИ
+    print('🔍 Проверка заказов:');
+    if (clientData.orders.isNotEmpty) {
+      for (var order in clientData.orders) {
+        print(
+            '   - Заказ: ${order.productName}, статус: ${order.status}, цена: ${order.totalPrice}');
+      }
+    } else {
+      print('   - Заказы отсутствуют');
+    }
+
+    // Строим индексы для быстрого поиска
+    clientData.buildIndexes();
 
     return clientData;
   }
 
   // 🔥 ДЕСЕРИАЛИЗАЦИЯ МЕТАДАННЫХ
   Map<String, SheetMetadata> _deserializeMetadata(dynamic metadata) {
+    print('📊 _deserializeMetadata START');
+    print('📊 Тип metadata: ${metadata.runtimeType}');
+    print('📊 metadata keys: ${metadata is Map ? metadata.keys : 'не Map'}');
+
     if (metadata == null || metadata is! Map<String, dynamic>) {
+      print('📊 metadata is null or not Map, возвращаем {}');
       return {};
     }
 
     final result = <String, SheetMetadata>{};
-    final metadataMap = metadata as Map<String, dynamic>;
+    final metadataMap = metadata;
 
     for (final entry in metadataMap.entries) {
       final key = entry.key;
       final value = entry.value;
 
+      print('📊 Обработка листа: $key');
+      print('   - value type: ${value.runtimeType}');
+
       if (value is Map<String, dynamic>) {
-        result[key] = SheetMetadata.fromJson(value);
+        try {
+          print('   - lastUpdate: ${value['lastUpdate']}');
+          print('   - editor: ${value['editor']}');
+
+          final sheetMetadata = SheetMetadata.fromJson(value);
+          result[key] = sheetMetadata;
+          print('   ✅ Успешно создан SheetMetadata для $key');
+        } catch (e) {
+          print('   ❌ Ошибка создания SheetMetadata для $key: $e');
+          print('   📄 Проблемные данные: $value');
+        }
+      } else {
+        print('   ⚠️ value не является Map, пропускаем');
       }
     }
 
+    print('📊 _deserializeMetadata END, загружено: ${result.length}');
     return result;
   }
 
   Future<void> init() async {
+    print('🟢 AuthProvider.init() START');
     _isLoading = true;
     notifyListeners();
 
     final prefs = await SharedPreferences.getInstance();
+    print('🟢 SharedPreferences получены');
     final userData = prefs.getString('auth_user');
     final timestamp = prefs.getString('auth_timestamp');
     final cachedToken = prefs.getString('fcm_token');
+    final cachedClientData = prefs.getString('client_data');
+
+    print('🟢 userData: ${userData != null}');
+    print('🟢 timestamp: ${timestamp != null}');
+    print('🟢 cachedToken: ${cachedToken != null}');
+    print('🟢 cachedClientData: ${cachedClientData != null}');
 
     subscribeToFcmTokenRefresh();
 
@@ -201,6 +299,25 @@ class AuthProvider with ChangeNotifier {
           _currentUser = Employee.fromJson(json);
         }
         _fcmToken = cachedToken;
+
+        // ✅ ВОССТАНАВЛИВАЕМ ClientData из SharedPreferences
+        if (cachedClientData != null) {
+          try {
+            final clientDataJson = jsonDecode(cachedClientData);
+            _clientData = ClientData.fromJson(clientDataJson);
+            print('✅ ClientData восстановлен из SharedPreferences');
+            print('   - Продуктов: ${_clientData?.products.length}');
+            print('   - Заказов: ${_clientData?.orders.length}');
+            print('   - Клиентов: ${_clientData?.clients.length}');
+
+            // Перестраиваем индексы для уверенности
+            _clientData?.buildIndexes();
+            print('   - Индексы перестроены');
+          } catch (e) {
+            print('❌ Ошибка восстановления ClientData: $e');
+            _clientData = null;
+          }
+        }
       } catch (e) {
         print('Ошибка восстановления авторизации: $e');
         await logout();
@@ -209,9 +326,10 @@ class AuthProvider with ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+    print('🟢 AuthProvider.init() END');
   }
 
-// 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN С ПОЛНЫМ ОТКЛЮЧЕНИЕМ FCM НА ДЕСКТОПЕ
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN С ПОЛНЫМ ОТКЛЮЧЕНИЕМ FCM НА ДЕСКТОПЕ
   Future<void> login(String phone, {String? fcmToken}) async {
     _isLoading = true;
     notifyListeners();
@@ -247,6 +365,8 @@ class AuthProvider with ChangeNotifier {
       if (authResponse != null) {
         final userData = authResponse['user'];
 
+        print('🟢 Шаг 1: Данные пользователя обработаны');
+
         if (userData is List) {
           _availableRoles = userData
               .map((item) => Employee.fromJson(item as Map<String, dynamic>))
@@ -271,27 +391,82 @@ class AuthProvider with ChangeNotifier {
         }
 
         // ✅ Правильная десериализация
+        print('🟢 Шаг 2: _deserializeClientData выполнен');
         _clientData = _deserializeClientData(data);
+
+        print('🟢 Шаг 2.1: ClientData десериализован');
+        print('   - products: ${_clientData?.products.length}');
+        print('   - orders: ${_clientData?.orders.length}');
+        print('   - clients: ${_clientData?.clients.length}');
+
         _metadata = _deserializeMetadata(metadata);
+        print('🟢 Шаг 3: _metadata заполнен, листов: ${_metadata?.length}');
+
         _fcmToken = tokenToUse;
+        print('🟢 Шаг 4: _fcmToken установлен');
 
-        // ✅ УДАЛЕНО: установка CartProvider (делается в экранах)
+        // ✅ СОХРАНЯЕМ ClientData в SharedPreferences (полная версия)
+        if (_clientData != null) {
+          try {
+            print('🟢 Шаг 5: Проверка клиентов перед сохранением');
+            for (int i = 0; i < _clientData!.clients.length; i++) {
+              final client = _clientData!.clients[i];
+              try {
+                print('   Клиент $i: ${client.name}');
+                // Попробуем вызвать toJson для каждого клиента отдельно
+                final clientJson = client.toJson();
+                print('   ✅ toJson для клиента $i успешен');
+                print('      - name: ${clientJson['name']}');
+                print('      - phone: ${clientJson['phone']}');
+                print(
+                    '      - discount: ${clientJson['discount']} (${clientJson['discount'].runtimeType})');
+              } catch (e) {
+                print('❌ Ошибка toJson для клиента $i: $e');
+                print('   Данные клиента: ${client.toString()}');
+                rethrow;
+              }
+            }
 
-        // ✅ Дополнительная проверка, что десериализация прошла успешно
-        if (_clientData == null || _metadata == null || _metadata!.isEmpty) {
-          throw Exception('Ошибка десериализации данных');
+            print('🟢 Шаг 6: Начинаем toJson для всех клиентов');
+            final clientDataJson = _clientData!.toJson();
+            print('🟢 Шаг 6.5: Проверка clientDataJson перед jsonEncode');
+            print('   - Тип clientDataJson: ${clientDataJson.runtimeType}');
+            print(
+                '   - Содержимое (первые 200 символов): ${clientDataJson.toString().substring(0, 200)}...');
+            print('🟢 Шаг 7: ClientData преобразован в JSON');
+            print('   - Ключи в JSON: ${clientDataJson.keys}');
+
+            await prefs.setString('client_data', jsonEncode(clientDataJson));
+            print('🟢 Шаг 8: ClientData сохранен');
+            print('   - Продуктов: ${_clientData!.products.length}');
+            print('   - Заказов: ${_clientData!.orders.length}');
+            print('   - Клиентов: ${_clientData!.clients.length}');
+          } catch (e) {
+            print('❌ Ошибка сохранения ClientData: $e');
+            print('   Стек: ${StackTrace.current}');
+            rethrow;
+          }
         }
 
         await prefs.setString(
             'auth_user', jsonEncode(_currentUser?.toJson() ?? {}));
         await prefs.setString(
             'auth_timestamp', DateTime.now().toIso8601String());
-        await prefs.setString('local_metadata', jsonEncode(_metadata));
 
-        // ✅ Безопасное сохранение ClientData
+        // Сериализуем SheetMetadata через toJson()
+        final serializableMetadata = _metadata?.map((key, value) {
+          return MapEntry(key, value.toJson());
+        });
+        await prefs.setString(
+            'local_metadata', jsonEncode(serializableMetadata ?? {}));
 
         if (tokenToUse != null) {
           await prefs.setString('fcm_token', tokenToUse);
+        }
+
+        // ✅ Дополнительная проверка, что десериализация прошла успешно
+        if (_clientData == null || _metadata == null || _metadata!.isEmpty) {
+          print('⚠️ Внимание: частичная десериализация данных');
         }
 
         print('✅ Авторизация успешна, данные загружены');
@@ -299,7 +474,8 @@ class AuthProvider with ChangeNotifier {
         throw Exception('Сервер вернул null ответ');
       }
     } catch (e) {
-      print('Ошибка входа: $e');
+      print('❌ Ошибка входа: $e');
+      print('   Стек: ${StackTrace.current}');
       // ❌ Сбрасываем состояние при ошибке
       _currentUser = null;
       _clientData = null;
@@ -342,6 +518,7 @@ class AuthProvider with ChangeNotifier {
       await prefs.remove('fcm_token');
       await prefs.remove('selected_client_id');
       await prefs.remove('current_user_phone');
+      print('✅ Все данные очищены при выходе');
     } catch (e) {
       print('❌ Ошибка при выходе: $e');
     }

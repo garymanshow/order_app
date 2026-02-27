@@ -8,7 +8,7 @@ import '../models/price_list_mode.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/product_card.dart';
-import '../services/api_service.dart';
+import 'product_detail_screen.dart'; // ← ДОБАВЛЕНО
 
 class PriceListScreen extends StatefulWidget {
   const PriceListScreen({super.key});
@@ -18,7 +18,39 @@ class PriceListScreen extends StatefulWidget {
 }
 
 class _PriceListScreenState extends State<PriceListScreen> {
-  bool _isInitialized = false; // ← ДОБАВЛЕНО
+  bool _isInitialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (!_isInitialized) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _initializeCartProvider();
+      });
+    }
+  }
+
+  void _initializeCartProvider() {
+    if (_isInitialized) return;
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final cartProvider = Provider.of<CartProvider>(context, listen: false);
+
+    if (authProvider.clientData != null && authProvider.currentUser is Client) {
+      _isInitialized = true;
+
+      cartProvider.setClient(
+        authProvider.currentUser as Client,
+        authProvider.clientData!.orders,
+        authProvider.clientData!.products,
+      );
+
+      cartProvider.loadPriceListMode();
+
+      print('✅ CartProvider инициализирован');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,23 +58,18 @@ class _PriceListScreenState extends State<PriceListScreen> {
       builder: (context, authProvider, cartProvider, child) {
         // Проверка состояния авторизации
         if (!authProvider.isAuthenticated || authProvider.isLoading) {
-          return Scaffold(
+          return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // 🔥 ИНИЦИАЛИЗАЦИЯ CartProvider при первом рендере
-        if (!_isInitialized && authProvider.clientData != null) {
-          _isInitialized = true;
-          cartProvider.setClientData(authProvider.clientData);
-          if (authProvider.currentUser is Client) {
-            cartProvider.setClient(authProvider.currentUser as Client);
-          }
-          // Загружаем режим прайс-листа
-          cartProvider.loadPriceListMode();
+        final currentClient = authProvider.currentUser as Client?;
+        if (currentClient == null) {
+          return const Scaffold(
+            body: Center(child: Text('Ошибка: клиент не выбран')),
+          );
         }
 
-        // Проверка наличия данных
         final clientData = authProvider.clientData;
         if (clientData == null) {
           return Scaffold(
@@ -50,14 +77,12 @@ class _PriceListScreenState extends State<PriceListScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Ошибка загрузки данных'),
+                  const Text('Ошибка загрузки данных'),
                   ElevatedButton(
                     onPressed: () async {
-                      // Повторная авторизация
-                      await authProvider
-                          .login(authProvider.currentUser!.phone!);
+                      await authProvider.login(currentClient.phone!);
                     },
-                    child: Text('Попробовать снова'),
+                    child: const Text('Попробовать снова'),
                   ),
                 ],
               ),
@@ -65,11 +90,11 @@ class _PriceListScreenState extends State<PriceListScreen> {
           );
         }
 
-        final user = authProvider.currentUser!;
         final allProducts = clientData.products;
-        final clientName = user.name ?? '';
+        final clientName = currentClient.name ?? '';
         final currentMode = cartProvider.priceListMode;
 
+        // Фильтруем продукты по режиму
         final filteredProducts = _filterProducts(
           allProducts: allProducts,
           mode: currentMode,
@@ -77,23 +102,30 @@ class _PriceListScreenState extends State<PriceListScreen> {
           clientData: clientData,
         );
 
-        final clientDiscount = (user.discount ?? 0.0) / 100;
-        final total = cartProvider.getTotal(allProducts, clientDiscount);
-        final meetsMinOrder = cartProvider.meetsMinimumOrderAmount(total);
+        // Считаем общую сумму из заказов клиента
+        final clientOrders = clientData.orders
+            .where((o) =>
+                o.clientPhone == currentClient.phone &&
+                o.clientName == currentClient.name &&
+                o.quantity > 0)
+            .toList();
+
+        double total = 0;
+        for (var order in clientOrders) {
+          total += order.totalPrice;
+        }
 
         final titleText = total > 0
             ? 'Прайс-лист: выбрано на сумму ${total.toStringAsFixed(2)}'
             : 'Прайс-лист';
 
-        final titleColor = total > 0
-            ? (meetsMinOrder ? Colors.green : Colors.red)
-            : Theme.of(context).appBarTheme.foregroundColor ?? Colors.black;
-
         return Scaffold(
           appBar: AppBar(
             title: Text(
               titleText,
-              style: TextStyle(color: titleColor),
+              style: TextStyle(
+                color: total > 0 ? Colors.green : null,
+              ),
               maxLines: 2,
               overflow: TextOverflow.visible,
               softWrap: true,
@@ -101,16 +133,12 @@ class _PriceListScreenState extends State<PriceListScreen> {
             toolbarHeight: total > 0 ? 80.0 : kToolbarHeight,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.pop(context),
             ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.calendar_today),
-                onPressed: () {
-                  Navigator.pushNamed(context, '/orders');
-                },
+                onPressed: () => Navigator.pushNamed(context, '/orders'),
               ),
               PopupMenuButton<String>(
                 onSelected: (String result) {
@@ -118,7 +146,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
                     _showExportDialog(context);
                   }
                 },
-                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                itemBuilder: (context) => [
                   const PopupMenuItem<String>(
                     value: 'export',
                     child: Text('Сохранить прайс'),
@@ -126,14 +154,14 @@ class _PriceListScreenState extends State<PriceListScreen> {
                 ],
               ),
               DropdownButton<PriceListMode>(
-                value: cartProvider.priceListMode,
+                value: currentMode,
                 onChanged: (newMode) async {
                   if (newMode != null) {
                     await cartProvider.setPriceListMode(newMode);
                   }
                 },
-                items: PriceListMode.values.map((PriceListMode mode) {
-                  return DropdownMenuItem<PriceListMode>(
+                items: PriceListMode.values.map((mode) {
+                  return DropdownMenuItem(
                     value: mode,
                     child: Text(mode.label),
                   );
@@ -142,9 +170,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
               ),
               IconButton(
                 icon: const Icon(Icons.shopping_cart),
-                onPressed: () {
-                  Navigator.pushNamed(context, '/cart');
-                },
+                onPressed: () => Navigator.pushNamed(context, '/cart'),
               ),
               const SizedBox(width: 16),
             ],
@@ -152,27 +178,40 @@ class _PriceListScreenState extends State<PriceListScreen> {
           body: filteredProducts.isEmpty
               ? const Center(child: Text('Нет товаров для отображения'))
               : ListView.builder(
+                  padding: const EdgeInsets.all(8),
                   itemCount: filteredProducts.length,
                   itemBuilder: (context, index) {
                     final product = filteredProducts[index];
                     final quantity = cartProvider.getQuantity(product.id);
 
-                    return ProductCard(
-                      product: product,
-                      quantity: quantity,
-                      onQuantityChanged: (newQuantity) {
-                        cartProvider.setQuantity(
-                          product.id,
-                          newQuantity,
-                          product.multiplicity,
-                          allProducts,
+                    // 🔥 Оборачиваем ProductCard в GestureDetector
+                    return GestureDetector(
+                      onTap: () {
+                        // Открываем детальную карточку
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ProductDetailScreen(
+                              initialProductId: product.id,
+                              allProducts: allProducts,
+                            ),
+                          ),
                         );
                       },
+                      child: ProductCard(
+                        product: product,
+                        quantity: quantity,
+                        onQuantityChanged: (newQuantity) {
+                          cartProvider.setQuantity(
+                            product.id,
+                            newQuantity,
+                            product.multiplicity,
+                          );
+                        },
+                      ),
                     );
                   },
                 ),
-          bottomSheet: _buildBottomSheet(
-              total, meetsMinOrder, clientDiscount, cartProvider),
         );
       },
     );
@@ -187,81 +226,14 @@ class _PriceListScreenState extends State<PriceListScreen> {
     switch (mode) {
       case PriceListMode.full:
         return allProducts;
-
       case PriceListMode.byCategory:
       case PriceListMode.contractOnly:
         final allowedCategories =
             clientData?.clientCategoryIndex[clientName] ?? [];
-        if (allowedCategories.isEmpty) {
-          return allProducts;
-        }
+        if (allowedCategories.isEmpty) return allProducts;
         return allProducts
             .where((product) => allowedCategories.contains(product.categoryId))
             .toList();
-    }
-  }
-
-  Widget _buildBottomSheet(double total, bool meetsMinOrder,
-      double clientDiscount, CartProvider cartProvider) {
-    final formattedTotal = total.toStringAsFixed(2);
-
-    return Container(
-      color: Theme.of(context).cardColor,
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Итого: $formattedTotal ₽',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (clientDiscount > 0)
-                  Text(
-                    'Скидка: ${(clientDiscount * 100).toStringAsFixed(0)}%',
-                    style: const TextStyle(color: Colors.green),
-                  ),
-                if (!meetsMinOrder)
-                  Text(
-                    'Минимальная сумма: ${cartProvider.deliveryCondition?.deliveryAmount.toStringAsFixed(0) ?? '0'} ₽',
-                    style: const TextStyle(color: Colors.red),
-                  ),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            onPressed: meetsMinOrder ? () => _submitOrder() : null,
-            child: const Text('Оформить заказ'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _submitOrder() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final apiService = ApiService();
-    final success =
-        await Provider.of<CartProvider>(context, listen: false).submitOrder(
-      authProvider.clientData?.products ?? [],
-      apiService,
-    );
-
-    if (success) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Заказ успешно отправлен!')),
-      );
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ошибка при отправке заказа')),
-      );
     }
   }
 

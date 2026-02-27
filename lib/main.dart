@@ -4,12 +4,15 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; // ← ДОБАВЛЕНО
 
 // Screens
 import 'screens/auth_or_home_router.dart';
 import 'screens/price_list_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/client_orders_screen.dart';
+import 'screens/client_selection_screen.dart';
 
 // Providers
 import 'providers/auth_provider.dart';
@@ -18,6 +21,10 @@ import 'providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Инициализация локализации дат для русского языка
+  await initializeDateFormatting('ru_RU', null);
+  print('✅ Локализация дат инициализирована');
 
   if (!kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
@@ -31,8 +38,10 @@ void main() async {
 
   if (await envFile.exists()) {
     await dotenv.load(fileName: '$envPath/.env');
+    print('✅ .env файл загружен');
   } else {
-    print('Внимание: файл .env не найден. Используются значения по умолчанию.');
+    print(
+        '⚠️ Внимание: файл .env не найден. Используются значения по умолчанию.');
   }
 
   runApp(MyApp());
@@ -46,7 +55,9 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => ThemeProvider()..init()),
         ChangeNotifierProvider(
           create: (context) {
+            print('🟢 Создание AuthProvider');
             final provider = AuthProvider();
+            print('🟢 Вызов AuthProvider.init()');
             provider.init();
             return provider;
           },
@@ -61,6 +72,11 @@ class MyApp extends StatelessWidget {
 class MyAppContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    // Явно обращаемся к AuthProvider чтобы он инициализировался
+    final authProvider = Provider.of<AuthProvider>(context);
+    print(
+        '🟢 MyAppContent: authProvider.isLoading = ${authProvider.isLoading}');
+
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
@@ -70,10 +86,31 @@ class MyAppContent extends StatelessWidget {
           themeMode: themeProvider.themeMode,
           home: AuthOrHomeRouter(),
           debugShowCheckedModeBanner: false,
+
+          // 🔥 Локализация Material-компонентов
+          locale: const Locale('ru', 'RU'),
+          supportedLocales: const [
+            Locale('ru', 'RU'),
+            Locale('en', 'US'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+
           routes: {
-            '/price': (context) => PriceListScreen(), // ← ИСПРАВЛЕНО
+            '/price': (context) => PriceListScreen(),
             '/cart': (context) => CartScreen(),
-            '/orders': (context) => ClientOrdersScreen(), // ← ИСПРАВЛЕНО
+            '/orders': (context) => ClientOrdersScreen(),
+            '/clientSelection': (context) {
+              final args = ModalRoute.of(context)!.settings.arguments
+                  as Map<String, dynamic>;
+              return ClientSelectionScreen(
+                phone: args['phone'],
+                clients: args['clients'],
+              );
+            },
           },
         );
       },

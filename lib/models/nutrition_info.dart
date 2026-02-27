@@ -36,18 +36,18 @@ class NutritionInfo {
     );
   }
 
-  // 🔥 fromJson для восстановления из кэша
+  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory NutritionInfo.fromJson(Map<String, dynamic> json) {
     return NutritionInfo(
-      priceListId: json['priceListId'] as String?,
-      calories: json['calories'] as String?,
-      proteins: json['proteins'] as String?,
-      fats: json['fats'] as String?,
-      carbohydrates: json['carbohydrates'] as String?,
+      priceListId: json['priceListId']?.toString(),
+      calories: json['calories']?.toString(),
+      proteins: json['proteins']?.toString(),
+      fats: json['fats']?.toString(),
+      carbohydrates: json['carbohydrates']?.toString(),
     );
   }
 
-  // 🔥 toJson для сохранения в кэш
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
       'priceListId': priceListId,
@@ -57,6 +57,7 @@ class NutritionInfo {
       'carbohydrates': carbohydrates,
     };
   }
+  // Здесь всё нормально, так как все поля опциональные и могут быть null
 
   // toMap для Google Таблиц (если нужно)
   Map<String, dynamic> toMap() {

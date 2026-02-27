@@ -14,6 +14,7 @@ class User {
     this.minOrderAmount,
   });
 
+  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       phone: json['phone']?.toString(),
@@ -23,7 +24,7 @@ class User {
     );
   }
 
-  // 🔥 toJson должен быть виртуальным для переопределения
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
       'phone': phone,
@@ -32,4 +33,6 @@ class User {
       'minOrderAmount': minOrderAmount,
     };
   }
+  // Здесь всё нормально, так как все поля опциональные и могут быть null
+  // JSON в Dart поддерживает null значения
 }

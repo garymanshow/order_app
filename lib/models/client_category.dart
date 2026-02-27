@@ -18,27 +18,29 @@ class ClientCategory {
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory ClientCategory.fromJson(Map<String, dynamic> json) {
     return ClientCategory(
-      sheetName: json['sheetName'] as String,
-      entityId: json['entityId'] as String,
-      clientName: json['clientName'] as String,
+      sheetName: json['sheetName']?.toString() ?? '',
+      entityId: json['entityId']?.toString() ?? '',
+      clientName: json['clientName']?.toString() ?? '',
     );
   }
 
+  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'sheetName': sheetName,
-      'entityId': entityId,
-      'clientName': clientName,
+      'sheetName': sheetName ?? '',
+      'entityId': entityId ?? '',
+      'clientName': clientName ?? '',
     };
   }
 
   Map<String, dynamic> toMap() {
     return {
-      'Лист': sheetName,
-      'ID сущности': entityId,
-      'Клиент': clientName,
+      'Лист': sheetName ?? '',
+      'ID сущности': entityId ?? '',
+      'Клиент': clientName ?? '',
     };
   }
 }
