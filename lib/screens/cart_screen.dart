@@ -5,6 +5,7 @@ import '../providers/cart_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/product.dart';
 import '../models/order_item.dart';
+import '../widgets/product_image.dart'; // ← Импортируем для фото
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
@@ -47,30 +48,37 @@ class CartScreen extends StatelessWidget {
             itemCount: cartItems.length,
             itemBuilder: (context, index) {
               final order = cartItems[index];
+
+              // Ищем продукт по ID
               final product = products.firstWhere(
                 (p) => p.id == order.priceListId,
-                orElse: () =>
-                    Product(id: '', name: order.productName, price: 0.0),
+                orElse: () => Product(
+                  id: order.priceListId,
+                  name: order.productName,
+                  price: order.totalPrice /
+                      order.quantity, // рассчитываем цену за единицу
+                  multiplicity: 1, // ← обязательный параметр
+                  categoryId: '', // ← обязательный параметр
+                ),
               );
 
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 child: ListTile(
-                  leading: Container(
+                  leading: ProductImage(
+                    // ← Используем ProductImage
+                    product: product,
                     width: 50,
                     height: 50,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.cake, color: Colors.grey),
+                    fit: BoxFit.contain,
                   ),
                   title: Text(order.productName),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                          '${product.price.toStringAsFixed(2)} ₽ × ${order.quantity}'),
+                        '${product.price.toStringAsFixed(2)} ₽ × ${order.quantity}',
+                      ),
                       Text(
                         '= ${order.totalPrice.toStringAsFixed(2)} ₽',
                         style: const TextStyle(

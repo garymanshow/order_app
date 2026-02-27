@@ -16,6 +16,7 @@ import '../models/sheet_metadata.dart';
 import '../models/nutrition_info.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
+import '../utils/phone_validator.dart';
 
 class AuthProvider with ChangeNotifier {
   User? _currentUser;
@@ -41,7 +42,6 @@ class AuthProvider with ChangeNotifier {
   // 🔔 FCM: метод получения токена с учётом платформы
   Future<String?> getFcmToken() async {
     try {
-      // Для веба требуется запрос разрешения на уведомления
       if (kIsWeb) {
         final status = await FirebaseMessaging.instance.requestPermission(
           alert: true,
@@ -75,7 +75,7 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // 🔔 FCM: метод отправки токена на сервер (безопасная работа с nullable)
+  // 🔔 FCM: метод отправки токена на сервер
   Future<void> sendFcmTokenToServer(String? phoneNumber, String? token) async {
     if (phoneNumber == null ||
         phoneNumber.isEmpty ||
@@ -93,9 +93,8 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // 🔔 FCM: подписка на обновление токена (вызывается один раз при старте приложения)
+  // 🔔 FCM: подписка на обновление токена
   void subscribeToFcmTokenRefresh() {
-    // FCM не поддерживается на десктопных платформах (Linux, Windows, macOS)
     if (defaultTargetPlatform == TargetPlatform.linux ||
         defaultTargetPlatform == TargetPlatform.windows ||
         defaultTargetPlatform == TargetPlatform.macOS) {
@@ -133,6 +132,7 @@ class AuthProvider with ChangeNotifier {
     final clientData = ClientData();
     final clientDataMap = data;
 
+    // 🔥 Сначала загружаем продукты, чтобы создать карту displayNames
     if (clientDataMap['products'] != null) {
       print('🔍 Десериализация products (используем fromMap)');
       clientData.products = (clientDataMap['products'] as List?)
@@ -141,9 +141,19 @@ class AuthProvider with ChangeNotifier {
           [];
     }
 
+    // 🔥 Создаем карту ID продукта → отформатированное название
+    final Map<String, String> productDisplayNames = {};
+    for (var product in clientData.products) {
+      productDisplayNames[product.id] = product.displayName;
+    }
+
+    // 🔥 Загружаем заказы с использованием displayNames
     if (clientDataMap['orders'] != null) {
       clientData.orders = (clientDataMap['orders'] as List?)
-              ?.map((item) => OrderItem.fromMap(item as Map<String, dynamic>))
+              ?.map((item) => OrderItem.fromMap(
+                    item as Map<String, dynamic>,
+                    productDisplayNames: productDisplayNames,
+                  ))
               .toList() ??
           [];
     }
@@ -188,7 +198,6 @@ class AuthProvider with ChangeNotifier {
           [];
     }
 
-    // 🔥 ИСПРАВЛЕНИЕ: для клиентов используем fromMap, а не fromJson!
     if (clientDataMap['clients'] != null) {
       clientData.clients = (clientDataMap['clients'] as List?)
               ?.map((item) => Client.fromMap(item as Map<String, dynamic>))
@@ -200,20 +209,17 @@ class AuthProvider with ChangeNotifier {
       clientData.cart = clientDataMap['cart'] as Map<String, dynamic>;
     }
 
-    // 🔥 ПРОВЕРКА ЗАКАЗОВ ПОСЛЕ ДЕСЕРИАЛИЗАЦИИ
     print('🔍 Проверка заказов:');
     if (clientData.orders.isNotEmpty) {
       for (var order in clientData.orders) {
         print(
-            '   - Заказ: ${order.productName}, статус: ${order.status}, цена: ${order.totalPrice}');
+            '   - Заказ: ${order.displayName}, статус: ${order.status}, цена: ${order.totalPrice}');
       }
     } else {
       print('   - Заказы отсутствуют');
     }
 
-    // Строим индексы для быстрого поиска
     clientData.buildIndexes();
-
     return clientData;
   }
 
@@ -300,7 +306,6 @@ class AuthProvider with ChangeNotifier {
         }
         _fcmToken = cachedToken;
 
-        // ✅ ВОССТАНАВЛИВАЕМ ClientData из SharedPreferences
         if (cachedClientData != null) {
           try {
             final clientDataJson = jsonDecode(cachedClientData);
@@ -310,7 +315,6 @@ class AuthProvider with ChangeNotifier {
             print('   - Заказов: ${_clientData?.orders.length}');
             print('   - Клиентов: ${_clientData?.clients.length}');
 
-            // Перестраиваем индексы для уверенности
             _clientData?.buildIndexes();
             print('   - Индексы перестроены');
           } catch (e) {
@@ -329,21 +333,26 @@ class AuthProvider with ChangeNotifier {
     print('🟢 AuthProvider.init() END');
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN С ПОЛНЫМ ОТКЛЮЧЕНИЕМ FCM НА ДЕСКТОПЕ
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN
   Future<void> login(String phone, {String? fcmToken}) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // 🔥 ПОЛНОЕ ОТКЛЮЧЕНИЕ FCM НА ДЕСКТОПНЫХ ПЛАТФОРМАХ
+      print('🟢 login() начат с телефоном: $phone');
+
+      final normalizedPhone = PhoneValidator.normalizePhone(phone);
+      if (normalizedPhone == null) {
+        throw Exception('Неверный формат телефона');
+      }
+      print('🟢 Нормализованный телефон: $normalizedPhone');
+
       String? tokenToUse;
 
       if (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS) {
-        // Только на мобильных платформах получаем FCM токен
         tokenToUse = fcmToken ?? await getFcmToken();
       }
-      // На десктопе tokenToUse остается null
 
       final prefs = await SharedPreferences.getInstance();
       final localMetaJson = prefs.getString('local_metadata');
@@ -357,15 +366,14 @@ class AuthProvider with ChangeNotifier {
 
       final apiService = ApiService();
       final authResponse = await apiService.authenticate(
-        phone: phone,
+        phone: normalizedPhone,
         localMetadata: localMetadata,
         fcmToken: tokenToUse,
       );
 
       if (authResponse != null) {
         final userData = authResponse['user'];
-
-        print('🟢 Шаг 1: Данные пользователя обработаны');
+        print('🟢 userData получен: $userData');
 
         if (userData is List) {
           _availableRoles = userData
@@ -382,7 +390,11 @@ class AuthProvider with ChangeNotifier {
           }
         }
 
-        // ✅ Проверяем, что данные действительно получены от сервера
+        print('🟢 После установки _currentUser:');
+        print('   - _currentUser: ${_currentUser}');
+        print('   - _currentUser тип: ${_currentUser.runtimeType}');
+        print('   - _currentUser?.phone: ${_currentUser?.phone}');
+
         final data = authResponse['data'];
         final metadata = authResponse['metadata'];
 
@@ -390,7 +402,6 @@ class AuthProvider with ChangeNotifier {
           throw Exception('Сервер не вернул данные или метаданные');
         }
 
-        // ✅ Правильная десериализация
         print('🟢 Шаг 2: _deserializeClientData выполнен');
         _clientData = _deserializeClientData(data);
 
@@ -405,7 +416,6 @@ class AuthProvider with ChangeNotifier {
         _fcmToken = tokenToUse;
         print('🟢 Шаг 4: _fcmToken установлен');
 
-        // ✅ СОХРАНЯЕМ ClientData в SharedPreferences (полная версия)
         if (_clientData != null) {
           try {
             print('🟢 Шаг 5: Проверка клиентов перед сохранением');
@@ -413,37 +423,20 @@ class AuthProvider with ChangeNotifier {
               final client = _clientData!.clients[i];
               try {
                 print('   Клиент $i: ${client.name}');
-                // Попробуем вызвать toJson для каждого клиента отдельно
                 final clientJson = client.toJson();
                 print('   ✅ toJson для клиента $i успешен');
-                print('      - name: ${clientJson['name']}');
-                print('      - phone: ${clientJson['phone']}');
-                print(
-                    '      - discount: ${clientJson['discount']} (${clientJson['discount'].runtimeType})');
               } catch (e) {
                 print('❌ Ошибка toJson для клиента $i: $e');
-                print('   Данные клиента: ${client.toString()}');
                 rethrow;
               }
             }
 
             print('🟢 Шаг 6: Начинаем toJson для всех клиентов');
             final clientDataJson = _clientData!.toJson();
-            print('🟢 Шаг 6.5: Проверка clientDataJson перед jsonEncode');
-            print('   - Тип clientDataJson: ${clientDataJson.runtimeType}');
-            print(
-                '   - Содержимое (первые 200 символов): ${clientDataJson.toString().substring(0, 200)}...');
-            print('🟢 Шаг 7: ClientData преобразован в JSON');
-            print('   - Ключи в JSON: ${clientDataJson.keys}');
-
             await prefs.setString('client_data', jsonEncode(clientDataJson));
             print('🟢 Шаг 8: ClientData сохранен');
-            print('   - Продуктов: ${_clientData!.products.length}');
-            print('   - Заказов: ${_clientData!.orders.length}');
-            print('   - Клиентов: ${_clientData!.clients.length}');
           } catch (e) {
             print('❌ Ошибка сохранения ClientData: $e');
-            print('   Стек: ${StackTrace.current}');
             rethrow;
           }
         }
@@ -453,7 +446,6 @@ class AuthProvider with ChangeNotifier {
         await prefs.setString(
             'auth_timestamp', DateTime.now().toIso8601String());
 
-        // Сериализуем SheetMetadata через toJson()
         final serializableMetadata = _metadata?.map((key, value) {
           return MapEntry(key, value.toJson());
         });
@@ -464,19 +456,15 @@ class AuthProvider with ChangeNotifier {
           await prefs.setString('fcm_token', tokenToUse);
         }
 
-        // ✅ Дополнительная проверка, что десериализация прошла успешно
-        if (_clientData == null || _metadata == null || _metadata!.isEmpty) {
-          print('⚠️ Внимание: частичная десериализация данных');
-        }
-
         print('✅ Авторизация успешна, данные загружены');
+        print('🟢 Финальное состояние:');
+        print('   - _currentUser: ${_currentUser}');
+        print('   - isAuthenticated: ${isAuthenticated}');
       } else {
         throw Exception('Сервер вернул null ответ');
       }
     } catch (e) {
       print('❌ Ошибка входа: $e');
-      print('   Стек: ${StackTrace.current}');
-      // ❌ Сбрасываем состояние при ошибке
       _currentUser = null;
       _clientData = null;
       _metadata = null;
@@ -499,7 +487,6 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGOUT С ПОЛНОЙ ОЧИСТКОЙ
   Future<void> logout() async {
     _currentUser = null;
     _clientData = null;

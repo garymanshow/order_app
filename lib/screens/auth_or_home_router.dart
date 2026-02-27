@@ -10,11 +10,19 @@ import 'driver_screen.dart';
 import 'manager_screen.dart';
 import 'warehouse_screen.dart';
 import 'role_selection_screen.dart';
+import 'client_selection_screen.dart'; // ← ДОБАВЛЕНО
+import 'price_list_screen.dart'; // ← ДОБАВЛЕНО
 
 class AuthOrHomeRouter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+
+    // 🔥 ДОБАВЛЯЕМ ОТЛАДКУ
+    print('🔄 AuthOrHomeRouter build:');
+    print('   - isLoading: ${authProvider.isLoading}');
+    print('   - isAuthenticated: ${authProvider.isAuthenticated}');
+    print('   - currentUser: ${authProvider.currentUser?.phone}');
 
     if (authProvider.isLoading) {
       return Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -163,6 +171,7 @@ class _ClientAddressOrPriceListScreenState
 
       // Используем WidgetsBinding для отложенного перехода
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        print('🔄 Переход на /price');
         Navigator.pushReplacementNamed(context, '/price');
       });
 
@@ -172,6 +181,8 @@ class _ClientAddressOrPriceListScreenState
       // Несколько клиентов с одним телефоном → выбор
       // Используем WidgetsBinding для отложенного перехода
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        print(
+            '🔄 Переход на /clientSelection с ${clientsWithPhone.length} клиентами');
         Navigator.pushReplacementNamed(
           context,
           '/clientSelection',

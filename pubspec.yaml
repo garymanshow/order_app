@@ -1,7 +1,7 @@
 name: order_app
 description: "Order of Monich."
 
-publish_to: 'none' # Remove this line if you want to publish to pub.dev
+publish_to: "none" # Remove this line if you want to publish to pub.dev
 
 version: 1.0.0+1
 
@@ -35,12 +35,12 @@ dependencies:
   telephony: ^0.1.4 # для получения номера телефона (Android)
 
 dev_dependencies:
+  build_runner: ^2.4.0
   flutter_test:
     sdk: flutter
 
 flutter:
   uses-material-design: true
   assets:
-  -  assets/images/bg1.webp
-  -  assets/images/bg2.webp
-  -  assets/images/bg3.webp
+    - assets/images/auth/
+    - assets/images/products/

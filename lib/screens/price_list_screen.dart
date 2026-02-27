@@ -8,7 +8,8 @@ import '../models/price_list_mode.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/product_card.dart';
-import 'product_detail_screen.dart'; // ← ДОБАВЛЕНО
+import '../services/image_preloader.dart';
+import 'product_detail_screen.dart';
 
 class PriceListScreen extends StatefulWidget {
   const PriceListScreen({super.key});
@@ -19,6 +20,7 @@ class PriceListScreen extends StatefulWidget {
 
 class _PriceListScreenState extends State<PriceListScreen> {
   bool _isInitialized = false;
+  bool _preloaded = false;
 
   @override
   void didChangeDependencies() {
@@ -47,6 +49,15 @@ class _PriceListScreenState extends State<PriceListScreen> {
       );
 
       cartProvider.loadPriceListMode();
+
+      // 🔥 Предзагрузка изображений товаров (первые 10)
+      if (!_preloaded) {
+        _preloaded = true;
+        ImagePreloader().preloadProducts(
+          authProvider.clientData!.products,
+          limit: 10,
+        );
+      }
 
       print('✅ CartProvider инициализирован');
     }
@@ -184,10 +195,8 @@ class _PriceListScreenState extends State<PriceListScreen> {
                     final product = filteredProducts[index];
                     final quantity = cartProvider.getQuantity(product.id);
 
-                    // 🔥 Оборачиваем ProductCard в GestureDetector
                     return GestureDetector(
                       onTap: () {
-                        // Открываем детальную карточку
                         Navigator.push(
                           context,
                           MaterialPageRoute(

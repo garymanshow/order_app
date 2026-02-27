@@ -4,60 +4,62 @@ import '../utils/parsing_utils.dart';
 class Product {
   final String id;
   final String name;
+  final double price;
+  final int multiplicity;
+  final String categoryId;
   final String? imageUrl;
   final String? imageBase64;
+
+  // Добавляем поле для отформатированного названия
+  final String displayName;
+
+  // Дополнительные поля
   final String composition;
   final String weight;
-  final double price;
   final String nutrition;
   final String storage;
   final String packaging;
-  final int multiplicity;
   final String categoryName;
-  final String _categoryId;
   final int wastePercentage;
 
+  // 🔥 ИСПРАВЛЕНО: добавляем displayName в конструктор
   Product({
     required this.id,
     required this.name,
+    required this.price,
+    required this.multiplicity,
+    required this.categoryId,
     this.imageUrl,
     this.imageBase64,
     this.composition = '',
     this.weight = '',
-    this.price = 0.0,
     this.nutrition = '',
     this.storage = '',
     this.packaging = '',
-    this.multiplicity = 1,
     this.categoryName = '',
-    String categoryId = '',
     this.wastePercentage = 10,
-  }) : _categoryId = categoryId;
+    String? displayName, // ← добавляем опциональный параметр
+  }) : displayName = displayName ?? name; // ← если не передан, используем name
 
-  String get categoryId => _categoryId;
-
-  double getWasteMultiplier() {
-    return 1 + (wastePercentage / 100.0);
-  }
-
-  bool get hasImageUrl => imageUrl != null && imageUrl!.isNotEmpty;
-  bool get hasImageBase64 => imageBase64 != null && imageBase64!.isNotEmpty;
+  // Геттер для пути к изображению
+  String get assetPath => 'assets/images/products/$id.webp';
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
+      'displayName': displayName,
+      'price': price,
+      'multiplicity': multiplicity,
+      'categoryId': categoryId,
       'imageUrl': imageUrl,
       'imageBase64': imageBase64,
       'composition': composition,
       'weight': weight,
-      'price': price,
       'nutrition': nutrition,
       'storage': storage,
       'packaging': packaging,
-      'multiplicity': multiplicity,
       'categoryName': categoryName,
-      'categoryId': _categoryId,
       'wastePercentage': wastePercentage,
     };
   }
@@ -66,63 +68,90 @@ class Product {
     return Product(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
+      price: ParsingUtils.parseDouble(json['price']) ?? 0.0,
+      multiplicity: ParsingUtils.parseInt(json['multiplicity']) ?? 1,
+      categoryId: json['categoryId']?.toString() ?? '',
       imageUrl: json['imageUrl']?.toString(),
       imageBase64: json['imageBase64']?.toString(),
       composition: json['composition']?.toString() ?? '',
       weight: json['weight']?.toString() ?? '',
-      price: ParsingUtils.parseDouble(json['price']) ?? 0.0,
       nutrition: json['nutrition']?.toString() ?? '',
       storage: json['storage']?.toString() ?? '',
       packaging: json['packaging']?.toString() ?? '',
-      multiplicity: ParsingUtils.parseInt(json['multiplicity']) ?? 1,
       categoryName: json['categoryName']?.toString() ?? '',
-      categoryId: json['categoryId']?.toString() ?? '',
       wastePercentage: ParsingUtils.parseInt(json['wastePercentage']) ?? 10,
+      displayName:
+          json['displayName']?.toString(), // ← восстанавливаем displayName
     );
   }
 
-  // 🔥 ИСПРАВЛЕНО: fromMap для данных из Google Sheets (с русскими ключами)
+  // 🔥 ИСПРАВЛЕНО: fromMap с форматированием названия
   factory Product.fromMap(Map<String, dynamic> map) {
-    print('🔄 Product.fromMap START');
-    print('   - Все ключи: ${map.keys}');
-    print('   - Название: ${map['Название']}');
-    print('   - ID: ${map['ID']}');
-    print('   - Цена: ${map['Цена']}');
-    print('   - Кратность: ${map['Кратность']}');
-    print('   - ID Категории прайса: ${map['ID Категории прайса']}');
+    final id = map['ID']?.toString() ?? '';
+    final name = map['Название']?.toString() ?? '';
+    final categoryId = map['ID Категории прайса']?.toString() ?? '';
+    final categoryName = map['Категория']?.toString() ?? '';
 
-    final product = Product(
-      id: map['ID']?.toString() ?? '',
-      name: map['Название']?.toString() ?? '',
+    // Форматируем название
+    final displayName = _formatProductName(name, categoryName);
+
+    return Product(
+      id: id,
+      name: name,
+      price: double.tryParse(map['Цена']?.toString() ?? '0') ?? 0.0,
+      multiplicity: int.tryParse(map['Кратность']?.toString() ?? '1') ?? 1,
+      categoryId: categoryId,
       imageUrl: map['Фото']?.toString(),
       imageBase64: map['Фото_base64']?.toString(),
       composition: map['Состав']?.toString() ?? '',
       weight: map['Вес']?.toString() ?? '',
-      price: double.tryParse(map['Цена']?.toString() ?? '0') ?? 0.0,
       nutrition: map['Пищевая ценность']?.toString() ?? '',
       storage: map['Условия хранения']?.toString() ?? '',
       packaging: map['Упаковка']?.toString() ?? '',
-      multiplicity: int.tryParse(map['Кратность']?.toString() ?? '1') ?? 1,
-      categoryName: '', // пока нет в таблице
-      categoryId: map['ID Категории прайса']?.toString() ?? '',
-      wastePercentage: 10,
+      categoryName: categoryName,
+      wastePercentage: _parseWastePercentage(map['Издержки']?.toString()),
+      displayName: displayName, // ← передаем отформатированное
     );
+  }
 
-    print('   ✅ Создан продукт: ${product.name} - ${product.price}');
-    print('🔄 Product.fromMap END');
+  // 🔥 Функция форматирования названия
+  static String _formatProductName(String productName, String categoryName) {
+    if (categoryName.isEmpty) return productName;
 
-    return product;
+    final prodName = productName.toLowerCase().trim();
+    final catName = categoryName.toLowerCase().trim();
+
+    // Если название уже содержит категорию - оставляем как есть
+    if (prodName.contains(catName)) {
+      return productName;
+    }
+
+    // Иначе добавляем категорию спереди
+    return '$categoryName $productName';
   }
 
   Map<String, dynamic> toMap() {
     return {
       'ID': id,
-      'ID Категории прайса': _categoryId,
       'Название': name,
       'Цена': price.toString(),
       'Кратность': multiplicity.toString(),
+      'ID Категории прайса': categoryId,
       'Фото': imageUrl ?? '',
-      'Описание': '', // пока нет в модели
+      'Фото_base64': imageBase64 ?? '',
+      'Состав': composition,
+      'Вес': weight,
+      'Пищевая ценность': nutrition,
+      'Условия хранения': storage,
+      'Упаковка': packaging,
+      'Категория': categoryName,
+      'Издержки': wastePercentage.toString(),
     };
+  }
+
+  static int _parseWastePercentage(String? value) {
+    if (value == null || value.isEmpty) return 10;
+    final parsed = int.tryParse(value);
+    return parsed ?? 10;
   }
 }

@@ -8,6 +8,8 @@ import '../models/storage_condition.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../services/product_card_service.dart';
+import '../services/image_preloader.dart'; // ← ДОБАВЛЕНО
+import '../widgets/product_image.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final String initialProductId;
@@ -27,6 +29,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   late int _currentIndex;
   late List<ExtendedProduct> _extendedProducts;
   late PageController _pageController;
+
+  // 🔥 Для индикатора предзагрузки
+  bool _isPreloading = false;
+  double _preloadProgress = 0.0;
 
   @override
   void initState() {
@@ -69,6 +75,48 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void _onPageChanged(int index) {
     setState(() {
       _currentIndex = index;
+    });
+
+    // 🔥 Предзагрузка соседних изображений
+    _preloadNeighborImages(index);
+  }
+
+  // 🔥 Метод предзагрузки соседних изображений
+  Future<void> _preloadNeighborImages(int index) async {
+    final preloader = ImagePreloader();
+    final List<Future<bool>> futures = [];
+
+    setState(() {
+      _isPreloading = true;
+      _preloadProgress = 0.0;
+    });
+
+    // Предзагружаем следующий товар
+    if (index + 1 < widget.allProducts.length) {
+      futures.add(preloader.preloadProductImage(widget.allProducts[index + 1]));
+    }
+
+    // Предзагружаем предыдущий товар
+    if (index - 1 >= 0) {
+      futures.add(preloader.preloadProductImage(widget.allProducts[index - 1]));
+    }
+
+    // Предзагружаем следующий через один (для плавности)
+    if (index + 2 < widget.allProducts.length) {
+      futures.add(preloader.preloadProductImage(widget.allProducts[index + 2]));
+    }
+
+    if (futures.isNotEmpty) {
+      for (int i = 0; i < futures.length; i++) {
+        await futures[i];
+        setState(() {
+          _preloadProgress = (i + 1) / futures.length;
+        });
+      }
+    }
+
+    setState(() {
+      _isPreloading = false;
     });
   }
 
@@ -114,6 +162,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             onPressed: () => Navigator.pop(context),
           ),
         ],
+        // 🔥 Индикатор предзагрузки в AppBar
+        bottom: _isPreloading
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(2),
+                child: LinearProgressIndicator(
+                  value: _preloadProgress,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                ),
+              )
+            : null,
       ),
       body: Stack(
         children: [
@@ -139,11 +198,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 child: Center(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -165,11 +224,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 child: Center(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -184,13 +243,56 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
               ),
           ],
+
+          // 🔥 Индикатор предзагрузки поверх контента (если нужно)
+          if (_isPreloading && _preloadProgress < 1.0)
+            Positioned(
+              bottom: 20,
+              left: 20,
+              right: 20,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          value: _preloadProgress,
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${(_preloadProgress * 100).toInt()}%',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-// Виджет самой карточки
+// Виджет самой карточки (без изменений)
 class ProductDetailCard extends StatelessWidget {
   final ExtendedProduct product;
 
@@ -210,31 +312,25 @@ class ProductDetailCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Фото
               Center(
-                child: Container(
+                child: ProductImage(
+                  product: Product(
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    multiplicity: product.packagingQuantity,
+                    categoryId: '',
+                    imageUrl: product.imageUrl,
+                    imageBase64: product.imageBase64,
+                  ),
                   width: double.infinity,
                   height: 200,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: product.hasImage
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            product.imageUrl ?? '',
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _buildNoImage(),
-                          ),
-                        )
-                      : _buildNoImage(),
+                  fit: BoxFit.contain,
                 ),
               ),
 
               const SizedBox(height: 16),
 
-              // Название и цена
               Text(
                 product.name,
                 style: Theme.of(context).textTheme.headlineSmall,
@@ -295,7 +391,6 @@ class ProductDetailCard extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // Состав (если есть)
               if (product.hasComposition) ...[
                 _buildSection(
                   icon: Icons.menu_book,
@@ -304,7 +399,6 @@ class ProductDetailCard extends StatelessWidget {
                 ),
               ],
 
-              // КБЖУ (если есть)
               if (product.hasNutrition && product.nutritionInfo != null) ...[
                 _buildSection(
                   icon: Icons.fitness_center,
@@ -313,7 +407,6 @@ class ProductDetailCard extends StatelessWidget {
                 ),
               ],
 
-              // Условия хранения (если есть)
               if (product.hasStorage && product.storageConditions != null) ...[
                 _buildSection(
                   icon: Icons.ac_unit,
@@ -475,22 +568,6 @@ class ProductDetailCard extends StatelessWidget {
         if (storage.shelfLife.isNotEmpty)
           Text('Срок хранения: ${storage.shelfLife} ${storage.unit}'),
       ],
-    );
-  }
-
-  Widget _buildNoImage() {
-    return Container(
-      width: double.infinity,
-      height: 200,
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Icon(
-        Icons.image_not_supported,
-        size: 50,
-        color: Colors.grey,
-      ),
     );
   }
 }

@@ -14,6 +14,9 @@ import 'screens/cart_screen.dart';
 import 'screens/client_orders_screen.dart';
 import 'screens/client_selection_screen.dart';
 
+//Services
+import 'services/image_preloader.dart';
+
 // Providers
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
@@ -21,6 +24,13 @@ import 'providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Инициализация кэша предзагрузки
+  final preloader = ImagePreloader();
+  await preloader.initCache();
+
+  // Предзагрузка фонов авторизации
+  await preloader.preloadAuthBackgrounds();
 
   // Инициализация локализации дат для русского языка
   await initializeDateFormatting('ru_RU', null);

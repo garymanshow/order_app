@@ -1,6 +1,7 @@
 // lib/widgets/product_card.dart
 import 'package:flutter/material.dart';
 import '../models/product.dart';
+import 'product_image.dart'; // ← Импортируем новый виджет
 
 class ProductCard extends StatelessWidget {
   final Product product;
@@ -23,15 +24,11 @@ class ProductCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Фото товара
-            Container(
+            // 🔥 Фото товара через ProductImage
+            ProductImage(
+              product: product,
               width: 60,
               height: 60,
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: _buildImage(),
             ),
             const SizedBox(width: 12),
 
@@ -143,35 +140,6 @@ class ProductCard extends StatelessWidget {
     );
   }
 
-  Widget _buildImage() {
-    if (product.hasImageUrl || product.hasImageBase64) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          product.imageUrl ?? '',
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _buildPlaceholder();
-          },
-        ),
-      );
-    }
-    return _buildPlaceholder();
-  }
-
-  Widget _buildPlaceholder() {
-    return Container(
-      width: 60,
-      height: 60,
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Icon(
-        Icons.cake,
-        size: 30,
-        color: Colors.grey,
-      ),
-    );
-  }
+  // 🔥 Методы _buildImage и _buildPlaceholder больше не нужны,
+  // так как всю логику берет на себя ProductImage
 }

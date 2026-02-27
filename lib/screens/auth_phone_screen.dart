@@ -1,19 +1,12 @@
 // lib/screens/auth_phone_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:contacts_service/contacts_service.dart';
 import 'package:flutter/services.dart';
-import '../services/google_drive_service.dart';
+import 'package:provider/provider.dart';
+import '../generated/auth_assets.dart';
 import '../providers/auth_provider.dart';
-import '../providers/theme_provider.dart';
 import '../utils/phone_validator.dart';
-import '../models/client.dart';
-import 'role_selection_screen.dart';
-import 'client_selection_screen.dart';
-import 'dart:math';
-import 'dart:io' show Platform;
+import '../widgets/app_image.dart';
 
 class AuthPhoneScreen extends StatefulWidget {
   @override
@@ -21,289 +14,75 @@ class AuthPhoneScreen extends StatefulWidget {
 }
 
 class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
-  late Future<Uint8List?> _backgroundImageBytes;
   final TextEditingController _phoneController = TextEditingController();
   bool _isLoading = false;
+
+  late PageController _pageController;
+  late Timer _timer;
+  int _currentPage = 0;
 
   @override
   void initState() {
     super.initState();
-    _backgroundImageBytes = _loadRandomBackgroundImage();
-    // Firebase больше не инициализируется здесь
+    _pageController = PageController();
+    _startAutoSlide();
   }
 
-  Future<Uint8List?> _loadRandomBackgroundImage() async {
-    try {
-      final driveService = GoogleDriveService();
-      await driveService.init();
+  void _startAutoSlide() {
+    // Если фонов нет, не запускаем таймер
+    if (AuthAssets.backgrounds.isEmpty) return;
 
-      final folderId = dotenv.env['GOOGLE_DRIVE_IMAGES_FOLDER_ID']!;
-      final imageIds = await driveService.getWebPImageFileIds(folderId);
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_currentPage < AuthAssets.backgrounds.length - 1) {
+        _currentPage++;
+      } else {
+        _currentPage = 0;
+      }
 
-      if (imageIds.isEmpty) return null;
-
-      final random = Random();
-      final randomId = imageIds[random.nextInt(imageIds.length)];
-
-      final bytes = await driveService.downloadImageBytes(randomId);
-      return Uint8List.fromList(bytes);
-    } catch (e) {
-      print('Ошибка загрузки фона: $e');
-      return null;
-    }
-  }
-
-  void _showThemeSelectionDialog(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(Icons.brightness_auto),
-                title: Text('Как в системе'),
-                onTap: () {
-                  Navigator.pop(context);
-                  themeProvider.setThemeMode(ThemeMode.system);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.light_mode),
-                title: Text('Светлая'),
-                onTap: () {
-                  Navigator.pop(context);
-                  themeProvider.setThemeMode(ThemeMode.light);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.dark_mode),
-                title: Text('Тёмная'),
-                onTap: () {
-                  Navigator.pop(context);
-                  themeProvider.setThemeMode(ThemeMode.dark);
-                },
-              ),
-            ],
-          ),
+      if (_pageController.hasClients) {
+        _pageController.animateToPage(
+          _currentPage,
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
         );
-      },
-    );
-  }
-
-  Future<void> _pastePhoneFromClipboard() async {
-    try {
-      final clipboardData = await Clipboard.getData('text/plain');
-      if (clipboardData?.text != null) {
-        final normalized = PhoneValidator.normalizePhone(clipboardData!.text);
-        if (normalized != null) {
-          _phoneController.text = normalized;
-        } else {
-          _phoneController.text = clipboardData.text!;
-        }
       }
-    } catch (e) {
-      print('Ошибка получения из буфера: $e');
-    }
+    });
   }
 
-  bool get _isMobilePlatform {
-    return Platform.isAndroid || Platform.isIOS;
-  }
-
-  Future<bool> _requestContactPermission() async {
-    var status = await Permission.contacts.status;
-    if (status.isDenied) {
-      status = await Permission.contacts.request();
-    }
-    return status.isGranted;
-  }
-
-  Future<void> _pickContact() async {
-    if (!_isMobilePlatform) return;
-
-    final hasPermission = await _requestContactPermission();
-    if (!hasPermission) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Нужно разрешение на доступ к контактам')),
-      );
-      return;
-    }
-
-    try {
-      final contacts = await ContactsService.getContacts();
-      final contactsWithPhones = contacts.where((contact) {
-        final phones = contact.phones
-                ?.map((p) => p.value ?? '')
-                .where((p) => p.isNotEmpty)
-                .toList() ??
-            [];
-        return phones.isNotEmpty;
-      }).toList();
-
-      if (contactsWithPhones.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('В контактах нет номеров телефонов')),
-        );
-        return;
-      }
-
-      final selectedContact = await showDialog<Contact?>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: Text('Выберите контакт'),
-            content: SizedBox(
-              width: double.maxFinite,
-              height: 400,
-              child: ListView.builder(
-                itemCount: contactsWithPhones.length,
-                itemBuilder: (context, index) {
-                  final contact = contactsWithPhones[index];
-                  final phones = contact.phones
-                          ?.map((p) => p.value ?? '')
-                          .where((p) => p.isNotEmpty)
-                          .toList() ??
-                      [];
-                  return ListTile(
-                    title: Text(contact.displayName ?? ''),
-                    subtitle: Text(phones.join(', ')),
-                    onTap: () {
-                      Navigator.pop(context, contact);
-                    },
-                  );
-                },
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, null),
-                child: Text('Отмена'),
-              ),
-            ],
-          );
-        },
-      );
-
-      if (selectedContact != null) {
-        final phones = selectedContact.phones
-                ?.map((p) => p.value ?? '')
-                .where((p) => p.isNotEmpty)
-                .toList() ??
-            [];
-        if (phones.length == 1) {
-          final normalized = PhoneValidator.normalizePhone(phones[0]);
-          _phoneController.text = normalized ?? phones[0];
-        } else if (phones.length > 1) {
-          final selectedPhone = await showDialog<String?>(
-            context: context,
-            builder: (context) {
-              return AlertDialog(
-                title: Text('Выберите номер'),
-                content: SizedBox(
-                  width: double.maxFinite,
-                  height: 300,
-                  child: ListView.builder(
-                    itemCount: phones.length,
-                    itemBuilder: (context, index) {
-                      return ListTile(
-                        title: Text(phones[index]),
-                        onTap: () {
-                          Navigator.pop(context, phones[index]);
-                        },
-                      );
-                    },
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, null),
-                    child: Text('Отмена'),
-                  ),
-                ],
-              );
-            },
-          );
-
-          if (selectedPhone != null) {
-            final normalized = PhoneValidator.normalizePhone(selectedPhone);
-            _phoneController.text = normalized ?? selectedPhone;
-          }
-        }
-      }
-    } catch (e) {
-      print('Ошибка выбора контакта: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка при выборе контакта')),
-      );
-    }
+  @override
+  void dispose() {
+    _timer.cancel();
+    _pageController.dispose();
+    _phoneController.dispose();
+    super.dispose();
   }
 
   Future<void> _handleLogin() async {
-    if (_isLoading) return;
+    // Нормализуем телефон перед отправкой
+    final rawPhone = _phoneController.text.trim();
+    final phone = PhoneValidator.normalizePhone(rawPhone);
 
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty) {
+    if (phone == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Введите номер телефона')),
+        const SnackBar(content: Text('Неверный формат номера телефона')),
       );
       return;
     }
 
-    final error = PhoneValidator.validatePhone(phone);
-    if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
-      return;
-    }
-
-    if (mounted) {
-      setState(() {
-        _isLoading = true;
-      });
-    }
+    setState(() => _isLoading = true);
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      // Передаем null вместо FCM токена - AuthProvider сам решит, нужно ли его получать
-      await authProvider.login(phone, fcmToken: null);
-
-      if (!mounted) return;
-
-      // Навигация после успешной авторизации
-      if (authProvider.hasMultipleRoles) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-              builder: (_) =>
-                  RoleSelectionScreen(roles: authProvider.availableRoles!)),
-        );
-      } else if (authProvider.currentUser is Client &&
-          authProvider.clientData!.clients.length > 1) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ClientSelectionScreen(
-              phone: phone,
-              clients: authProvider.clientData!.clients,
-            ),
-          ),
-        );
-      } else {
-        Navigator.pushReplacementNamed(context, '/price');
-      }
-    } catch (error) {
+      await authProvider.login(phone);
+    } catch (e) {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка авторизации: $error')),
+          SnackBar(content: Text('Ошибка входа: $e')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -311,126 +90,183 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: FutureBuilder<Uint8List?>(
-        future: _backgroundImageBytes,
-        builder: (context, snapshot) {
-          Widget background = Container(color: Colors.blue[50]);
+      body: Stack(
+        children: [
+          // 🔥 Карусель фоновых изображений
+          if (AuthAssets.backgrounds.isNotEmpty)
+            PageView.builder(
+              controller: _pageController,
+              itemCount: AuthAssets.backgrounds.length,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentPage = index;
+                });
+              },
+              itemBuilder: (context, index) {
+                return AppImage.asset(
+                  assetPath: AuthAssets.backgrounds[index],
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.cover,
+                );
+              },
+            )
+          else
+            // Если нет фонов - просто темный фон
+            Container(color: Colors.grey[900]),
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            background = Container(
-              color: Colors.blue[50],
-              child: Center(child: CircularProgressIndicator()),
-            );
-          } else if (snapshot.hasData && snapshot.data != null) {
-            background = Image.memory(
-              snapshot.data!,
-              fit: BoxFit.cover,
-            );
-          }
+          // Градиент поверх
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeInOut,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.3),
+                  Colors.black.withValues(alpha: 0.6),
+                ],
+              ),
+            ),
+          ),
 
-          return Stack(
-            children: [
-              Positioned.fill(child: background),
-              if (snapshot.connectionState != ConnectionState.waiting)
-                Positioned.fill(
-                  child: Container(
-                    color: Color.fromRGBO(0, 0, 0, 0.3),
+          // Индикаторы страниц (только если есть фоны)
+          if (AuthAssets.backgrounds.length > 1)
+            Positioned(
+              bottom: 50,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  AuthAssets.backgrounds.length,
+                  (index) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: _currentPage == index ? 24 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(
+                        alpha: _currentPage == index ? 0.9 : 0.5,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
                 ),
-              Positioned(
-                top: 40,
-                right: 20,
-                child: IconButton(
-                  icon: Icon(Icons.palette, color: Colors.white, size: 32),
-                  onPressed: () => _showThemeSelectionDialog(context),
-                  tooltip: 'Выбрать тему',
-                ),
               ),
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Добро пожаловать!',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
+            ),
+
+          // Основной контент
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Логотип (только если есть)
+                  if (AuthAssets.hasLogo)
+                    AppImage.asset(
+                      assetPath: AuthAssets.logo,
+                      width: 120,
+                      height: 120,
+                      fit: BoxFit.contain,
+                      placeholder: Container(
+                        width: 120,
+                        height: 120,
+                        color: Colors.transparent,
                       ),
-                      SizedBox(height: 32),
-                      TextField(
-                        controller: _phoneController,
-                        decoration: InputDecoration(
-                          hintText: '+7 XXX XXX XX XX',
-                          hintStyle: TextStyle(color: Colors.white70),
-                          filled: true,
-                          fillColor: Color.fromRGBO(255, 255, 255, 0.2),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.white),
+                    )
+                  else
+                    const SizedBox(height: 120), // отступ если логотипа нет
+
+                  const SizedBox(height: 32),
+
+                  // Карточка ввода
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Вход в приложение',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide:
-                                BorderSide(color: Colors.white, width: 2),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        TextField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: InputDecoration(
+                            labelText: 'Номер телефона',
+                            hintText: '+7 (999) 123-45-67',
+                            prefixIcon: const Icon(Icons.phone),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: Colors.white,
                           ),
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(Icons.paste, color: Colors.white),
-                                onPressed: _pastePhoneFromClipboard,
-                                tooltip: 'Вставить из буфера',
-                              ),
-                              if (_isMobilePlatform)
-                                IconButton(
-                                  icon:
-                                      Icon(Icons.contacts, color: Colors.white),
-                                  onPressed: _pickContact,
-                                  tooltip: 'Выбрать из контактов',
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          onChanged: (value) {
+                            // Для отладки
+                            final normalized =
+                                PhoneValidator.normalizePhone(value);
+                            print('📞 Ввод: $value -> $normalized');
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _isLoading ? null : _handleLogin,
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: _isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white)
+                              : const Text(
+                                  'Войти',
+                                  style: TextStyle(fontSize: 18),
                                 ),
-                            ],
-                          ),
                         ),
-                        style: TextStyle(color: Colors.white, fontSize: 18),
-                        keyboardType: TextInputType.phone,
-                        onEditingComplete: () {
-                          final phone = _phoneController.text.trim();
-                          if (phone.isNotEmpty) {
-                            final error = PhoneValidator.validatePhone(phone);
-                            if (error != null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(error)),
-                              );
-                            }
-                          }
-                        },
-                      ),
-                      SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : _handleLogin,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          minimumSize: Size(200, 50),
-                        ),
-                        child: _isLoading
-                            ? CircularProgressIndicator(color: Colors.white)
-                            : Text(
-                                'Войти',
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 18),
-                              ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+
+                  const SizedBox(height: 16),
+
+                  Text(
+                    'Введите номер телефона, указанный при регистрации',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
     );
   }
