@@ -1,13 +1,38 @@
 {
-    "name": "Order app",
-    "short_name": "OrderApp",
-    "start_url": ".",
+    "name": "Вкусные моменты",
+    "short_name": "ВкусМомент",
+    "description": "Приложение для заказа десертов и сладостей",
+    "start_url": "/",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "Кондитерские заказы",
+    "background_color": "#ffffff",
+    "theme_color": "#4CAF50",
     "orientation": "portrait-primary",
+    "scope": "/",
     "prefer_related_applications": false,
+    "categories": ["business", "shopping", "food"],
+    "screenshots": [
+        {
+            "src": "screenshots/home.webp",
+            "sizes": "1080x1527",
+            "type": "image/webp",
+            "platform": "wide",
+            "label": "Прайс-лист с товарами"
+        },
+        {
+            "src": "screenshots/product.webp",
+            "sizes": "1080x1527",
+            "type": "image/webp",
+            "platform": "wide",
+            "label": "Детальная карточка товара"
+        },
+        {
+            "src": "screenshots/cart.webp",
+            "sizes": "1080x1827",
+            "type": "image/webp",
+            "platform": "wide",
+            "label": "Корзина с выбранными товарами"
+        }
+    ],
     "icons": [
         {
             "src": "icons/Icon-192.png",
@@ -30,6 +55,29 @@
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Прайс-лист",
+            "short_name": "Прайс",
+            "description": "Открыть прайс-лист",
+            "url": "/?page=price",
+            "icons": [{ "src": "icons/shortcut-price.png", "sizes": "96x96" }]
+        },
+        {
+            "name": "Корзина",
+            "short_name": "Корзина",
+            "description": "Перейти в корзину",
+            "url": "/?page=cart",
+            "icons": [{ "src": "icons/shortcut-cart.png", "sizes": "96x96" }]
+        },
+        {
+            "name": "Заказы",
+            "short_name": "Заказы",
+            "description": "История заказов",
+            "url": "/?page=orders",
+            "icons": [{ "src": "icons/shortcut-orders.png", "sizes": "96x96" }]
         }
     ]
 }

@@ -18,18 +18,22 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Приложение для заказа десертов и сладостей">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="order_app">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Вкусные моменты">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  
+  <!-- PWA tags -->
+  <meta name="theme-color" content="#4CAF50">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>order_app</title>
+  <title>Вкусные моменты</title>
   <link rel="manifest" href="manifest.json">
 
   <!-- Подключаем совместимую версию Firebase для сервис-воркера -->
@@ -52,8 +56,106 @@
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
   </script>
+  
+  <style>
+    #update-notification {
+      animation: slideUp 0.3s ease-out;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    #update-notification button:hover {
+      background: #f0f0f0 !important;
+      transform: scale(1.05);
+      transition: all 0.2s;
+    }
+  </style>
 </head>
 <body>
+  <!-- Подключаем клиент для push-уведомлений -->
+  <script src="scripts/push-client.js"></script>
+  
   <script src="flutter_bootstrap.js" async></script>
+  
+  <div id="update-notification" style="display: none; position: fixed; bottom: 20px; left: 20px; right: 20px; background: #4CAF50; color: white; padding: 12px; border-radius: 8px; text-align: center; z-index: 9999;">
+    <span style="display: inline-block; margin-right: 8px;">✨</span>
+    Доступна новая версия приложения
+    <button onclick="updateApp()" style="background: white; color: #4CAF50; border: none; padding: 5px 20px; border-radius: 20px; margin-left: 10px; cursor: pointer; font-weight: bold;">
+      Обновить
+    </button>
+  </div>
+
+  <script>
+    // Регистрация всех Service Workers
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        // Регистрируем основной Service Worker
+        navigator.serviceWorker.register('sw.js').then(function(registration) {
+          console.log('✅ Основной Service Worker зарегистрирован:', registration.scope);
+          
+          // Проверка обновлений
+          registration.addEventListener('updatefound', function() {
+            const newWorker = registration.installing;
+            console.log('🔄 Загружается новая версия...');
+            
+            newWorker.addEventListener('statechange', function() {
+              console.log('📊 Состояние:', newWorker.state);
+              
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('✅ Новая версия готова');
+                document.getElementById('update-notification').style.display = 'block';
+              }
+            });
+          });
+        }).catch(function(error) {
+          console.log('❌ Ошибка регистрации основного Service Worker:', error);
+        });
+
+        // Регистрируем Service Worker для push-уведомлений
+        navigator.serviceWorker.register('push-sw.js').then(function(registration) {
+          console.log('📬 Push Service Worker зарегистрирован:', registration.scope);
+        }).catch(function(error) {
+          console.log('❌ Ошибка регистрации Push Service Worker:', error);
+        });
+
+        // Проверка соединения
+        if (!navigator.onLine) {
+          console.log('🌐 Офлайн-режим');
+        }
+      });
+
+      window.updateApp = function() {
+        navigator.serviceWorker.ready.then(function(registration) {
+          if (registration.waiting) {
+            registration.waiting.postMessage({ action: 'skipWaiting' });
+          }
+        });
+        document.getElementById('update-notification').style.display = 'none';
+      };
+
+      // Перезагрузка после активации нового Service Worker
+      navigator.serviceWorker.addEventListener('message', function(event) {
+        if (event.data && event.data.action === 'reload') {
+          window.location.reload();
+        }
+      });
+
+      // Следим за изменениями Service Worker
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        console.log('🔄 Service Worker сменился');
+        window.location.reload();
+      });
+    }
+
+    // Проверка онлайн/офлайн статуса
+    window.addEventListener('online', function() {
+      console.log('✅ Соединение восстановлено');
+    });
+    window.addEventListener('offline', function() {
+      console.log('❌ Соединение потеряно');
+    });
+  </script>
 </body>
 </html>

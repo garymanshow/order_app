@@ -8,7 +8,6 @@ import '../models/order_item.dart';
 import '../models/product.dart';
 import '../models/delivery_condition.dart';
 import '../models/price_list_mode.dart';
-import '../models/client_data.dart';
 import '../services/api_service.dart';
 
 class CartProvider with ChangeNotifier {

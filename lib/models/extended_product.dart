@@ -2,7 +2,6 @@
 import 'product.dart';
 import 'composition.dart';
 import 'filling.dart';
-import 'ingredient_info.dart';
 import 'nutrition_info.dart';
 import 'storage_condition.dart';
 
@@ -78,7 +77,7 @@ class ExtendedProduct {
             orElse: () => Filling(sheetName: '', entityId: '', name: ''),
           );
 
-          if (filling.entityId.isNotEmpty && allCompositions != null) {
+          if (filling.entityId.isNotEmpty) {
             final fillingComps = allCompositions
                 .where((c) =>
                     c.sheetName == 'Категории прайса' &&

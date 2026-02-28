@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/product.dart';
-import '../models/order_item.dart';
 import '../widgets/product_image.dart'; // ← Импортируем для фото
 
 class CartScreen extends StatelessWidget {

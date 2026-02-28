@@ -1,11 +1,14 @@
 // lib/main.dart
-import 'dart:io';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:flutter_localizations/flutter_localizations.dart'; // ← ДОБАВЛЕНО
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'dart:io'
+    show
+        Directory,
+        File; // ← Указываем явно, что это только для нативных платформ
 
 // Screens
 import 'screens/auth_or_home_router.dart';
@@ -14,13 +17,16 @@ import 'screens/cart_screen.dart';
 import 'screens/client_orders_screen.dart';
 import 'screens/client_selection_screen.dart';
 
-//Services
+// Services
 import 'services/image_preloader.dart';
 
 // Providers
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
 import 'providers/theme_provider.dart';
+
+// Widgets
+import 'widgets/network_indicator.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,22 +42,34 @@ void main() async {
   await initializeDateFormatting('ru_RU', null);
   print('✅ Локализация дат инициализирована');
 
-  if (!kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
+  // 🔥 ИСПРАВЛЕНО: Полностью изолируем нативный код
+  if (!kIsWeb) {
+    // Этот код выполняется ТОЛЬКО на мобильных платформах и десктопе
+    try {
+      final envPath = Directory.current.path;
+      final envFile = File('$envPath/.env');
+
+      if (await envFile.exists()) {
+        await dotenv.load(fileName: '$envPath/.env');
+        print('✅ .env файл загружен');
+      } else {
+        print('⚠️ .env файл не найден. Используются значения по умолчанию.');
+      }
+
+      if (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.macOS)) {
-    // await Firebase.initializeApp();
-  }
-
-  final envPath = Directory.current.path;
-  final envFile = File('$envPath/.env');
-
-  if (await envFile.exists()) {
-    await dotenv.load(fileName: '$envPath/.env');
-    print('✅ .env файл загружен');
+          defaultTargetPlatform == TargetPlatform.macOS) {
+        // await Firebase.initializeApp();
+      }
+    } catch (e) {
+      print('⚠️ Ошибка загрузки .env файла: $e');
+    }
   } else {
-    print(
-        '⚠️ Внимание: файл .env не найден. Используются значения по умолчанию.');
+    // Для веба используем значения по умолчанию
+    print('🌐 Веб-платформа: пропускаем загрузку .env файла');
+
+    // Здесь можно задать значения по умолчанию
+    // dotenv.env['APP_SCRIPT_URL'] = 'https://script.google.com/...';
   }
 
   runApp(MyApp());
@@ -82,48 +100,48 @@ class MyApp extends StatelessWidget {
 class MyAppContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // Явно обращаемся к AuthProvider чтобы он инициализировался
+    // Явно обращаемся к провайдерам
     final authProvider = Provider.of<AuthProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     print(
         '🟢 MyAppContent: authProvider.isLoading = ${authProvider.isLoading}');
 
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return MaterialApp(
-          title: 'Формирование заявок',
-          theme: ThemeData.light(),
-          darkTheme: ThemeData.dark(),
-          themeMode: themeProvider.themeMode,
-          home: AuthOrHomeRouter(),
-          debugShowCheckedModeBanner: false,
+    return NetworkIndicator(
+      child: MaterialApp(
+        title: 'Формирование заявок',
+        theme: ThemeData.light(),
+        darkTheme: ThemeData.dark(),
+        themeMode: themeProvider.themeMode,
+        home: AuthOrHomeRouter(),
+        debugShowCheckedModeBanner: false,
 
-          // 🔥 Локализация Material-компонентов
-          locale: const Locale('ru', 'RU'),
-          supportedLocales: const [
-            Locale('ru', 'RU'),
-            Locale('en', 'US'),
-          ],
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
+        // Локализация Material-компонентов
+        locale: const Locale('ru', 'RU'),
+        supportedLocales: const [
+          Locale('ru', 'RU'),
+          Locale('en', 'US'),
+        ],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
 
-          routes: {
-            '/price': (context) => PriceListScreen(),
-            '/cart': (context) => CartScreen(),
-            '/orders': (context) => ClientOrdersScreen(),
-            '/clientSelection': (context) {
-              final args = ModalRoute.of(context)!.settings.arguments
-                  as Map<String, dynamic>;
-              return ClientSelectionScreen(
-                phone: args['phone'],
-                clients: args['clients'],
-              );
-            },
+        routes: {
+          '/price': (context) => PriceListScreen(),
+          '/cart': (context) => CartScreen(),
+          '/orders': (context) => ClientOrdersScreen(),
+          '/clientSelection': (context) {
+            final args = ModalRoute.of(context)!.settings.arguments
+                as Map<String, dynamic>;
+            return ClientSelectionScreen(
+              phone: args['phone'],
+              clients: args['clients'],
+            );
           },
-        );
-      },
+        },
+      ),
     );
   }
 }

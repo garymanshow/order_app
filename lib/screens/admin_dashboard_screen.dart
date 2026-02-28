@@ -7,6 +7,7 @@ import 'admin_clients_screen.dart';
 import 'admin_clients_with_orders_screen.dart';
 import 'admin_price_list_screen.dart';
 import 'admin_employees_screen.dart';
+import 'notifications_screen.dart'; // 👈 Импортируем экран уведомлений
 
 class AdminDashboardScreen extends StatefulWidget {
   @override
@@ -21,7 +22,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Загружаем данные только один раз при первом построении
     if (!_dataLoaded) {
       _dataLoaded = true;
       _loadRequiredData();
@@ -32,11 +32,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Данные уже загружены при авторизации через "умную загрузку"
-      // Здесь можно добавить дополнительную логику если нужно
-      // Например, проверку актуальности данных
-
-      // Пока просто ждем немного для UX
       await Future.delayed(Duration(milliseconds: 300));
     } catch (e) {
       setState(() => _error = 'Ошибка загрузки данных: $e');
@@ -104,10 +99,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         padding: const EdgeInsets.all(24.0),
         child: ListView(
           children: [
+            // 👇 КНОПКА УВЕДОМЛЕНИЙ - ПЕРВАЯ В СПИСКЕ
+            _buildAdminButton(
+              context,
+              icon: Icons.notifications_active_outlined,
+              title: 'Push-уведомления',
+              description: 'Управление рассылками и настройками уведомлений',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => NotificationsScreen()),
+                );
+              },
+            ),
+
+            SizedBox(height: 24),
             _buildAdminButton(
               context,
               icon: Icons.shopping_cart_outlined,
               title: 'Заказы клиентов',
+              description: 'Просмотр и управление заказами',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -116,11 +127,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 );
               },
             ),
+
             SizedBox(height: 24),
             _buildAdminButton(
               context,
               icon: Icons.currency_ruble,
               title: 'Прайс-лист',
+              description: 'Управление ценами и блюдами',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -128,11 +141,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 );
               },
             ),
+
             SizedBox(height: 24),
             _buildAdminButton(
               context,
               icon: Icons.people_outline,
               title: 'Клиенты',
+              description: 'База клиентов и их данные',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -140,11 +155,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 );
               },
             ),
+
             SizedBox(height: 24),
             _buildAdminButton(
               context,
               icon: Icons.people,
               title: 'Сотрудники',
+              description: 'Управление персоналом',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -152,25 +169,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 );
               },
             ),
+
             SizedBox(height: 24),
             _buildAdminButton(
               context,
               icon: Icons.food_bank_outlined,
               title: 'Поставщики',
+              description: 'Управление поставщиками (в разработке)',
               onPressed: () {
-                // TODO: переход к редактору контрагентов
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Функция в разработке')),
                 );
               },
             ),
+
             SizedBox(height: 24),
             _buildAdminButton(
               context,
               icon: Icons.warehouse,
               title: 'Склад',
+              description: 'Учет товаров (в разработке)',
               onPressed: () {
-                // TODO: переход к редактору склада
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Функция в разработке')),
                 );
@@ -182,21 +201,44 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  // Обновленная кнопка с описанием
   Widget _buildAdminButton(BuildContext context,
       {required IconData icon,
       required String title,
+      String? description,
       required VoidCallback onPressed}) {
-    return ElevatedButton.icon(
+    return ElevatedButton(
       onPressed: onPressed,
-      icon: Icon(icon, size: 28),
-      label: Text(
-        title,
-        style: TextStyle(fontSize: 20),
-      ),
       style: ElevatedButton.styleFrom(
-        minimumSize: Size(double.infinity, 60),
-        padding: EdgeInsets.symmetric(vertical: 16),
+        minimumSize: Size(double.infinity, description != null ? 80 : 60),
+        padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 28),
+          SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                ),
+                if (description != null) ...[
+                  SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Icon(Icons.arrow_forward_ios, size: 16),
+        ],
       ),
     );
   }

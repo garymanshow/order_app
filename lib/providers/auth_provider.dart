@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_core/firebase_core.dart'; // ← ДОБАВЛЕНО
 import 'dart:convert';
 import '../models/client_category.dart';
 import '../models/client.dart';
@@ -26,6 +27,9 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _fcmToken;
 
+  // Флаг для отслеживания инициализации Firebase
+  bool _firebaseInitialized = false;
+
   User? get currentUser => _currentUser;
   ClientData? get clientData => _clientData;
   Map<String, SheetMetadata>? get metadata => _metadata;
@@ -39,22 +43,76 @@ class AuthProvider with ChangeNotifier {
   bool get hasMultipleRoles =>
       _availableRoles != null && _availableRoles!.length > 1;
 
+  // 🔥 Проверка, поддерживается ли FCM на текущей платформе
+  bool get _isFcmSupported {
+    // FCM не поддерживается на десктопе
+    if (defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      return false;
+    }
+
+    // Для веба нужна дополнительная проверка
+    if (kIsWeb) {
+      // Здесь можно добавить проверку поддержки браузером
+      return true; // или false, если хотите отключить
+    }
+
+    // Для мобильных платформ поддерживается
+    return true;
+  }
+
+  // 🔥 Проверка инициализации Firebase
+  Future<bool> _ensureFirebaseInitialized() async {
+    if (_firebaseInitialized) return true;
+
+    try {
+      // Пробуем получить экземпляр Firebase
+      Firebase.app();
+      _firebaseInitialized = true;
+      return true;
+    } catch (e) {
+      // Firebase не инициализирован
+      print('⚠️ Firebase не инициализирован');
+      return false;
+    }
+  }
+
   // 🔔 FCM: метод получения токена с учётом платформы
   Future<String?> getFcmToken() async {
-    try {
-      if (kIsWeb) {
-        final status = await FirebaseMessaging.instance.requestPermission(
-          alert: true,
-          announcement: false,
-          badge: true,
-          carPlay: false,
-          criticalAlert: false,
-          provisional: false,
-          sound: true,
-        );
+    // Проверяем поддержку платформы
+    if (!_isFcmSupported) {
+      print('⚠️ FCM не поддерживается на этой платформе');
+      return null;
+    }
 
-        if (status.authorizationStatus != AuthorizationStatus.authorized) {
-          print('⚠️ Пользователь не разрешил уведомления');
+    // Проверяем инициализацию Firebase
+    final isFirebaseReady = await _ensureFirebaseInitialized();
+    if (!isFirebaseReady) {
+      print('⚠️ Firebase не готов, FCM токен не может быть получен');
+      return null;
+    }
+
+    try {
+      // Для веба запрашиваем разрешения
+      if (kIsWeb) {
+        try {
+          final status = await FirebaseMessaging.instance.requestPermission(
+            alert: true,
+            announcement: false,
+            badge: true,
+            carPlay: false,
+            criticalAlert: false,
+            provisional: false,
+            sound: true,
+          );
+
+          if (status.authorizationStatus != AuthorizationStatus.authorized) {
+            print('⚠️ Пользователь не разрешил уведомления');
+            return null;
+          }
+        } catch (e) {
+          print('⚠️ Ошибка запроса разрешений: $e');
           return null;
         }
       }
@@ -95,27 +153,34 @@ class AuthProvider with ChangeNotifier {
 
   // 🔔 FCM: подписка на обновление токена
   void subscribeToFcmTokenRefresh() {
-    if (defaultTargetPlatform == TargetPlatform.linux ||
-        defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS) {
-      print(
-          '⚠️ FCM не поддерживается на десктопных платформах. Пропускаем инициализацию.');
+    // Проверяем поддержку платформы
+    if (!_isFcmSupported) {
+      print('⚠️ FCM не поддерживается на этой платформе. Пропускаем подписку.');
       return;
     }
 
-    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-      print('🔄 FCM Token обновлён: ${newToken.substring(0, 20)}...');
+    // Асинхронно проверяем Firebase и подписываемся
+    _ensureFirebaseInitialized().then((isReady) {
+      if (!isReady) return;
 
-      _fcmToken = newToken;
+      try {
+        FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+          print('🔄 FCM Token обновлён: ${newToken.substring(0, 20)}...');
 
-      if (_currentUser != null && _currentUser!.phone?.isNotEmpty == true) {
-        await sendFcmTokenToServer(_currentUser!.phone, newToken);
+          _fcmToken = newToken;
+
+          if (_currentUser != null && _currentUser!.phone?.isNotEmpty == true) {
+            await sendFcmTokenToServer(_currentUser!.phone, newToken);
+          }
+
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('fcm_token', newToken);
+
+          notifyListeners();
+        });
+      } catch (e) {
+        print('⚠️ Ошибка подписки на обновление токена: $e');
       }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('fcm_token', newToken);
-
-      notifyListeners();
     });
   }
 
@@ -132,7 +197,7 @@ class AuthProvider with ChangeNotifier {
     final clientData = ClientData();
     final clientDataMap = data;
 
-    // 🔥 Сначала загружаем продукты, чтобы создать карту displayNames
+    // Сначала загружаем продукты, чтобы создать карту displayNames
     if (clientDataMap['products'] != null) {
       print('🔍 Десериализация products (используем fromMap)');
       clientData.products = (clientDataMap['products'] as List?)
@@ -141,13 +206,13 @@ class AuthProvider with ChangeNotifier {
           [];
     }
 
-    // 🔥 Создаем карту ID продукта → отформатированное название
+    // Создаем карту ID продукта → отформатированное название
     final Map<String, String> productDisplayNames = {};
     for (var product in clientData.products) {
       productDisplayNames[product.id] = product.displayName;
     }
 
-    // 🔥 Загружаем заказы с использованием displayNames
+    // Загружаем заказы с использованием displayNames
     if (clientDataMap['orders'] != null) {
       clientData.orders = (clientDataMap['orders'] as List?)
               ?.map((item) => OrderItem.fromMap(
@@ -284,6 +349,7 @@ class AuthProvider with ChangeNotifier {
 
     subscribeToFcmTokenRefresh();
 
+    // Получаем FCM токен асинхронно
     getFcmToken().then((token) {
       _fcmToken = token ?? cachedToken;
 
@@ -293,6 +359,8 @@ class AuthProvider with ChangeNotifier {
           _currentUser!.phone?.isNotEmpty == true) {
         sendFcmTokenToServer(_currentUser!.phone, token);
       }
+    }).catchError((error) {
+      print('⚠️ Ошибка при получении FCM токена: $error');
     });
 
     if (userData != null && timestamp != null) {
@@ -349,9 +417,14 @@ class AuthProvider with ChangeNotifier {
 
       String? tokenToUse;
 
+      // FCM токен только для мобильных платформ
       if (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS) {
-        tokenToUse = fcmToken ?? await getFcmToken();
+        try {
+          tokenToUse = fcmToken ?? await getFcmToken();
+        } catch (e) {
+          print('⚠️ Ошибка получения FCM токена: $e');
+        }
       }
 
       final prefs = await SharedPreferences.getInstance();
