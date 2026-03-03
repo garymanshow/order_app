@@ -1,6 +1,9 @@
 // web/sw.js
-const CACHE_NAME = 'order-app-v1';
+const CACHE_NAME = 'order-app-v1'; // ← Меняйте v1 → v2 при обновлении
 const API_CACHE_NAME = 'order-api-v1';
+
+// Добавьте версию приложения
+const APP_VERSION = '1.0.0';
 
 // Ресурсы для кэширования при установке
 const STATIC_RESOURCES = [
@@ -8,30 +11,29 @@ const STATIC_RESOURCES = [
   '/index.html',
   '/main.dart.js',
   '/flutter.js',
+  '/flutter_bootstrap.js',
+  '/manifest.json',
+  '/scripts/push-client.js',
+  '/push-sw.js',
   '/assets/AssetManifest.json',
   '/assets/FontManifest.json',
   '/assets/assets/images/products/',
-  '/assets/assets/images/auth/'
+  '/assets/assets/images/auth/',
+  '/icons/Icon-192.png',
+  '/icons/Icon-512.png'
 ];
 
-// Установка Service Worker
 self.addEventListener('install', (event) => {
-  console.log('🔄 Service Worker устанавливается...');
-  
+  console.log(`🔄 Установка Service Worker v${APP_VERSION}...`);
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_RESOURCES).then(() => {
-        console.log('✅ Ресурсы закэшированы');
-        return self.skipWaiting();
-      });
+      return cache.addAll(STATIC_RESOURCES);
     })
   );
 });
 
-// Активация и очистка старых кэшей
 self.addEventListener('activate', (event) => {
-  console.log('🔄 Service Worker активируется...');
-  
+  console.log(`🔄 Активация Service Worker v${APP_VERSION}...`);
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
@@ -43,100 +45,16 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(() => {
-      console.log('✅ Service Worker активирован');
-      return self.clients.claim();
+      console.log(`✅ Service Worker v${APP_VERSION} активирован`);
     })
   );
 });
 
-// Стратегия кэширования
+// Стратегия кэширования для fetch (можно добавить позже)
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  
-  // Для API запросов (динамические данные)
-  if (url.pathname.includes('/exec')) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          // Кэшируем успешные ответы от API
-          if (response.status === 200) {
-            const responseClone = response.clone();
-            caches.open(API_CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
-          }
-          return response;
-        })
-        .catch(() => {
-          // Если сеть недоступна, пробуем получить из кэша
-          return caches.match(event.request).then((response) => {
-            if (response) {
-              console.log('📦 Ответ из кэша (API):', url.pathname);
-              return response;
-            }
-            // Если ничего нет в кэше, возвращаем заглушку
-            return new Response(
-              JSON.stringify({ 
-                offline: true, 
-                message: 'Вы находитесь в офлайн-режиме' 
-              }),
-              { headers: { 'Content-Type': 'application/json' } }
-            );
-          });
-        })
-    );
-    return;
-  }
-
-  // Для статических ресурсов (изображения, скрипты)
   event.respondWith(
     caches.match(event.request).then((response) => {
-      if (response) {
-        console.log('📦 Из кэша:', url.pathname);
-        return response;
-      }
-      
-      console.log('🌐 Загружаем из сети:', url.pathname);
-      return fetch(event.request).then((response) => {
-        // Кэшируем только успешные ответы
-        if (response.status === 200) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
-      });
+      return response || fetch(event.request);
     })
-  );
-});
-
-// Обработка фоновой синхронизации (для будущего)
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-orders') {
-    console.log('🔄 Фоновая синхронизация заказов...');
-    // Здесь будет логика отправки отложенных заказов
-  }
-});
-
-// Обработка push-уведомлений (для будущего)
-self.addEventListener('push', (event) => {
-  const options = {
-    body: event.data.text(),
-    icon: '/icons/Icon-192.png',
-    badge: '/icons/Icon-192.png',
-    vibrate: [200, 100, 200],
-    data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
-    },
-    actions: [
-      { action: 'open', title: 'Открыть' },
-      { action: 'close', title: 'Закрыть' }
-    ]
-  };
-
-  event.waitUntil(
-    self.registration.showNotification('Вкусные моменты', options)
   );
 });

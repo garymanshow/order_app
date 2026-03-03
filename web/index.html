@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -25,47 +26,35 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Вкусные моменты">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-  
+
   <!-- PWA tags -->
   <meta name="theme-color" content="#4CAF50">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" href="favicon.png" />
 
   <title>Вкусные моменты</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- Подключаем совместимую версию Firebase для сервис-воркера -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
-
-  <!-- Инициализация Firebase -->
-  <script>
-    // Your web app's Firebase configuration
-    const firebaseConfig = {
-      apiKey: "AIzaSyBghNOaDiVnLmLoVNJSvsgSXSV1H27PguE",
-      authDomain: "my-push-server-81823.firebaseapp.com",
-      projectId: "my-push-server-81823",
-      storageBucket: "my-push-server-81823.firebasestorage.app",
-      messagingSenderId: "1057035080793",
-      appId: "1:1057035080793:web:977b116163df2be80f4d48",
-      measurementId: "G-6G0797BDGG"
-    };
-
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-  </script>
-  
   <style>
     #update-notification {
       animation: slideUp 0.3s ease-out;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
+
     @keyframes slideUp {
-      from { transform: translateY(100px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
+      from {
+        transform: translateY(100px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
     }
+
     #update-notification button:hover {
       background: #f0f0f0 !important;
       transform: scale(1.05);
@@ -73,89 +62,56 @@
     }
   </style>
 </head>
+
 <body>
   <!-- Подключаем клиент для push-уведомлений -->
   <script src="scripts/push-client.js"></script>
-  
+
   <script src="flutter_bootstrap.js" async></script>
-  
-  <div id="update-notification" style="display: none; position: fixed; bottom: 20px; left: 20px; right: 20px; background: #4CAF50; color: white; padding: 12px; border-radius: 8px; text-align: center; z-index: 9999;">
-    <span style="display: inline-block; margin-right: 8px;">✨</span>
-    Доступна новая версия приложения
-    <button onclick="updateApp()" style="background: white; color: #4CAF50; border: none; padding: 5px 20px; border-radius: 20px; margin-left: 10px; cursor: pointer; font-weight: bold;">
-      Обновить
-    </button>
-  </div>
 
   <script>
-    // Регистрация всех Service Workers
+    // Регистрация Service Workers
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
+      window.addEventListener('load', function () {
         // Регистрируем основной Service Worker
-        navigator.serviceWorker.register('sw.js').then(function(registration) {
-          console.log('✅ Основной Service Worker зарегистрирован:', registration.scope);
-          
-          // Проверка обновлений
-          registration.addEventListener('updatefound', function() {
+        navigator.serviceWorker.register('sw.js').then(function (registration) {
+          console.log('✅ Основной Service Worker зарегистрирован');
+
+          // 🔥 ТИХОЕ ОБНОВЛЕНИЕ
+          registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing;
-            console.log('🔄 Загружается новая версия...');
-            
-            newWorker.addEventListener('statechange', function() {
-              console.log('📊 Состояние:', newWorker.state);
-              
+            newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('✅ Новая версия готова');
-                document.getElementById('update-notification').style.display = 'block';
+                console.log('🔄 Новая версия готова, обновляем...');
+                // Тихо обновляем при следующей загрузке
+                if (registration.waiting) {
+                  registration.waiting.postMessage({ action: 'skipWaiting' });
+                }
               }
             });
           });
-        }).catch(function(error) {
-          console.log('❌ Ошибка регистрации основного Service Worker:', error);
         });
 
-        // Регистрируем Service Worker для push-уведомлений
-        navigator.serviceWorker.register('push-sw.js').then(function(registration) {
-          console.log('📬 Push Service Worker зарегистрирован:', registration.scope);
-        }).catch(function(error) {
-          console.log('❌ Ошибка регистрации Push Service Worker:', error);
+        // Регистрируем Push Service Worker
+        navigator.serviceWorker.register('push-sw.js').then(function (registration) {
+          console.log('📬 Push Service Worker зарегистрирован');
         });
-
-        // Проверка соединения
-        if (!navigator.onLine) {
-          console.log('🌐 Офлайн-режим');
-        }
       });
 
-      window.updateApp = function() {
-        navigator.serviceWorker.ready.then(function(registration) {
-          if (registration.waiting) {
-            registration.waiting.postMessage({ action: 'skipWaiting' });
-          }
-        });
-        document.getElementById('update-notification').style.display = 'none';
-      };
-
-      // Перезагрузка после активации нового Service Worker
-      navigator.serviceWorker.addEventListener('message', function(event) {
+      // Обработка сообщений от Service Worker
+      navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data && event.data.action === 'reload') {
           window.location.reload();
         }
       });
 
-      // Следим за изменениями Service Worker
-      navigator.serviceWorker.addEventListener('controllerchange', function() {
-        console.log('🔄 Service Worker сменился');
+      // Обновление при смене Service Worker
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        console.log('🔄 Service Worker обновлен, перезагрузка...');
         window.location.reload();
       });
     }
-
-    // Проверка онлайн/офлайн статуса
-    window.addEventListener('online', function() {
-      console.log('✅ Соединение восстановлено');
-    });
-    window.addEventListener('offline', function() {
-      console.log('❌ Соединение потеряно');
-    });
   </script>
 </body>
+
 </html>
