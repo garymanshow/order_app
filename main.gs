@@ -26,12 +26,6 @@ class MyApp_DocumentPropertiesManager {
   }
 
   /**
-   * Получает данные из Document Properties по ключу
-   * @param {string} key - Ключ для поиска данных
-   * @returns {Object} Объект с результатом операции и данными
-   */
-
-    /**
    * Сохраняет объект, предварительно сериализуя его в JSON
    * @param {string} key - Ключ для сохранения
    * @param {Object} obj - Объект для сохранения
@@ -164,12 +158,6 @@ class MyApp_DocumentPropertiesManager {
   }
 
   /**
-   * Получает объект, десериализуя его из JSON
-   * @param {string} key - Ключ для поиска
-   * @returns {Object} Результат операции с объектом
-   */
-
-  /**
    * Инкрементирует числовое значение
    * @param {string} key - Ключ
    * @param {number} increment - Значение инкремента
@@ -195,327 +183,58 @@ class MyApp_DocumentPropertiesManager {
   }
 }
 
-// Google Apps Script - универсальная функция обновления метаданных
-function updateMetadata_(sheetName, timestamp, editorInfo, changeType = 'API') {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const metadataSheet = ss.getSheetByName('Метаданные');
-  
-  if (!metadataSheet) {
-    throw new Error('Лист "Метаданные" не найден!');
-  }
-
-  // Получаем все данные из метаданных
-  const metadataRange = metadataSheet.getDataRange();
-  const metadataValues = metadataRange.getValues();
-  
-  // Ищем строку с нужным именем листа
-  let targetRow = -1;
-  for (let i = 0; i < metadataValues.length; i++) {
-    if (metadataValues[i][0] === sheetName) {
-      targetRow = i + 1;
-      break;
-    }
-  }
-  
-  // Если лист не найден, добавляем новую строку
-  if (targetRow === -1) {
-    targetRow = metadataValues.length + 1;
-    metadataSheet.getRange(targetRow, 1).setValue(sheetName);
-  }
-  
-  // Обновляем все колонки
-  metadataSheet.getRange(targetRow, 2).setValue(timestamp);
-  metadataSheet.getRange(targetRow, 3).setValue(editorInfo);
-  metadataSheet.getRange(targetRow, 4).setValue(changeType);
-  
-  console.log(`✅ Метаданные обновлены для листа "${sheetName}": ${timestamp} пользователем: ${editorInfo} (${changeType})`);
-}
-
 /**
- * Основная функция-обработчик для всех POST-запросов.
- * @param {Object} e - Объект события, содержащий данные запроса.
- * @return {TextOutput} JSON-ответ.
+ * Преобразует дату в формат DD.MM.YYYY
+ * Поддерживает ISO строку, timestamp, или уже отформатированную дату
  */
-function doPost(e) {
-  console.log('🚀 Вход в doPost');
-  
+function formatDateToDDMMYYYY(dateValue) {
   try {
-    // Проверяем, есть ли данные
-    if (!e || !e.postData || !e.postData.contents) {
-      return createErrorResponse('Нет данных в запросе');
+    if (!dateValue) {
+      return '';
     }
     
-    // Парсим тело запроса
-    let body;
-    try {
-      body = JSON.parse(e.postData.contents);
-      console.log('📦 Получено тело запроса:', JSON.stringify(body).substring(0, 200));
-    } catch (parseError) {
-      return createErrorResponse('Ошибка парсинга JSON: ' + parseError.message);
-    }
-    
-    // Обработка разных действий
-    if (body.action === 'test') {
-      // Тестовый запрос для проверки соединения
-      return createSuccessResponse({
-        message: 'Apps Script сервер работает',
-        timestamp: new Date().toISOString(),
-        action: 'test'
-      });
-    }
-    
-    if (body.action === 'authenticate') {
-      console.log('🔐 Обработка аутентификации');
-      
-      if (!body.phone) {
-        return createErrorResponse('Для аутентификации требуется поле "phone"');
-      }
-      
-      // Обрабатываем аутентификацию
-      return handleAuthentication(body.phone, body.secret, body.sheetName);
-    }
-    
-    // Для других действий требуется полная валидация
-    if (body.action === 'create' || body.action === 'read' || body.action === 'update' || body.action === 'delete') {
-      const validation = validateRequest(body);
-      
-      if (validation.status === 'error') {
-        return createErrorResponse(validation.message);
-      }
-      
-      // Выполняем действие
-      switch(body.action) {
-        case 'create':
-          return handleCreate(validation.sheet, validation.headers, validation.headersMap, body.data);
-        case 'read':
-          return handleRead(validation.sheet, validation.headers, validation.headersMap, body);
-        case 'update':
-          return handleUpdate(validation.sheet, validation.headers, validation.headersMap, body);
-        case 'delete':
-          return handleDelete(validation.sheet, validation.headers, validation.headersMap, body);
-        default:
-          return createErrorResponse(`Неизвестное действие: ${body.action}`);
+    // Если уже в правильном формате (содержит точки)
+    if (typeof dateValue === 'string' && dateValue.includes('.')) {
+      // Проверяем, что это действительно дата в формате DD.MM.YYYY
+      const parts = dateValue.split('.');
+      if (parts.length === 3 && 
+          !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        return dateValue; // Уже в правильном формате
       }
     }
     
-    // Если действие не распознано
-    return createErrorResponse(`Неизвестное действие: ${body.action}`);
+    // Создаем объект Date
+    const date = new Date(dateValue);
+    
+    // Проверяем валидность даты
+    if (isNaN(date.getTime())) {
+      console.warn(`Невалидная дата: ${dateValue}`);
+      return '';
+    }
+    
+    // Форматируем как DD.MM.YYYY
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // Месяцы начинаются с 0
+    const year = date.getFullYear();
+    
+    return `${day}.${month}.${year}`;
     
   } catch (error) {
-    console.error('💥 Критическая ошибка в doPost:', error);
-    return createErrorResponse('Внутренняя ошибка сервера: ' + error.message);
-  }
-}
-
-// Также нужна функция doGet для проверки работоспособности
-function doGet(e) {
-  console.log('📡 GET запрос получен');
-  
-  if (e && e.parameter && e.parameter.action === 'test') {
-    return createSuccessResponse({
-      message: 'Apps Script сервер работает (GET)',
-      timestamp: new Date().toISOString(),
-      method: 'GET'
-    });
-  }
-  
-  return createSuccessResponse({
-    message: 'Используйте POST запрос для работы с API',
-    endpoints: {
-      test: 'GET/POST /?action=test',
-      authenticate: 'POST / с JSON {"action":"authenticate","phone":"...","secret":"..."}',
-      create: 'POST / с JSON {"action":"create","sheetName":"...","secret":"...","data":{...}}'
-    }
-  });
-}
-
-function onEdit(e) {
-  const range = e.range;
-  const sheet = range.getSheet();
-  const sheetName = sheet.getName();
-  const rowIndex = range.getRow();
-  
-  // Заполнение метаданных при изменении на Листах
-  if (sheetName !== 'Метаданные') {
-    const userEmail = Session.getActiveUser().getEmail() || 'Неизвестный пользователь';
-    updateMetadata_(sheetName, new Date().toISOString(), userEmail, 'Ручное');
-  }
-
-  // Автоматическое заполнение столбца ID на любых листах, при заполнении значениями ячеек в других столбцах
-    if (e && e.range) {
-    handleIdGeneration(e.range.getSheet());
+    console.error('Ошибка форматирования даты:', error);
+    return '';
   }
 }
 
 /**
- * Изменениях через API (- работает с API вызовами)
+ * Проверяет права доступа (опционально)
  */
-function onChange(e) {
+function validateAccess(phone, requiredRole) {
+  // Здесь можно добавить проверку роли если нужно
+  // Например: проверка что пользователь является сотрудником
   
-  //  генерации ID для любых листов
-  if (e.changeType === 'EDIT') {
-    handleIdGeneration(SpreadsheetApp.getActiveSheet());
-  }
-}
-
-function createResponse(statusCode, data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function createErrorResponse(message) {
-  // Создаем объект ответа
-  const output = ContentService.createTextOutput();
-  output.setMimeType(ContentService.MimeType.JSON);
-  output.setContent(JSON.stringify({
-    status: 'error',
-    message: message,
-    timestamp: new Date().toISOString()
-  }));
-  
-  // В Google Apps Script заголовки устанавливаются по-другому
-  // Используем setHeaders для CORS
-  return output;
-}
-
-function createSuccessResponse(data) {
-  const output = ContentService.createTextOutput();
-  output.setMimeType(ContentService.MimeType.JSON);
-  
-  const responseData = {
-    status: 'success',
-    timestamp: new Date().toISOString(),
-    ...data
+  return {
+    valid: true
   };
-  
-  output.setContent(JSON.stringify(responseData));
-  return output;
-}
-
-
-function handleAuthentication(phone, secret, sheetName = 'Клиенты') {
-  console.log(`🔐 Аутентификация пользователя: ${phone}`);
-  
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    
-    // Проверяем секретный ключ
-    const manager = new MyApp_DocumentPropertiesManager();
-    const secretResult = manager.getData('APP_SECRET_KEY');
-    
-    if (secretResult.status !== 'success' || !secretResult.data) {
-      console.error('❌ Секретный ключ не настроен');
-      return createErrorResponse('Секретный ключ не настроен. Выполните initializeSecurity()');
-    }
-    
-    console.log('🔐 Получен секрет из хранилища:', secretResult.data.substring(0, 10) + '...');
-    console.log('🔐 Переданный секрет:', secret ? secret.substring(0, 10) + '...' : 'не указан');
-    
-    if (secret !== secretResult.data) {
-      console.error('❌ Неверный ключ доступа');
-      return createErrorResponse('Неверный ключ доступа');
-    }
-    
-    console.log('✅ Секретный ключ валиден');
-    
-    // Ищем пользователя в разных листах
-    let user = null;
-    let sheetNames = ['Сотрудники', 'Клиенты'];
-    
-    for (const sName of sheetNames) {
-      const sheet = ss.getSheetByName(sName);
-      if (!sheet) {
-        console.log(`📋 Лист "${sName}" не найден, пропускаем`);
-        continue;
-      }
-      
-      const lastRow = sheet.getLastRow();
-      const lastColumn = sheet.getLastColumn();
-      
-      if (lastRow < 2) {
-        console.log(`📋 Лист "${sName}" пуст, пропускаем`);
-        continue;
-      }
-      
-      console.log(`📋 Поиск в листе "${sName}" (строк: ${lastRow}, столбцов: ${lastColumn})`);
-      
-      const data = sheet.getRange(1, 1, lastRow, lastColumn).getValues();
-      const headers = data[0];
-      
-      // Находим индекс столбца с телефоном
-      const phoneIndex = headers.findIndex(h => 
-        h && (h.toString().toLowerCase().includes('телефон') || 
-              h.toString().toLowerCase().includes('phone'))
-      );
-      
-      if (phoneIndex === -1) {
-        console.log(`📋 В листе "${sName}" нет столбца с телефоном`);
-        continue;
-      }
-      
-      console.log(`📋 Столбец с телефоном найден в позиции ${phoneIndex + 1}`);
-      
-      // Ищем пользователя по номеру телефона
-      for (let i = 1; i < data.length; i++) {
-        const row = data[i];
-        const rowPhone = row[phoneIndex];
-        
-        if (rowPhone && rowPhone.toString().trim() === phone.trim()) {
-          console.log(`✅ Пользователь найден в строке ${i + 1} листа "${sName}"`);
-          
-          user = {
-            phone: phone,
-            sheet: sName,
-            role: sName === 'Сотрудники' ? 'employee' : 'client'
-          };
-          
-          // Собираем все данные строки
-          headers.forEach((header, index) => {
-            if (header && header.toString().trim() !== '') {
-              const key = header.toString().trim();
-              const value = row[index];
-              
-              // Преобразуем даты в строки
-              if (value instanceof Date) {
-                user[key] = value.toISOString();
-              } else {
-                user[key] = value;
-              }
-            }
-          });
-          
-          break;
-        }
-      }
-      
-      if (user) break;
-    }
-    
-    if (!user) {
-      console.error('❌ Пользователь не найден');
-      return createErrorResponse('Пользователь не найден. Проверьте номер телефона');
-    }
-    
-    // Получаем метаданные всех листов
-    const metadata = getAllSheetsMetadata(ss);
-    
-    // Формируем успешный ответ
-    const response = {
-      message: 'Аутентификация успешна',
-      success: true,
-      user: user,
-      metadata: metadata
-    };
-    
-    console.log('✅ Аутентификация успешна для:', phone);
-    
-    return createSuccessResponse(response);
-    
-  } catch (error) {
-    console.error('❌ Ошибка аутентификации:', error);
-    return createErrorResponse('Ошибка аутентификации: ' + error.message);
-  }
 }
 
 function debugSheets() {
@@ -559,6 +278,72 @@ function debugSheets() {
   return 'Диагностика завершена';
 }
 
+// Просмотр всех листов таблицы
+function testCurrentSpreadsheet() {
+  console.log('🧪 ТЕСТИРОВАНИЕ ТАБЛИЦЫ');
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  console.log('📁 Название таблицы:', ss.getName());
+  console.log('📁 ID таблицы:', ss.getId());
+  console.log('📁 URL таблицы:', ss.getUrl());
+  
+  // ИЗМЕНЕНИЕ ЗДЕСЬ:
+  // Получаем массив ВСЕХ существующих листов, а не жестко заданный список
+  const allSheets = ss.getSheets();
+  
+  console.log(`🔍 Всего найдено листов: ${allSheets.length}`);
+  console.log('---');
+  
+  // Проходимся по каждому реальному объекту листа
+  allSheets.forEach(sheet => {
+    console.log(`✅ Лист: "${sheet.getName()}"`);
+    console.log(`   Строк: ${sheet.getLastRow()}, Столбцов: ${sheet.getLastColumn()}`);
+    
+    // Проверяем, есть ли данные на листе (чтобы не было ошибки при чтении заголовков)
+    if (sheet.getLastRow() > 0 && sheet.getLastColumn() > 0) {
+      // Получаем заголовки (1-я строка)
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      console.log(`   Заголовки: ${headers.join(', ')}`);
+    } else {
+      console.log(`   (Лист пуст или нет данных в первой строке)`);
+    }
+    
+    console.log('---'); // Разделитель для удобства чтения
+  });
+  
+  return 'Тестирование завершено';
+}
+
+// Возвращает массив валидных секретных ключей
+// В реальном приложении храните секреты в PropertiesService
+function getValidSecrets() {
+  try {
+    // Пробуем получить из Script Properties
+    const scriptProps = PropertiesService.getScriptProperties();
+    const secrets = scriptProps.getProperty('API_SECRETS');
+    
+    if (secrets) {
+      return secrets.split(',');
+    }
+    
+    // Пробуем из Document Properties
+    const manager = new MyApp_DocumentPropertiesManager();
+    const secretResult = manager.getData('APP_SECRET_KEY');
+    
+    if (secretResult.status === 'success' && secretResult.data) {
+      return [secretResult.data];
+    }
+    
+    // Возвращаем дефолтный секрет
+    return ['s3ivohyRqt7ZZTys3khBkTpsg+sP9tQzC9pyVabQd7Q='];
+    
+  } catch (error) {
+    console.error('Ошибка получения секретов:', error);
+    return ['s3ivohyRqt7ZZTys3khBkTpsg+sP9tQzC9pyVabQd7Q='];
+  }
+}
+
+// нигде не используется !!!
 function getAllSheetsMetadata(ss) {
   console.log('📊 Получение метаданных всех листов');
   
@@ -607,700 +392,2094 @@ function getAllSheetsMetadata(ss) {
   return metadata;
 }
 
-// Просмотр всех листов таблицы
-function testCurrentSpreadsheet() {
-  console.log('🧪 ТЕСТИРОВАНИЕ ТАБЛИЦЫ');
-  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  console.log('📁 Название таблицы:', ss.getName());
-  console.log('📁 ID таблицы:', ss.getId());
-  console.log('📁 URL таблицы:', ss.getUrl());
-  
-  // ИЗМЕНЕНИЕ ЗДЕСЬ:
-  // Получаем массив ВСЕХ существующих листов, а не жестко заданный список
-  const allSheets = ss.getSheets();
-  
-  console.log(`🔍 Всего найдено листов: ${allSheets.length}`);
-  console.log('---');
-  
-  // Проходимся по каждому реальному объекту листа
-  allSheets.forEach(sheet => {
-    console.log(`✅ Лист: "${sheet.getName()}"`);
-    console.log(`   Строк: ${sheet.getLastRow()}, Столбцов: ${sheet.getLastColumn()}`);
-    
-    // Проверяем, есть ли данные на листе (чтобы не было ошибки при чтении заголовков)
-    if (sheet.getLastRow() > 0 && sheet.getLastColumn() > 0) {
-      // Получаем заголовки (1-я строка)
-      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-      console.log(`   Заголовки: ${headers.join(', ')}`);
-    } else {
-      console.log(`   (Лист пуст или нет данных в первой строке)`);
-    }
-    
-    console.log('---'); // Разделитель для удобства чтения
-  });
-  
-  return 'Тестирование завершено';
-}
-
-
-function createResponse(statusCode, data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON)
-    .setStatusCode(statusCode);
-}
-
-function getValidSecrets() {
-  // Возвращает массив валидных секретных ключей
-  // В реальном приложении храните секреты в PropertiesService
-  return PropertiesService.getScriptProperties().getProperty('API_SECRETS').split(',');
-}
-
-// ==================== ФУНКЦИЯ ВАЛИДАЦИИ ====================
-
 /**
- * Выполняет комплексную проверку входящего запроса.
- * @param {Object} body - Распарсенное тело запроса.
- * @return {Object} - Объект с ошибкой или с валидированными данными.
+ * Обновляет метаданные для листа
+ * Структура: A:Лист | B:Последнее обновление | C:Редактор | D:Способ внесения
  */
-function validateRequest(body) {
-  console.log('🔐 Валидация запроса для действия:', body.action);
-  
-  // Проверяем обязательные поля
-  if (!body.sheetName) {
-    return { status: 'error', message: 'Отсутствует обязательное поле: sheetName' };
-  }
-  
-  if (!body.secret) {
-    return { status: 'error', message: 'Отсутствует обязательное поле: secret' };
-  }
-  
-  if (!body.action) {
-    return { status: 'error', message: 'Отсутствует обязательное поле: action' };
-  }
-  
-  // Проверяем секретный ключ
-  const manager = new MyApp_DocumentPropertiesManager();
-  const secretResult = manager.getData('APP_SECRET_KEY');
-  
-  if (secretResult.status !== 'success' || !secretResult.data) {
-    return { status: 'error', message: 'Секретный ключ не настроен' };
-  }
-  
-  if (body.secret !== secretResult.data) {
-    return { status: 'error', message: 'Неверный ключ доступа' };
-  }
-  
-  // Получаем лист
+function updateMetadata_(sheetName, timestamp, editorInfo, changeType = 'API') {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(body.sheetName);
+  const metadataSheet = ss.getSheetByName('Метаданные');
   
-  if (!sheet) {
-    return { status: 'error', message: `Лист "${body.sheetName}" не найден` };
-  }
-  
-  // Получаем заголовки
-  const lastColumn = sheet.getLastColumn();
-  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
-  const headersMap = {};
-  
-  headers.forEach((header, index) => {
-    if (header && header.toString().trim() !== '') {
-      headersMap[header.toString().trim()] = index;
-    }
-  });
-  
-  return {
-    status: 'success',
-    sheet: sheet,
-    headers: headers,
-    headersMap: headersMap,
-    body: body
-  };
-}
-
-/**
- * Валидация параметров для действия 'read' с расширенной проверкой.
- */
-function validateReadParams(body, headersMap) {
-  // Валидация фильтра
-  if (body.filter) {
-    const filterValidation = validateFilter(body.filter, headersMap);
-    if (filterValidation.status === "error") return filterValidation;
-  }
-  // Валидация сортировки (orderBy)
-  if (body.orderBy) {
-    if (typeof body.orderBy !== 'object' || Array.isArray(body.orderBy) || body.orderBy === null) {
-      return { status: "error", message: "Параметр 'orderBy' должен быть объектом, например: {column: 'Имя', direction: 'asc'}." };
-    }
-    if (!body.orderBy.column) {
-      return { status: "error", message: "В 'orderBy' отсутствует обязательное поле 'column'." };
-    }
-    if (!headersMap.hasOwnProperty(body.orderBy.column)) {
-      return { status: "error", message: `Столбец для сортировки '${body.orderBy.column}' не найден.` };
-    }
-    if (body.orderBy.direction && !['asc', 'desc'].includes(String(body.orderBy.direction).toLowerCase())) {
-      return { status: "error", message: "Направление сортировки 'direction' должно быть 'asc' или 'desc'." };
-    }
-  }
-  // Валидация пагинации (limit, offset) с более точными сообщениями
-  if (body.limit) {
-    const limitVal = Number(body.limit);
-    if (!Number.isInteger(limitVal)) {
-      return { status: "error", message: "Параметр 'limit' должен быть целым числом." };
-    }
-    if (limitVal <= 0) {
-      return { status: "error", message: "Параметр 'limit' должен быть больше 0." };
-    }
-  }
-  if (body.offset) {
-    const offsetVal = Number(body.offset);
-    if (!Number.isInteger(offsetVal)) {
-      return { status: "error", message: "Параметр 'offset' должен быть целым числом." };
-    }
-    if (offsetVal < 0) {
-      return { status: "error", message: "Параметр 'offset' должен быть 0 или больше." };
-    }
-  }
-  return { status: "success" };
-}
-
-/**
- * Валидация параметров для действия 'update'.
- */
-function validateUpdateParams(body, headersMap) {
-  if (!body.filter) {
-    return { status: "error", message: "Для действия 'update' необходимо передать поле 'filter' для поиска записи." };
-  }
-  if (!body.data) {
-    return { status: "error", message: "Для действия 'update' необходимо передать поле 'data' с новыми значениями." };
-  }
-  return validateFilter(body.filter, headersMap);
-}
-
-/**
- * Валидация параметров для действия 'delete'.
- */
-function validateDeleteParams(body, headersMap) {
-  if (!body.filter) {
-    return { status: "error", message: "Для действия 'delete' необходимо передать поле 'filter' для поиска записи." };
-  }
-  return validateFilter(body.filter, headersMap);
-}
-
-/**
- * Универсальная и строгая валидация фильтра.
- */
-function validateFilter(filter, headersMap) {
-  const ALLOWED_OPERATORS = ['equals', 'greater_than', 'less_than', 'contains', 'startsWith'];
-
-  if (!Array.isArray(filter)) {
-    return { status: "error", message: "Поле 'filter' должно быть массивом условий." };
-  }
-  for (const condition of filter) {
-    if (!condition.column || condition.value === undefined || condition.value === null) {
-      return { status: "error", message: "Каждое условие в 'filter' должно содержать 'column' и 'value'." };
-    }
-    if (!headersMap.hasOwnProperty(condition.column)) {
-      return { status: "error", message: `Столбец для фильтра '${condition.column}' не найден.` };
-    }
-    const operator = condition.operator || 'equals';
-    if (!ALLOWED_OPERATORS.includes(operator)) {
-      return { status: "error", message: `Неподдерживаемый оператор '${operator}'. Допустимые: ${ALLOWED_OPERATORS.join(', ')}.` };
-    }
-    if (['greater_than', 'less_than'].includes(operator) && isNaN(Number(condition.value))) {
-      return { status: "error", message: `Значение для оператора '${operator}' в столбце '${condition.column}' должно быть числом.` };
-    }
-  }
-  return { status: "success" };
-}
-
-
-// ==================== ОБРАБОТЧИКИ ДЕЙСТВИЙ CRUD (Create Read Update Delete) ====================
-function handleRead(sheet, headers, headersMap, params) {
-  const { filter, orderBy, limit, offset } = params;
-  let data = sheet.getDataRange().getValues();
-  let filteredRows = data.slice(1);
-
-  // Применение фильтров с поддержкой операторов
-  if (filter && filter.length > 0) {
-    filteredRows = filteredRows.filter(row => {
-      return filter.every(condition => {
-        const columnIndex = headersMap[condition.column];
-        const cellValue = row[columnIndex];
-        const operator = condition.operator || 'equals';
-        const conditionValue = condition.value;
-
-        switch (operator) {
-          case 'greater_than':
-            return Number(cellValue) > Number(conditionValue);
-          case 'less_than':
-            return Number(cellValue) < Number(conditionValue);
-          case 'contains':
-            return String(cellValue).includes(String(conditionValue));
-          case 'startsWith':
-            return String(cellValue).startsWith(String(conditionValue));
-          case 'equals': // по умолчанию
-          default:
-            return String(cellValue) == String(conditionValue);
-        }
-      });
-    });
+  if (!metadataSheet) {
+    console.error('❌ Лист "Метаданные" не найден!');
+    return;
   }
 
-  // Применение сортировки
-  if (orderBy) {
-    const columnIndex = headersMap[orderBy.column];
-    filteredRows.sort((a, b) => {
-      const valA = a[columnIndex];
-      const valB = b[columnIndex];
-      if (orderBy.direction.toLowerCase() === 'desc') {
-        if (valA > valB) return -1;
-        if (valA < valB) return 1;
-        return 0;
-      }
-      if (valA > valB) return 1;
-      if (valA < valB) return -1;
-      return 0;
-    });
-  }
-
-  // Применение пагинации
-  const startIndex = offset ? Number(offset) : 0;
-  const endIndex = limit ? startIndex + Number(limit) : filteredRows.length;
-  const paginatedRows = filteredRows.slice(startIndex, endIndex);
-
-  // Преобразование в массив объектов
-  const resultObjects = paginatedRows.map(row => {
-    let obj = {};
-    headers.forEach((header, index) => { obj[header] = row[index]; });
-    return obj;
-  });
-  return createSuccessResponse(resultObjects, "Данные успешно получены.");
-}
-
-// ==================== ОБРАБОТЧИКИ ДЕЙСТВИЙ CRUD (Create Read Update Delete) ====================
-function handleCreate(sheet, rowData) {
-  try {
-    sheet.appendRow(rowData);
-    console.log('✅ Строка успешно добавлена');
-    return createResponse(200, {
-      status: 'success',
-      message: 'Данные успешно добавлены'
-    });
-  } catch (error) {
-    console.error('❌ Ошибка при добавлении строки:', error);
-    return createResponse(500, {
-      status: 'error',
-      message: `Ошибка при добавлении данных: ${error.message}`
-    });
-  }
-}
-// Функция для отладки всех таблиц
-function debugAllSheets() {
-  console.log('📊 ========== ДИАГНОСТИКА ВСЕХ ТАБЛИЦ ==========');
-  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheets = ss.getSheets();
-  
-  console.log('📋 Всего листов: ' + sheets.length);
-  
-  sheets.forEach((sheet, index) => {
-    console.log(`\n${index + 1}. Лист: "${sheet.getName()}"`);
-    console.log('   Строк: ' + sheet.getLastRow());
-    console.log('   Столбцов: ' + sheet.getLastColumn());
-    
-    if (sheet.getLastRow() > 0) {
-      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-      console.log('   Заголовки: ' + JSON.stringify(headers));
-    }
-  });
-  
-  console.log('\n==========================================');
-}
-
-// Тест создания с неправильными данными
-function testCreateWithWrongData() {
-  console.log('🧪 ========== ТЕСТ С ОШИБОЧНЫМИ ДАННЫМИ ==========');
-  
-  // Тест 1: Неправильный ключ
-  const testData1 = {
-    action: "create",
-    sheetName: "Заказы",
-    secret: "НЕПРАВИЛЬНЫЙ_КЛЮЧ",
-    data: {
-      "Статус": "тест"
-    }
-  };
-  
-  // Тест 2: Лишние столбцы
-  const testData2 = {
-    action: "create",
-    sheetName: "Заказы",
-    secret: "s3ivohyRqt7ZZTys3khBkTpsg+sP9tQzC9pyVabQd7Q=",
-    data: {
-      "Статус": "тест",
-      "Название": "товар",
-      "Количество": "1",
-      "Итоговая цена": "100",
-      "Дата": new Date().toISOString(),
-      "Телефон": "+79000000000",
-      "Клиент": "клиент",
-      "Оплата": "0",
-      "ЛИШНИЙ_СТОЛБЕЦ": "ошибка" // Этого столбца нет в таблице
-    }
-  };
-  
-  // Тест 3: Отсутствующие столбцы
-  const testData3 = {
-    action: "create",
-    sheetName: "Заказы",
-    secret: "s3ivohyRqt7ZZTys3khBkTpsg+sP9tQzC9pyVabQd7Q=",
-    data: {
-      "Статус": "тест",
-      "Название": "товар"
-      // Остальные столбцы отсутствуют
-    }
-  };
-  
-  [testData1, testData2, testData3].forEach((testData, index) => {
-    console.log(`\n🧪 Тест ${index + 1}:`);
-    console.log('   Данные: ' + JSON.stringify(testData));
-    
-    const mockEvent = {
-      postData: {
-        contents: JSON.stringify(testData),
-        type: 'application/json'
-      }
-    };
-    
-    try {
-      const result = doPost(mockEvent);
-      console.log('   Результат: ' + result.getContent());
-    } catch (error) {
-      console.error('   Ошибка: ' + error.message);
-    }
-  });
-  
-  console.log('==========================================');
-}
-
-
-// Также добавим диагностику в validateRequest для create
-// Обновленная функция validateCreateParams
-function validateCreateParams(body, headersMap) {
-  console.log('🔍 ========== ВАЛИДАЦИЯ create ==========');
-  console.log('📋 Полученные данные: ' + JSON.stringify(body.data));
-  console.log('📋 Заголовки таблицы: ' + JSON.stringify(Object.keys(headersMap)));
-  
-  if (!body.data) {
-    console.error('❌ Отсутствует поле data');
-    return { status: "error", message: "Для действия 'create' необходимо передать поле 'data'." };
-  }
-  
-  // Проверяем, что все необходимые поля есть
-  const missingColumns = [];
-  const extraColumns = [];
-  
-  for (const column in body.data) {
-    if (!headersMap.hasOwnProperty(column)) {
-      extraColumns.push(column);
-      console.warn(`⚠️ Лишний столбец: ${column}`);
-    }
-  }
-  
-  // Проверяем обязательные поля (можно настроить под конкретные таблицы)
-  const requiredColumns = [];
-  for (const column of requiredColumns) {
-    if (!body.data.hasOwnProperty(column)) {
-      missingColumns.push(column);
-    }
-  }
-  
-  if (missingColumns.length > 0) {
-    console.error('❌ Отсутствуют обязательные поля: ' + missingColumns.join(', '));
-    return { 
-      status: "error", 
-      message: `Отсутствуют обязательные поля: ${missingColumns.join(', ')}` 
-    };
-  }
-  
-  if (extraColumns.length > 0) {
-    console.warn(`⚠️ Лишние поля будут проигнорированы: ${extraColumns.join(', ')}`);
-  }
-  
-  console.log('✅ Валидация create пройдена');
-  return { status: "success" };
-}
-
-// Обновленная функция validateRequest
-function validateRequest(body) {
-  console.log('🔐 ========== НАЧАЛО ВАЛИДАЦИИ ==========');
-  console.log('📦 Получено тело: ' + JSON.stringify(body).substring(0, 500) + '...');
-  
-  // 🔐 Получаем секрет из DocumentProperties
-  const manager = new MyApp_DocumentPropertiesManager();
-  const secretResult = manager.getData('APP_SECRET_KEY');
-  console.log("Получен секрет из DocumentProperties: " + secretResult.data);
-  
-  if (secretResult.status !== 'success' || !secretResult.data) {
-    console.error('❌ Секретный ключ не настроен');
-    return { status: "error", message: "Секретный ключ не настроен на стороне сервера. Выполните там initializeSecurity()." };
-  }
-  
-  if (body.secret !== secretResult.data) {
-    console.error('❌ Неверный ключ доступа');
-    return { status: "error", message: "Неверный ключ доступа." };
-  }
-  
-  if (!body.sheetName) {
-    console.error('❌ Отсутствует sheetName');
-    return { status: "error", message: "Отсутствует обязательное поле: sheetName." };
-  }
-  
-  if (!body.action) {
-    console.error('❌ Отсутствует action');
-    return { status: "error", message: "Отсутствует обязательное поле: action." };
-  }
-  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) {
-    console.error('❌ Таблица не найдена');
-    return { status: "error", message: "Таблица не найдена или нет доступа." };
-  }
-  
-  const sheet = ss.getSheetByName(body.sheetName);
-  if (!sheet) {
-    console.error(`❌ Лист '${body.sheetName}' не найден`);
-    return { status: "error", message: `Лист с названием '${body.sheetName}' не найден.` };
-  }
-  
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const headersMap = headers.reduce((map, header, index) => {
-    map[header] = index;
-    return map;
-  }, {});
-  
-  console.log('📋 Заголовки листа: ' + JSON.stringify(headers));
-  console.log('📋 headersMap: ' + JSON.stringify(headersMap));
-  
-  let validation;
-  switch (body.action) {
-    case "read":
-      console.log('📖 Валидация read');
-      validation = validateReadParams(body, headersMap);
-      if (validation.status === "error") return validation;
-      break;
-    case "create":
-      console.log('➕ Валидация create');
-      validation = validateCreateParams(body, headersMap);
-      if (validation.status === "error") return validation;
-      break;
-    case "update":
-      console.log('✏️ Валидация update');
-      validation = validateUpdateParams(body, headersMap);
-      if (validation.status === "error") return validation;
-      break;
-    case "delete":
-      console.log('🗑️ Валидация delete');
-      validation = validateDeleteParams(body, headersMap);
-      if (validation.status === "error") return validation;
-      break;
-    default:
-      console.error('❌ Неизвестное действие: ' + body.action);
-      return { status: "error", message: `Неизвестное действие: '${body.action}'.` };
-  }
-  
-  console.log('✅ Валидация успешно пройдена');
-  return {
-    status: "success",
-    sheet: sheet,
-    headers: headers,
-    headersMap: headersMap,
-    body: body
-  };
-}
-
-// Обновим функцию validateRequest для вызова новой валидации
-function validateRequest(body) {
-  console.log('🔐 ========== НАЧАЛО ВАЛИДАЦИИ ==========');
-  console.log('📦 Получено тело: ' + JSON.stringify(body).substring(0, 500) + '...');
-  
-  // ... существующий код валидации ...
-  
-  switch (body.action) {
-    case "read":
-      const readValidation = validateReadParams(body, headersMap);
-      if (readValidation.status === "error") return readValidation;
-      break;
-    case "create":
-      const createValidation = validateCreateParams(body, headersMap); // Новая валидация
-      if (createValidation.status === "error") return createValidation;
-      break;
-    case "update":
-      const updateValidation = validateUpdateParams(body, headersMap);
-      if (updateValidation.status === "error") return updateValidation;
-      break;
-    case "delete":
-      const deleteValidation = validateDeleteParams(body, headersMap);
-      if (deleteValidation.status === "error") return deleteValidation;
-      break;
-    default:
-      console.error('❌ Неизвестное действие: ' + body.action);
-      return { status: "error", message: `Неизвестное действие: '${body.action}'.` };
-  }
-  
-  console.log('✅ Валидация успешно пройдена');
-  return {
-    status: "success",
-    sheet: sheet,
-    headers: headers,
-    headersMap: headersMap,
-    body: body
-  };
-}
-
-// Добавим вспомогательную функцию для отладки структуры таблицы
-function debugSheetStructure(sheetName) {
-  console.log('📊 ========== ДИАГНОСТИКА СТРУКТУРЫ ЛИСТА ==========');
-  console.log('📋 Лист: ' + sheetName);
-  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  // Проверяем, существует ли лист с таким именем
   const sheet = ss.getSheetByName(sheetName);
-  
   if (!sheet) {
-    console.error('❌ Лист не найден: ' + sheetName);
+    console.warn(`⚠️ Лист "${sheetName}" не существует, пропускаем обновление`);
+    return;
+  }
+
+  // Получаем все данные из метаданных
+  const lastRow = metadataSheet.getLastRow();
+  const data = lastRow > 1 ? metadataSheet.getRange(2, 1, lastRow - 1, 1).getValues() : [];
+  
+  // Ищем строку с нужным именем листа
+  let targetRow = -1;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] === sheetName) {
+      targetRow = i + 2;
+      break;
+    }
+  }
+  
+  // Если лист не найден, добавляем новую строку
+  if (targetRow === -1) {
+    targetRow = lastRow + 1;
+    metadataSheet.getRange(targetRow, 1).setValue(sheetName);
+    console.log(`➕ Добавлен новый лист в метаданные: ${sheetName}`);
+  }
+  
+  // Обновляем колонки
+  metadataSheet.getRange(targetRow, 2).setValue(timestamp);
+  metadataSheet.getRange(targetRow, 3).setValue(editorInfo);
+  metadataSheet.getRange(targetRow, 4).setValue(changeType);
+  
+  console.log(`✅ Метаданные обновлены для листа "${sheetName}"`);
+}
+
+/**
+ * Ручная синхронизация метаданных с актуальными листами
+ * Запустите эту функцию если нужно принудительно обновить метаданные
+ */
+function syncMetadataManually() {
+  console.log('🔄 Ручная синхронизация метаданных');
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const metadataSheet = ss.getSheetByName('Метаданные');
+  
+  if (!metadataSheet) {
+    console.error('❌ Лист "Метаданные" не найден');
     return;
   }
   
-  const lastRow = sheet.getLastRow();
-  const lastColumn = sheet.getLastColumn();
+  // Получаем все актуальные листы
+  const currentSheets = new Set(
+    ss.getSheets()
+      .map(sheet => sheet.getName())
+      .filter(name => name !== 'Метаданные')
+  );
   
-  console.log('📊 Размеры таблицы:');
-  console.log('   Строк: ' + lastRow);
-  console.log('   Столбцов: ' + lastColumn);
+  console.log('📊 Актуальные листы:', Array.from(currentSheets));
   
-  if (lastRow > 0) {
-    const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
-    console.log('📋 Заголовки: ' + JSON.stringify(headers));
-    
-    // Покажем пример данных
-    if (lastRow > 1) {
-      const sampleData = sheet.getRange(2, 1, Math.min(3, lastRow-1), lastColumn).getValues();
-      console.log('📋 Пример данных:');
-      for (let i = 0; i < sampleData.length; i++) {
-        console.log('   Строка ' + (i+2) + ': ' + JSON.stringify(sampleData[i]));
+  // Получаем существующие записи
+  const lastRow = metadataSheet.getLastRow();
+  const existingSheets = new Set();
+  
+  if (lastRow > 1) {
+    const names = metadataSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    names.forEach(row => {
+      if (row[0]) existingSheets.add(row[0]);
+    });
+  }
+  
+  console.log('📊 Записи в метаданных:', Array.from(existingSheets));
+  
+  const now = new Date().toISOString();
+  let added = 0, removed = 0;
+  
+  // Добавляем новые листы
+  let newRow = lastRow + 1;
+  currentSheets.forEach(sheetName => {
+    if (!existingSheets.has(sheetName)) {
+      console.log(`➕ Добавляем: ${sheetName}`);
+      metadataSheet.getRange(newRow, 1).setValue(sheetName);
+      metadataSheet.getRange(newRow, 2).setValue(now);
+      metadataSheet.getRange(newRow, 3).setValue('system (manual)');
+      metadataSheet.getRange(newRow, 4).setValue('Синхронизация');
+      newRow++;
+      added++;
+    }
+  });
+  
+  // Удаляем записи о несуществующих листах
+  const rowsToDelete = [];
+  if (lastRow > 1) {
+    const data = metadataSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (let i = 0; i < data.length; i++) {
+      const sheetName = data[i][0];
+      if (sheetName && !currentSheets.has(sheetName)) {
+        console.log(`➖ Удаляем запись о: ${sheetName}`);
+        rowsToDelete.push(i + 2);
+        removed++;
       }
     }
   }
   
-  console.log('==========================================');
+  // Удаляем в обратном порядке
+  rowsToDelete.sort((a, b) => b - a);
+  rowsToDelete.forEach(row => {
+    metadataSheet.deleteRow(row);
+  });
+  
+  console.log(`✅ Итог: добавлено ${added}, удалено ${removed}`);
 }
 
-// Функция для ручного тестирования (можно запустить из редактора)
-function testCreateFunction() {
-  console.log('🧪 ========== ТЕСТИРОВАНИЕ CREATE ==========');
-  
-  // Сначала проверим структуру таблицы "Заказы"
-  debugSheetStructure("Заказы");
-  
-  // Тестовые данные для листа "Заказы"
-  const testData = {
-    action: "create",
-    sheetName: "Заказы",
-    secret: "s3ivohyRqt7ZZTys3khBkTpsg+sP9tQzC9pyVabQd7Q=",
-    data: {
-      "Статус": "заказ",
-      "Название": "Тестовый товар",
-      "Количество": "2",
-      "Итоговая цена": "3000",
-      "Дата": new Date().toISOString(),
-      "Телефон": "+79000000000",
-      "Клиент": "Тестовый клиент",
-      "Оплата": "0"
-    }
-  };
-  
-  console.log('🧪 Тестовые данные: ' + JSON.stringify(testData));
-  
-  // Проверим данные перед отправкой
-  console.log('🔍 Проверка данных перед отправкой:');
-  const headers = ["Статус", "Название", "Количество", "Итоговая цена", "Дата", "Телефон", "Клиент", "Оплата"];
-  const newRow = headers.map(header => testData.data[header] || "");
-  console.log('📝 Сформированная строка: ' + JSON.stringify(newRow));
-  
-  // Создаем mock объект события
-  const mockEvent = {
-    postData: {
-      contents: JSON.stringify(testData),
-      type: 'application/json',
-      length: JSON.stringify(testData).length
-    }
-  };
-  
-  console.log('🚀 Запускаем doPost...');
-  
-  // Запускаем doPost
-  const result = doPost(mockEvent);
-  console.log('📥 Результат: ' + result.getContent());
-  
-  // Снова проверяем структуру таблицы после создания
-  debugSheetStructure("Заказы");
-  
-  console.log('==========================================');
+/**
+ * Функция для поиска индекса столбца по названию в первой строке.
+ * @param {Sheet} sheet - Лист Google Sheets.
+ * @param {string} columnName - Название столбца для поиска.
+ * @returns {number|null} - Индекс столбца (начиная с 1) или null, если столбец не найден.
+ */
+function findColumnByHeader(sheet, columnName) {
+  // Получаем первую строку таблицы
+  const headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  // Находим индекс столбца
+  const index = headerRow.findIndex(cellValue => cellValue === columnName);
+  // Возвращаем индекс (нумерация начинается с 1) или null, если столбец не найден
+  return index !== -1 ? index + 1 : null;
 }
 
-function handleUpdate(sheet, headers, headersMap, params) {
-  const rowToUpdate = findRowNumber(sheet, params.filter, headersMap);
-  if (rowToUpdate === -1) return createErrorResponse("Запись для обновления не найдена.");
+// массив из элементов строки, исключая указанные колонки
+function getRowValuesExceptColumn(sheet, rowIndex, excludeColumnIndex) {
+  const range = sheet.getRange(rowIndex, 1, 1, sheet.getLastColumn());
+  const values = range.getValues()[0];
+  // Удаляем элемент с нужным индексом
+  values.splice(excludeColumnIndex - 1, 1);
+  return values;
+}
 
-  for (const key in params.data) {
-    const columnIndex = headersMap[key];
-    if (columnIndex !== undefined) {
-      sheet.getRange(rowToUpdate, columnIndex + 1).setValue(params.data[key]);
+// Подсчет количества не пустых элементов массива
+function countNonEmptyCellsExceptColumn(sheet, rowIndex, excludeColumnIndex) {
+  const values = getRowValuesExceptColumn(sheet, rowIndex, excludeColumnIndex);
+  return values.filter(value => {
+    if (typeof value !== 'string') return value !== "" && value !== null && value !== undefined;
+    return value.trim() !== "";
+  }).length;
+}
+
+/**
+ * Функция для переноса уникальных значений из "Клиенты" в "Условия доставки"
+ */
+function transferUniqueValues() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet1 = ss.getSheetByName("Клиенты");
+    const sheet2 = ss.getSheetByName("Условия доставки");
+    
+    if (!sheet1 || !sheet2) {
+      throw new Error("Один из листов не найден");
+    }
+    
+    // Получаем все данные из колонки 6 Клиенты
+    const lastRow1 = sheet1.getLastRow();
+    const sourceRange = sheet1.getRange(1, 6, lastRow1, 1); // Колонка 6 (F)
+    const sourceValues = sourceRange.getValues();
+    
+    // Получаем все существующие значения из колонки 1 Условия доставки
+    const lastRow2 = sheet2.getLastRow();
+    let targetValues = [];
+    
+    if (lastRow2 > 0) {
+      const targetRange = sheet2.getRange(1, 1, lastRow2, 1); // Колонка 1 (A)
+      targetValues = targetRange.getValues();
+    }
+    
+    // Создаем Set для быстрой проверки уникальности
+    const existingValues = new Set();
+    targetValues.forEach(value => {
+      if (value[0] && value[0].toString().trim() !== "") {
+        existingValues.add(value[0].toString().trim());
+      }
+    });
+    
+    // Собираем уникальные значения из источника
+    const uniqueValues = [];
+    sourceValues.forEach(value => {
+      const trimmedValue = value[0] ? value[0].toString().trim() : "";
+      if (trimmedValue !== "" && !existingValues.has(trimmedValue)) {
+        uniqueValues.push(trimmedValue);
+        existingValues.add(trimmedValue); // Добавляем в Set, чтобы избежать дубликатов в текущей операции
+      }
+    });
+    
+    // Добавляем уникальные значения на Условия доставки
+    if (uniqueValues.length > 0) {
+      // Определяем, с какой строки начинать добавление
+      const startRow = lastRow2 > 0 ? lastRow2 + 1 : 1;
+      
+      // Подготавливаем данные для вставки (массив массивов)
+      const valuesToInsert = uniqueValues.map(value => [value]);
+      
+      // Вставляем значения
+      sheet2.getRange(startRow, 1, valuesToInsert.length, 1).setValues(valuesToInsert);
+      
+      // Сортируем значения на Условия доставки (по алфавиту)
+      if (lastRow2 > 0) {
+        const fullRange = sheet2.getRange(1, 1, sheet2.getLastRow(), 1);
+        fullRange.sort({ column: 1, ascending: true });
+      }
+      
+      Logger.log(`Добавлено ${uniqueValues.length} уникальных значений на Условия доставки`);
+    } else {
+      Logger.log("Нет новых уникальных значений для добавления");
+    }
+    
+    return { status: "success", message: `Обработано ${uniqueValues.length} уникальных значений` };
+  } catch (error) {
+    Logger.log(`Ошибка: ${error.message}`);
+    return { status: "error", message: error.message };
+  }
+}
+
+/**
+ * Функция для создания триггера на изменение Клиенты
+ */
+function createTriggerOnEdit() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Удаляем существующие триггеры для этой функции, если они есть
+  const triggers = ScriptApp.getProjectTriggers();
+  for (const trigger of triggers) {
+    if (trigger.getHandlerFunction() === "onEditTrigger") {
+      ScriptApp.deleteTrigger(trigger);
     }
   }
-  return createSuccessResponse(null, `Запись в строке ${rowToUpdate} успешно обновлена.`);
+  
+  // Создаем новый триггер
+  ScriptApp.newTrigger("onEditTrigger")
+    .forSpreadsheet(ss)
+    .onEdit()
+    .create();
+    
+  Logger.log("Триггер создан");
 }
 
-function handleDelete(sheet, headers, headersMap, params) {
-  const rowToDelete = findRowNumber(sheet, params.filter, headersMap);
-  if (rowToDelete === -1) return createErrorResponse("Запись для удаления не найдена.");
-
-  sheet.deleteRow(rowToDelete);
-  return createSuccessResponse(null, `Запись в строке ${rowToDelete} успешно удалена.`);
+/**
+ * Создает JSON ответ
+ */
+function createResponse(statusCode, data) {
+  const output = ContentService.createTextOutput();
+  output.setMimeType(ContentService.MimeType.JSON);
+  output.setContent(JSON.stringify(data));
+  
+  // В Apps Script нельзя установить status code напрямую
+  // Он всегда возвращает 200, но статус указывается в теле ответа
+  return output;
 }
 
+/**
+ * Функция для сброса данных на Условия доставки (для тестирования)
+ */
+function resetSheet2() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet2 = ss.getSheetByName("Условия доставки");
+  
+  if (sheet2) {
+    sheet2.clearContents();
+    sheet2.getRange("A1").setValue("Уникальные значения");
+    Logger.log("Условия доставки очищен");
+  }
+}
 
-// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+/**
+ * Получение данных пользователя из листа
+ * Маппинг русских названий колонок в английские ключи для JSON
+ */
+function getUserData(ss, sheetName, phone) {
+  try {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return { phone: phone };
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return { phone: phone };
+    
+    const headers = data[0];
+    
+    // Маппинг для клиентов
+    const columnMapping = {
+      'Клиент': 'name',
+      'ФИРМА': 'company',
+      'Телефон': 'phone',
+      'Почтовый индекс': 'postalCode',
+      'Юридическое лицо': 'isLegalEntity',
+      'Город': 'city',
+      'Адрес доставки': 'deliveryAddress',
+      'Доставка': 'hasDelivery',
+      'Комментарий': 'comment',
+      'latitude': 'latitude',
+      'longitude': 'longitude',
+      'Скидка': 'discount',
+      'Сумма миним.заказа': 'minOrderAmount',
+      'FCM': 'fcmToken'
+    };
+    
+    // Находим индекс колонки с телефоном
+    const phoneColIndex = headers.findIndex(h => 
+      h && (h.toString().trim() === 'Телефон')
+    );
+    
+    if (phoneColIndex === -1) {
+      console.warn(`⚠️ Колонка "Телефон" не найдена в листе "${sheetName}"`);
+      return { phone: phone };
+    }
+    
+    const normalizedPhone = phone.toString().trim();
+    
+    for (let i = 1; i < data.length; i++) {
+      const rowPhone = data[i][phoneColIndex];
+      if (rowPhone && rowPhone.toString().trim() === normalizedPhone) {
+        const userData = { 
+          phone: phone // всегда добавляем phone для совместимости
+        };
+        
+        // Проходим по всем колонкам и маппим значения
+        for (let j = 0; j < headers.length; j++) {
+          const header = headers[j];
+          if (header && header.toString().trim() !== '') {
+            const headerStr = header.toString().trim();
+            const value = data[i][j];
+            
+            // Определяем ключ для JSON
+            let jsonKey = columnMapping[headerStr] || headerStr;
+            
+            // 🔥 ОБРАБОТКА РАЗНЫХ ТИПОВ ДАННЫХ
+            if (value === null || value === undefined) {
+              userData[jsonKey] = null;
+            } else if (value instanceof Date) {
+              userData[jsonKey] = value.toISOString();
+            } else if (typeof value === 'boolean') {
+              userData[jsonKey] = value;
+            } else if (typeof value === 'number') {
+              userData[jsonKey] = value;
+            } else {
+              // Для строк - проверяем на пустоту
+              const strValue = value.toString().trim();
+              if (strValue === '') {
+                userData[jsonKey] = null; // 🔥 Пустые строки превращаем в null
+              } else {
+                userData[jsonKey] = strValue;
+              }
+            }
+          }
+        }
+        
+        console.log(`✅ Найден клиент: ${userData.name || userData.company || phone}`);
+        return userData;
+      }
+    }
+    
+    console.warn(`⚠️ Клиент с телефоном ${phone} не найден в листе "${sheetName}"`);
+    return { phone: phone };
+    
+  } catch (error) {
+    console.error(`❌ Ошибка получения данных пользователя из ${sheetName}:`, error);
+    return { phone: phone };
+  }
+}
 
-function findRowNumber(sheet, filter, headersMap) {
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    let isMatch = true;
-    for (const condition of filter) {
-      // Для поиска/удаления используем только точное совпадение
-      if (String(row[headersMap[condition.column]]) !== String(condition.value)) {
-        isMatch = false;
+// Вспомогательная функция для обновления FCM токена
+function updateUserFcmToken(ss, userType, phone, fcmToken) {
+  try {
+    const sheetName = userType === 'employee' ? 'Сотрудники' : 'Клиенты';
+    const sheet = ss.getSheetByName(sheetName);
+    
+    if (!sheet) {
+      console.warn(`Лист "${sheetName}" не найден при обновлении FCM токена`);
+      return;
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      console.warn(`Лист "${sheetName}" пуст при обновлении FCM токена`);
+      return;
+    }
+    
+    const headers = data[0];
+    const phoneColIndex = headers.indexOf('Телефон');
+    const fcmColIndex = headers.indexOf('FCM');
+    
+    if (phoneColIndex === -1) {
+      console.warn(`Колонка "Телефон" не найдена в листе "${sheetName}"`);
+      return;
+    }
+    
+    if (fcmColIndex === -1) {
+      console.warn(`Колонка "FCM" не найдена в листе "${sheetName}"`);
+      return;
+    }
+    
+    let found = false;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][phoneColIndex] === phone) {
+        // Обновляем только если токен изменился
+        if (data[i][fcmColIndex] !== fcmToken) {
+          sheet.getRange(i + 1, fcmColIndex + 1).setValue(fcmToken);
+          console.log(`✅ FCM токен обновлен для ${userType} ${phone}`);
+        } else {
+          console.log(`ℹ️ FCM токен не изменился для ${userType} ${phone}`);
+        }
+        found = true;
         break;
       }
     }
-    if (isMatch) return i + 1;
+    
+    if (!found) {
+      console.warn(`Телефон ${phone} не найден в листе "${sheetName}" при обновлении FCM`);
+    }
+    
+  } catch (error) {
+    console.error('❌ Ошибка обновления FCM токена:', error);
   }
-  return -1;
 }
 
-function createSuccessResponse(data, message) {
-  return ContentService.createTextOutput(JSON.stringify({
-    status: "success", message: message || "Операция выполнена успешно.", data: data
-  })).setMimeType(ContentService.MimeType.JSON); // отправка сообщения в формате JSON во избежание возврата в HTML
+/**
+ * Вспомогательная функция для получения метаданных
+ * Получает метаданные из листа "Метаданные"
+ * Поддерживает структуру: Лист | Последнее обновление | Редактор | Способ внесения
+ */
+function getMetadataFromSheet(ss) {
+  const metadata = {};
+  
+  try {
+    const metadataSheet = ss.getSheetByName('Метаданные');
+    
+    if (!metadataSheet) {
+      console.log('📊 Лист "Метаданные" не найден');
+      return metadata;
+    }
+    
+    const lastRow = metadataSheet.getLastRow();
+    
+    if (lastRow < 2) {
+      console.log('📊 Лист "Метаданные" пуст');
+      return metadata;
+    }
+    
+    // Получаем заголовки для проверки
+    const headers = metadataSheet.getRange(1, 1, 1, 3).getValues()[0];
+    console.log('📊 Заголовки метаданных:', headers);
+    
+    // Просто берем все данные, начиная со 2 строки (пропускаем заголовки)
+    // Нас интересуют колонки: A (Лист), B (Последнее обновление), C (Редактор)
+    const data = metadataSheet.getRange(2, 1, lastRow - 1, 3).getValues();
+    
+    console.log(`📊 Найдено строк в метаданных: ${data.length}`);
+    
+    for (let i = 0; i < data.length; i++) {
+      const sheetName = data[i][0];  // Колонка A
+      const lastUpdate = data[i][1];  // Колонка B
+      const editor = data[i][2] || ''; // Колонка C
+      
+      // Пропускаем строки с заголовками или пустые
+      if (!sheetName || sheetName === 'Лист' || !lastUpdate || lastUpdate === 'Последнее обновление') {
+        continue;
+      }
+      
+      if (sheetName && lastUpdate) {
+        // Преобразуем дату в строку ISO
+        let dateStr;
+        if (lastUpdate instanceof Date) {
+          dateStr = lastUpdate.toISOString();
+        } else if (typeof lastUpdate === 'string') {
+          // Проверяем, что строка действительно содержит дату
+          try {
+            new Date(lastUpdate).toISOString();
+            dateStr = lastUpdate;
+          } catch (e) {
+            console.warn(`⚠️ Неверный формат даты для листа "${sheetName}": ${lastUpdate}`);
+            // Если не получается, используем текущую дату
+            dateStr = new Date().toISOString();
+          }
+        } else {
+          dateStr = new Date().toISOString();
+        }
+        
+        metadata[sheetName] = {
+          lastUpdate: dateStr,
+          editor: editor
+        };
+        
+        console.log(`📋 Метаданные для "${sheetName}": обновлено ${dateStr.substring(0, 10)}`);
+      }
+    }
+    
+    console.log(`📊 Загружено метаданных: ${Object.keys(metadata).length}`);
+    
+  } catch (error) {
+    console.error('❌ Ошибка в getMetadataFromSheet:', error);
+  }
+  
+  return metadata;
 }
 
+// authenticate - Вспомогательная функция проверки телефона в листе
+function isPhoneInSheet(ss, sheetName, phone) {
+  try {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return false;
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return false;
+    
+    const headers = data[0];
+    const phoneColIndex = headers.findIndex(h => 
+      h && (h.toString().toLowerCase().includes('телефон') || 
+            h.toString().toLowerCase().includes('phone'))
+    );
+    
+    if (phoneColIndex === -1) return false;
+    
+    const normalizedPhone = phone.toString().trim();
+    
+    for (let i = 1; i < data.length; i++) {
+      const cellValue = data[i][phoneColIndex];
+      if (cellValue && cellValue.toString().trim() === normalizedPhone) {
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error(`Ошибка проверки телефона в ${sheetName}:`, error);
+    return false;
+  }
+}
+
+// authenticate Вспомогательная функция загрузки данных
+function getClientData(ss, sheetsToLoad, hasEmployeeAccess, phone) {
+  const data = {};
+  
+  for (const sheetName of sheetsToLoad) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      console.warn(`Лист "${sheetName}" не найден`);
+      continue;
+    }
+    
+    const values = sheet.getDataRange().getValues();
+    if (values.length === 0) {
+      console.warn(`Лист "${sheetName}" пуст`);
+      continue;
+    }
+    
+    const headers = values[0];
+    const rows = [];
+    
+    // 🔥 ДЛЯ СОТРУДНИКОВ - загружаем ВСЕ данные без фильтрации
+    if (hasEmployeeAccess) {
+      console.log(`👤 Сотрудник: загружаем весь лист "${sheetName}"`);
+      for (let i = 1; i < values.length; i++) {
+        const row = {};
+        for (let j = 0; j < headers.length; j++) {
+          row[headers[j]] = values[i][j];
+        }
+        rows.push(row);
+      }
+      
+    // 🔥 ДЛЯ КЛИЕНТОВ - фильтруем ТОЛЬКО ИХ данные
+    } else {
+      // Фильтрация листа "Клиенты" - ТОЛЬКО записи с телефоном клиента
+      if (sheetName === 'Клиенты') {
+        const phoneColIndex = headers.indexOf('Телефон');
+        
+        if (phoneColIndex === -1) {
+          console.error(`❌ КРИТИЧЕСКАЯ ОШИБКА: Колонка "Телефон" не найдена в листе "Клиенты"!`);
+          throw new Error('Отсутствует обязательная колонка "Телефон" в листе "Клиенты"');
+        }
+        
+        const normalizedPhone = phone.toString().trim();
+        console.log(`📞 Фильтрация клиентов по телефону: "${normalizedPhone}"`);
+        
+        for (let i = 1; i < values.length; i++) {
+          const clientPhone = values[i][phoneColIndex]?.toString().trim();
+          
+          // ✅ ВАЖНО: добавляем только записи с телефоном текущего клиента
+          if (clientPhone === normalizedPhone) {
+            const row = {};
+            for (let j = 0; j < headers.length; j++) {
+              row[headers[j]] = values[i][j];
+            }
+            rows.push(row);
+            console.log(`✅ Добавлен клиент: ${row['Клиент'] || 'без имени'} (телефон: ${clientPhone})`);
+          } else {
+            console.log(`⏭️ Пропущен клиент с телефоном: ${clientPhone}`);
+          }
+        }
+        
+        console.log(`📦 Загружено ${rows.length} записей клиента для телефона ${phone}`);
+      
+      // Фильтрация листа "Заказы" - ТОЛЬКО заказы с телефоном клиента
+      } else if (sheetName === 'Заказы') {
+        const phoneColIndex = headers.indexOf('Телефон');
+        
+        if (phoneColIndex === -1) {
+          console.error(`❌ КРИТИЧЕСКАЯ ОШИБКА: Колонка "Телефон" не найдена в листе "Заказы"!`);
+          throw new Error('Отсутствует обязательная колонка "Телефон" в листе "Заказы"');
+        }
+        
+        const normalizedPhone = phone.toString().trim();
+        console.log(`📞 Фильтрация заказов по телефону: "${normalizedPhone}"`);
+        
+        for (let i = 1; i < values.length; i++) {
+          const orderPhone = values[i][phoneColIndex]?.toString().trim();
+          
+          // ✅ ВАЖНО: добавляем только заказы с телефоном текущего клиента
+          if (orderPhone === normalizedPhone) {
+            const row = {};
+            for (let j = 0; j < headers.length; j++) {
+              row[headers[j]] = values[i][j];
+            }
+            rows.push(row);
+          }
+        }
+        
+        console.log(`📦 Загружено ${rows.length} заказов для телефона ${phone}`);
+        
+      } else {
+        // Для остальных листов (Прайс-лист, Состав и т.д.) - загружаем всё
+        console.log(`📋 Клиент: загружаем весь лист "${sheetName}"`);
+        for (let i = 1; i < values.length; i++) {
+          const row = {};
+          for (let j = 0; j < headers.length; j++) {
+            row[headers[j]] = values[i][j];
+          }
+          rows.push(row);
+        }
+      }
+    }
+    
+    // Преобразуем имя листа в ключ
+    const key = sheetNameToKey(sheetName);
+    data[key] = rows;
+  }
+  
+  return data;
+}
+
+// authenticate - Вспомогательная функция преобразования имени листа
+function sheetNameToKey(sheetName) {
+  const mapping = {
+    'Состав': 'compositions',  // обратите внимание: compositions (множественное число)
+    'Категории прайса': 'priceCategories', 
+    'Начинки': 'fillings',
+    'Условия хранения': 'storageConditions',
+    'КБЖУ': 'nutritionInfos',  // соответствует названию в ClientData
+    'Категории клиентов': 'clientCategories',
+    'Условия доставки': 'deliveryConditions', 
+    'Поставщики': 'suppliers',
+    'Клиенты': 'clients',
+    'Сотрудники': 'employees',
+    'Заказы': 'orders',
+    'Прайс-лист': 'products',  // ← ЭТО КЛЮЧЕВОЕ ОТСУТСТВУЕТ!
+    'Операции склада': 'warehouseOperations'
+  };
+  return mapping[sheetName] || sheetName.toLowerCase().replace(/\s+/g, '');
+}
+
+/**
+ * Универсальная функция генерации ID для любых листов
+ * @param {Sheet} sheet - лист Google Sheets
+ * @param {string} idColumnName - имя колонки для ID (по умолчанию "ID")
+ */
+function handleIdGeneration(sheet, idColumnName = "ID") {
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+  
+  // Находим колонку ID
+  const idColumn = findColumnByHeader(sheet, idColumnName);
+  if (idColumn === null) return;
+  
+  // Обрабатываем все строки с данными
+  for (let row = 2; row <= lastRow; row++) {
+    const idCell = sheet.getRange(row, idColumn);
+    if (idCell.getValue() !== "") continue; // ID уже есть
+    
+    // Проверяем, есть ли данные в других колонках
+    const filledCount = countNonEmptyCellsExceptColumn(sheet, row, idColumn);
+    if (filledCount > 0) {
+      const newId = generateNextId(sheet, idColumn, lastRow);
+      idCell.setValue(newId);
+    }
+  }
+}
+
+// Получает все имена листов из метаданных
+function getAllSheetNames(ss) {
+  const metadata = getMetadataFromSheet(ss);
+  return Object.keys(metadata);
+}
+
+// Вспомогательная функция для успешных ответов
+function createSuccessResponse(data) {
+  return createCorsResponse({
+    status: 'success',
+    ...data
+  });
+}
+
+// Вспомогательная функция для ответов с ошибкой
 function createErrorResponse(message) {
-  console.error(message);
-  return ContentService.createTextOutput(JSON.stringify({
-    status: "error", message: message
-  })).setMimeType(ContentService.MimeType.JSON); // отправка сообщения в формате JSON во избежание возврата в HTML
+  return createCorsResponse({
+    status: 'error',
+    message: message
+  });
+}
+
+/**
+ * Обработка OPTIONS запросов (CORS preflight)
+ */
+function doOptions(e) {
+  console.log('🔄 OPTIONS запрос получен (CORS preflight)');
+  
+  // Создаем ответ и добавляем заголовки через setContent
+  const output = ContentService.createTextOutput('');
+  output.setMimeType(ContentService.MimeType.TEXT);
+  
+  // Apps Script автоматически добавляет заголовки при развертывании
+  // как веб-приложение. Просто возвращаем пустой ответ.
+  return output;
+}
+
+/**
+ * Вспомогательная функция для создания ответов
+ * Google Apps Script сам добавит нужные заголовки
+ */
+function createCorsResponse(body) {
+  return ContentService
+    .createTextOutput(JSON.stringify(body))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Упрощенный doGet (исправлено: // вместо /)
+function doGet(e) {
+  console.log('📡 GET запрос получен');
+  
+  if (e && e.parameter && e.parameter.action === 'test') {
+    return createCorsResponse({
+      status: 'success',
+      message: 'Apps Script сервер работает (GET)',
+      timestamp: new Date().toISOString(),
+      method: 'GET'
+    });
+  }
+  
+  return createCorsResponse({
+    message: 'Используйте POST запрос для работы с API',
+    endpoints: {
+      test: 'GET/POST /?action=test',
+      authenticate: 'POST / с JSON {"action":"authenticate","phone":"...","secret":"..."}'
+    }
+  });
+}
+
+// CORS в ответы добавлен
+function doPost(e) {
+  console.log('🚀 Вход в doPost');
+  console.log('📦 e:', JSON.stringify(e));
+  
+  try {
+    // === ШАГ 1: ПАРСИНГ JSON ===
+    if (!e || !e.postData || !e.postData.contents) {
+      console.log('❌ Нет данных в запросе');
+      return createCorsResponse({
+        status: 'error',
+        message: 'Нет данных в запросе'
+      });
+    }
+    
+    console.log('📦 postData.contents:', e.postData.contents);
+    
+    let body;
+    try {
+      body = JSON.parse(e.postData.contents);
+      console.log('✅ JSON распарсен');
+      console.log('📦 body.action:', body.action);
+      console.log('📦 body.phone:', body.phone);
+      console.log('📦 body.secret:', body.secret ? 'есть' : 'нет');
+    } catch (parseError) {
+      console.log('❌ Ошибка парсинга JSON:', parseError);
+      return createCorsResponse({
+        status: 'error',
+        message: 'Ошибка парсинга JSON: ' + parseError.message
+      });
+    }
+
+    // === ШАГ 2: ВАЛИДАЦИЯ СЕКРЕТА ===
+    if (!body.secret) {
+      console.log('❌ Нет секретного ключа');
+      return createCorsResponse({
+        status: 'error',
+        message: 'Требуется секретный ключ'
+      });
+    }
+    
+    console.log('🔑 Получение списка валидных секретов...');
+    const validSecrets = getValidSecrets();
+    console.log('🔑 validSecrets:', validSecrets);
+    
+    if (!validSecrets.includes(body.secret)) {
+      console.log('❌ Неверный секретный ключ');
+      return createCorsResponse({
+        status: 'error',
+        message: 'Неверный секретный ключ'
+      });
+    }
+    
+    console.log('✅ Секретный ключ верный');
+
+    // === ШАГ 3: ОБРАБОТКА ДЕЙСТВИЙ ===
+    let result;
+    switch (body.action) {
+      case 'test':
+        console.log('🧪 Тестовый запрос');
+        result = {
+          status: 'success',
+          message: 'Apps Script сервер работает',
+          timestamp: new Date().toISOString()
+        };
+        break;
+
+      case 'authenticate':
+        console.log('🔐 Обработка аутентификации');
+        
+        if (!body.phone) {
+          console.log('❌ Нет телефона');
+          return createCorsResponse({
+            status: 'error',
+            message: 'Для аутентификации требуется поле "phone"'
+          });
+        }
+        
+        console.log('📞 Телефон:', body.phone);
+        result = handleAuthentication(
+          body.phone, 
+          body.localMetadata || {}, 
+          body.fcmToken
+        );
+        break;
+        
+      case 'fetchMetadata':
+        result = handleFetchMetadata();
+        break;
+        
+      case 'fetchClientData':
+        result = handleFetchClientData(body.phone);
+        break;
+        
+      case 'fetchProducts':
+        result = handleFetchProducts(body.phone);
+        break;
+
+      case 'createOrder':
+        result = handleCreateOrder(body.phone, body.data);
+        break;
+
+      case 'fetchOrders':
+        result = handleFetchOrders(body.phone);
+        break;
+
+      case 'updateOrderStatus':
+        result = handleUpdateOrderStatus(body.phone, body.orderData, body.newStatus);
+        break;
+        
+      case 'deleteOrder':
+        result = handleDeleteOrder(body.phone, body.data);
+        break;
+
+      case 'updateOrderStatuses':
+        result = handleUpdateOrderStatuses(body.phone, body.updates);
+        break;
+
+      case 'importData':
+        result = handleImportData(body.phone, body.updates);
+        break;
+
+      case 'sendNotification':
+        result = handleSendNotification(body.phone, body.targetPhones);
+        break;
+
+      case 'updateMetadata':
+        result = handleUpdateMetadata(body.phone, body.metadataUpdates);
+        break;
+
+      case 'addWarehouseOperation':
+        result = handleAddWarehouseOperation(body.phone, body.operationData);
+        break;
+
+      default:
+        console.log('❌ Неизвестное действие:', body.action);
+        return createCorsResponse({
+          status: 'error',
+          message: `Неизвестное действие: ${body.action}`
+        });
+    }
+    
+    // Возвращаем результат с CORS заголовками
+    return createCorsResponse(result);
+    
+  } catch (error) {
+    console.error('💥 Критическая ошибка в doPost:', error);
+    console.error('📚 Stack:', error.stack);
+    return createCorsResponse({
+      status: 'error',
+      message: 'Внутренняя ошибка сервера: ' + error.message
+    });
+  }
+}
+
+/**
+ * Функция-триггер, которая запускается при изменении таблицы
+ */
+function onEditTrigger(e) {
+  const range = e.range;
+  const sheet = range.getSheet();
+  
+  // Проверяем, что изменение произошло в Клиенты и в колонке 6
+  if (sheet.getName() === "Клиенты" && range.getColumn() === 6) {
+    // Небольшая задержка, чтобы убедиться, что все изменения сохранены
+    Utilities.sleep(500);
+    
+    // Запускаем перенос уникальных значений
+    transferUniqueValues();
+  }
+}
+
+/**
+ * Функция для создания меню в таблице
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  const menu = ui.createMenu("Действия");
+  
+  menu.addItem("Обновить уникальные значения", "transferUniqueValues");
+  menu.addItem("Включить автообновление", "createTriggerOnEdit");
+  menu.addToUi();
+}
+
+/**
+ * Обработчик аутентификации
+ * Предполагается, что телефон уже проверен в doPost
+ */
+function handleAuthentication(phone, localMetadata, fcmToken) {
+  try {
+    console.log(`🔐 Начало аутентификации для: ${phone}`);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // === ШАГ 1: ПОИСК ПОЛЬЗОВАТЕЛЯ ===
+    const isEmployee = isPhoneInSheet(ss, 'Сотрудники', phone);
+    const isClient = !isEmployee ? isPhoneInSheet(ss, 'Клиенты', phone) : false;
+    
+    if (!isEmployee && !isClient) {
+      console.log(`❌ Пользователь с телефоном ${phone} не найден`);
+      return createErrorResponse('Пользователь не найден. Проверьте правильность введенного номера телефона.');
+    }
+    
+    console.log(`👤 Тип пользователя: ${isEmployee ? 'СОТРУДНИК' : 'КЛИЕНТ'}`);
+    
+    // === ШАГ 2: ПОЛУЧЕНИЕ ДАННЫХ ПОЛЬЗОВАТЕЛЯ ===
+    let userData = {};
+    if (isEmployee) {
+      userData = getUserData(ss, 'Сотрудники', phone);
+      console.log(`👤 Сотрудник авторизован с ролью: ${userData.role || 'Сотрудник'}`);
+    } else {
+      userData = getUserData(ss, 'Клиенты', phone);
+      console.log(`👤 Клиент авторизован: ${userData.name || userData.company || phone}`);
+    }
+    
+    // === ШАГ 3: ОБРАБОТКА FCM ТОКЕНА ===
+    if (fcmToken && fcmToken.trim() !== '') {
+      updateUserFcmToken(ss, isEmployee ? 'employee' : 'client', phone, fcmToken.trim());
+    }
+    
+    // === ШАГ 4: ПОЛУЧЕНИЕ МЕТАДАННЫХ ===
+    // Используем улучшенную функцию, которая создаст метаданные при необходимости
+    const currentMetadata = getMetadataFromSheet(ss);
+    
+    // === ШАГ 5: ПОЛУЧЕНИЕ ВСЕХ ЛИСТОВ ИЗ МЕТАДАННЫХ ===
+    const allSheetNames = Object.keys(currentMetadata);
+    console.log('📋 Все листы по метаданным:', allSheetNames);
+    
+    // === ШАГ 6: ОПРЕДЕЛЕНИЕ ЛИСТОВ ДЛЯ ЗАГРУЗКИ ===
+    const sheetsToLoad = [];
+    let hasUpdates = false;
+    
+    if (!localMetadata || Object.keys(localMetadata).length === 0) {
+      // Первый вход - загружаем ВСЕ листы
+      sheetsToLoad.push(...allSheetNames);
+      hasUpdates = true;
+      console.log('📋 Первый вход, загружаем все листы:', allSheetNames);
+    } else {
+      // Повторный вход - сравниваем слепки
+      console.log('📋 Сравнение с локальными метаданными...');
+      
+      for (const sheetName of allSheetNames) {
+        const serverMeta = currentMetadata[sheetName];
+        const localMeta = localMetadata[sheetName];
+        
+        // Если нет локальных метаданных или они устарели
+        if (!localMeta) {
+          console.log(`📋 Лист "${sheetName}" отсутствует в локальных метаданных - требуется загрузка`);
+          sheetsToLoad.push(sheetName);
+          hasUpdates = true;
+        } else if (new Date(localMeta.lastUpdate) < new Date(serverMeta.lastUpdate)) {
+          console.log(`📋 Лист "${sheetName}" устарел - требуется обновление`);
+          sheetsToLoad.push(sheetName);
+          hasUpdates = true;
+        }
+      }
+    }
+    
+    // === ШАГ 7: ФИЛЬТРАЦИЯ ЛИСТОВ ПО ТИПУ ПОЛЬЗОВАТЕЛЯ ===
+    if (!isEmployee) {
+      // Клиентам не нужны служебные листы
+      const excludedSheets = ['Сотрудники', 'Поставщики', 'Складские операции', 'Метаданные'];
+      const filteredSheets = sheetsToLoad.filter(sheet => !excludedSheets.includes(sheet));
+      sheetsToLoad.length = 0;
+      sheetsToLoad.push(...filteredSheets);
+      console.log('📋 Для клиента загружаются листы:', sheetsToLoad);
+    } else {
+      console.log('📋 Для сотрудника загружаются все листы:', sheetsToLoad);
+    }
+    
+    // === ШАГ 8: ФОРМИРОВАНИЕ ОТВЕТА ===
+    const responseData = {
+      status: 'success',
+      success: true,
+      message: 'Аутентификация успешна',
+      user: userData,
+      metadata: currentMetadata,
+      data: {},
+      timestamp: new Date().toISOString()
+    };
+    
+    // Загружаем данные только если есть обновления
+    if (hasUpdates) {
+      console.log('📦 Загрузка данных для листов:', sheetsToLoad);
+      const clientData = getClientData(ss, sheetsToLoad, isEmployee, phone);
+      responseData.data = clientData;
+    } else {
+      console.log('📦 Данные актуальны, обновления не требуются');
+      responseData.data = {};
+    }
+    
+    console.log(`✅ Аутентификация успешна для: ${phone} (${isEmployee ? 'сотрудник' : 'клиент'})`);
+    return createSuccessResponse(responseData);
+    
+  } catch (error) {
+    console.error('❌ Ошибка авторизации:', error);
+    
+    if (error.message.includes('Колонка "Телефон" не найдена')) {
+      return createErrorResponse('Ошибка структуры данных: отсутствует колонка "Телефон" в листе "Заказы"');
+    }
+    
+    return createErrorResponse('Ошибка при авторизации: ' + error.message);
+  }
+}
+
+/**
+ * Обработчик для действия 'fetchMetadata'
+ * Возвращает все метаданные из листа "Метаданные"
+ */
+function handleFetchMetadata() {
+  try {
+    console.log('📊 Запрос метаданных');
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const metadata = getMetadataFromSheet(ss);
+    
+    console.log(`✅ Возвращаем метаданных: ${Object.keys(metadata).length}`);
+    
+    // Просто возвращаем объект метаданных
+    return createSuccessResponse(metadata);
+    
+  } catch (error) {
+    console.error('❌ Ошибка в handleFetchMetadata:', error);
+    return createErrorResponse('Внутренняя ошибка при получении метаданных');
+  }
+}
+
+/**
+ * Обработчик для действия 'fetchClientData'
+ * Возвращает полные данные клиента с учетом прав доступа
+ */
+function handleFetchClientData(phone) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const hasEmployeeAccess = isPhoneInSheet(ss, 'Сотрудники', phone);
+    
+    // Получаем все имена листов из метаданных
+    const metadata = getMetadataFromSheet(ss);
+    const allSheetNames = Object.keys(metadata);
+    
+    // Загружаем данные
+    const clientData = getClientData(ss, allSheetNames, hasEmployeeAccess, phone);
+    
+    return createSuccessResponse(clientData);
+    
+  } catch (error) {
+    console.error('Ошибка fetchClientData:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка получения данных клиента'
+    });
+  }
+}
+
+/**
+ * Обработчик для действия 'fetchProducts'
+ * ВСЕГДА возвращает полный прайс-лист (фильтрация выполняется на стороне клиента)
+ */
+function handleFetchProducts(phone) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Загружаем прайс-лист
+    const productsSheet = ss.getSheetByName('Прайс-лист');
+    if (!productsSheet) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Лист "Прайс-лист" не найден'
+      });
+    }
+    
+    const values = productsSheet.getDataRange().getValues();
+    if (values.length === 0) {
+      return createSuccessResponse([]);
+    }
+    
+    const headers = values[0];
+    const products = [];
+    
+    // Преобразуем все строки в объекты
+    for (let i = 1; i < values.length; i++) {
+      const product = {};
+      for (let j = 0; j < headers.length; j++) {
+        product[headers[j]] = values[i][j];
+      }
+      products.push(product);
+    }
+    
+    // ВСЕГДА возвращаем полный прайс-лист
+    // Фильтрация по категориям выполняется на стороне Flutter-приложения
+    return createSuccessResponse(products);
+    
+  } catch (error) {
+    console.error('Ошибка fetchProducts:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка получения прайс-листа'
+    });
+  }
+}
+
+/**
+ * Обработчик для действия 'createOrder'
+ * Создает новый заказ в листе "Заказы"
+ */
+function handleCreateOrder(phone, orderData) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ordersSheet = ss.getSheetByName('Заказы');
+    
+    if (!ordersSheet) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Лист "Заказы" не найден'
+      });
+    }
+    
+    const lastColumn = ordersSheet.getLastColumn();
+    const headers = ordersSheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+    
+    const rowData = [];
+    for (let i = 0; i < headers.length; i++) {
+      const header = headers[i];
+      if (header && header.toString().trim() !== '') {
+        const headerKey = header.toString().trim();
+        
+        if (orderData.hasOwnProperty(headerKey)) {
+          let value = orderData[headerKey];
+          
+          // Специальная обработка для поля "Дата"
+          if (headerKey === 'Дата' || headerKey === 'Date') {
+            // Преобразуем ISO дату в DD.MM.YYYY
+            value = formatDateToDDMMYYYY(value);
+          }
+          
+          rowData.push(value);
+        } else {
+          rowData.push('');
+        }
+      } else {
+        rowData.push('');
+      }
+    }
+    
+    ordersSheet.appendRow(rowData);
+    
+    updateMetadata_('Заказы', new Date().toISOString(), 
+      phone || 'Мобильное приложение', 'API');
+    
+    return createSuccessResponse({
+      message: 'Заказ успешно создан'
+    });
+    
+  } catch (error) {
+    console.error('Ошибка createOrder:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка создания заказа'
+    });
+  }
+}
+
+/**
+ * Обработчик для действия 'fetchOrders'
+ * Возвращает заказы с учетом прав доступа пользователя
+ */
+function handleFetchOrders(phone) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ordersSheet = ss.getSheetByName('Заказы');
+    
+    if (!ordersSheet) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Лист "Заказы" не найден'
+      });
+    }
+    
+    const values = ordersSheet.getDataRange().getValues();
+    if (values.length === 0) {
+      return createSuccessResponse([]);
+    }
+    
+    const headers = values[0];
+    const orders = [];
+    
+    // Определяем тип пользователя
+    const hasEmployeeAccess = isPhoneInSheet(ss, 'Сотрудники', phone);
+    
+    // Проходим по всем строкам (начиная с 1, пропуская заголовки)
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      
+      // Для клиентов фильтруем только свои заказы
+      if (!hasEmployeeAccess) {
+        const phoneColIndex = headers.indexOf('Телефон');
+        if (phoneColIndex !== -1 && row[phoneColIndex] !== phone) {
+          continue; // Пропускаем чужие заказы
+        }
+      }
+      
+      // Преобразуем строку в объект
+      const order = {};
+      for (let j = 0; j < headers.length; j++) {
+        order[headers[j]] = row[j];
+      }
+      orders.push(order);
+    }
+    
+    return createSuccessResponse(orders);
+    
+  } catch (error) {
+    console.error('Ошибка fetchOrders:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка получения заказов'
+    });
+  }
+}
+
+/**
+ * Обработчик для действия 'updateOrderStatus'
+ * Обновляет статус одного заказа
+ */
+function handleUpdateOrderStatus(phone, orderData, newStatus) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ordersSheet = ss.getSheetByName('Заказы');
+    
+    if (!ordersSheet) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Лист "Заказы" не найден'
+      });
+    }
+    
+    const values = ordersSheet.getDataRange().getValues();
+    if (values.length < 2) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Заказы не найдены'
+      });
+    }
+    
+    const headers = values[0];
+    const statusColIndex = headers.indexOf('Статус');
+    const phoneColIndex = headers.indexOf('Телефон');
+    const clientColIndex = headers.indexOf('Клиент');
+    const productColIndex = headers.indexOf('Название');
+    const dateColIndex = headers.indexOf('Дата');
+    const priceListIdColIndex = headers.indexOf('ID Прайс-лист');
+    
+    // Проверяем наличие необходимых колонок
+    if (statusColIndex === -1 || phoneColIndex === -1 || clientColIndex === -1) {
+      return createResponse(500, {
+        status: 'error',
+        message: 'Неверная структура листа "Заказы": отсутствуют необходимые колонки'
+      });
+    }
+    
+    // Определяем тип пользователя (сотрудник или клиент)
+    const isEmployee = isPhoneInSheet(ss, 'Сотрудники', phone);
+    
+    let ordersUpdated = 0;
+    let targetRows = [];
+    
+    // 🔥 ПОИСК ПО КОМБИНАЦИИ ПОЛЕЙ
+    for (let i = 1; i < values.length; i++) {
+      let match = true;
+      
+      // Проверяем телефон (обязательно)
+      if (values[i][phoneColIndex] !== phone) {
+        match = false;
+      }
+      
+      // Если передан clientName, проверяем его
+      if (match && orderData.clientName && values[i][clientColIndex] !== orderData.clientName) {
+        match = false;
+      }
+      
+      // Если передан productName, проверяем его
+      if (match && orderData.productName && values[i][productColIndex] !== orderData.productName) {
+        match = false;
+      }
+      
+      // Если передана date, проверяем её
+      if (match && orderData.date && values[i][dateColIndex] !== orderData.date) {
+        match = false;
+      }
+      
+      // Если передан priceListId, проверяем его
+      if (match && orderData.priceListId && values[i][priceListIdColIndex]?.toString() !== orderData.priceListId) {
+        match = false;
+      }
+      
+      if (match) {
+        // Проверяем права доступа для клиентов
+        if (!isEmployee) {
+          // Клиент может обновлять только свои заказы (телефон уже совпадает)
+          // Дополнительно можно проверить статус (например, только 'оформлен')
+          const currentStatus = values[i][statusColIndex];
+          if (currentStatus !== 'оформлен') {
+            console.log(`⚠️ Клиент ${phone} пытается обновить заказ со статусом ${currentStatus}`);
+            continue; // Пропускаем, не обновляем
+          }
+        }
+        
+        targetRows.push({
+          row: i + 1, // +1 для Sheets API
+          currentStatus: values[i][statusColIndex]
+        });
+      }
+    }
+    
+    if (targetRows.length === 0) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Заказы не найдены по указанным критериям'
+      });
+    }
+    
+    // Обновляем найденные заказы
+    for (let target of targetRows) {
+      ordersSheet.getRange(target.row, statusColIndex + 1).setValue(newStatus);
+      ordersUpdated++;
+      console.log(`📝 Заказ в строке ${target.row}: статус ${target.currentStatus} → ${newStatus}`);
+    }
+    
+    // Обновляем метаданные
+    updateMetadata_('Заказы', new Date().toISOString(), 
+      phone || 'Мобильное приложение', 'API');
+    
+    console.log(`✅ Обновлено заказов: ${ordersUpdated} для клиента ${phone}`);
+    
+    return createSuccessResponse({
+      message: `Статус заказов успешно обновлен`,
+      updatedCount: ordersUpdated,
+      newStatus: newStatus
+    });
+    
+  } catch (error) {
+    console.error('Ошибка updateOrderStatus:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка обновления статуса заказа: ' + error.message
+    });
+  }
+}
+
+/**
+ * Обработчик для действия 'updateOrderStatuses'
+ * Массово обновляет статусы заказов с указанием oldStatus
+ * Каждое обновление: {client, phone, oldStatus, newStatus}
+ * Находит строки: client + phone + status=oldStatus
+ * Заменяет status на newStatus
+ */
+function handleUpdateOrderStatuses(phone, updates) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ordersSheet = ss.getSheetByName('Заказы');
+    
+    if (!ordersSheet) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Лист "Заказы" не найден'
+      });
+    }
+    
+    const values = ordersSheet.getDataRange().getValues();
+    if (values.length < 2) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Заказы не найдены'
+      });
+    }
+    
+    const headers = values[0];
+    const statusColIndex = headers.indexOf('Статус');
+    const phoneColIndex = headers.indexOf('Телефон');
+    const clientColIndex = headers.indexOf('Клиент');
+    
+    if (statusColIndex === -1 || phoneColIndex === -1 || clientColIndex === -1) {
+      return createResponse(500, {
+        status: 'error',
+        message: 'Неверная структура листа "Заказы": отсутствуют обязательные колонки'
+      });
+    }
+    
+    let anyUpdates = false;
+    let totalUpdated = 0;
+    
+    // Обрабатываем каждый элемент из массива updates
+    for (const update of updates) {
+      const clientName = update.client;
+      const clientPhone = update.phone;
+      const oldStatus = update.oldStatus;
+      const newStatus = update.newStatus;
+      
+      // Проверяем обязательные поля
+      if (!clientName || !clientPhone || oldStatus === undefined || newStatus === undefined) {
+        console.warn(`Пропущено обновление: отсутствуют данные ${JSON.stringify(update)}`);
+        continue;
+      }
+      
+      // Ищем и обновляем ВСЕ соответствующие строки
+      let updatedCount = 0;
+      
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        const rowClient = row[clientColIndex];
+        const rowPhone = row[phoneColIndex];
+        const rowStatus = row[statusColIndex];
+        
+        // Проверяем совпадение по всем четырем полям
+        if (rowClient === clientName && 
+            rowPhone === clientPhone && 
+            rowStatus === oldStatus) {
+          
+          // Обновляем статус на новый
+          const targetRow = i + 1;
+          ordersSheet.getRange(targetRow, statusColIndex + 1).setValue(newStatus);
+          updatedCount++;
+          anyUpdates = true;
+        }
+      }
+      
+      if (updatedCount > 0) {
+        totalUpdated += updatedCount;
+        console.log(`✅ Обновлено ${updatedCount} позиций: ${clientName} (${clientPhone}) "${oldStatus}" -> "${newStatus}"`);
+      }
+    }
+    
+    // Обновляем метаданные если были изменения
+    if (anyUpdates) {
+      updateMetadata_('Заказы', new Date().toISOString(), 
+        phone || 'Мобильное приложение', 'API');
+    }
+    
+    return createSuccessResponse({
+      message: `Успешно обновлено ${totalUpdated} позиций заказа`,
+      updatedCount: totalUpdated
+    });
+    
+  } catch (error) {
+    console.error('Ошибка updateOrderStatuses:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка массового обновления статусов'
+    });
+  }
+}
+
+/**
+ * Обработчик для действия 'importData'
+ * Импортирует данные из платежной системы:
+ * - Платежные документы (Этап 1)
+ * - Информация об оплате (Этап 2)
+ * 
+ * Каждая запись содержит составной ключ для поиска заказа:
+ * Статус="доставлен" + Название + Количество + Итоговая цена + Дата + Телефон + Клиент
+ */
+function handleImportData(phone, updates) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Проверяем, что пользователь - сотрудник
+    const isEmployee = isPhoneInSheet(ss, 'Сотрудники', phone);
+    if (!isEmployee) {
+      return createResponse(403, {
+        status: 'error',
+        message: 'Импорт данных доступен только сотрудникам'
+      });
+    }
+    
+    const ordersSheet = ss.getSheetByName('Заказы');
+    if (!ordersSheet) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Лист "Заказы" не найден'
+      });
+    }
+    
+    const values = ordersSheet.getDataRange().getValues();
+    if (values.length < 2) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Заказы не найдены'
+      });
+    }
+    
+    const headers = values[0];
+    const statusColIndex = headers.indexOf('Статус');
+    const nameColIndex = headers.indexOf('Название');
+    const quantityColIndex = headers.indexOf('Количество');
+    const totalPriceColIndex = headers.indexOf('Итоговая цена');
+    const dateColIndex = headers.indexOf('Дата');
+    const phoneColIndex = headers.indexOf('Телефон');
+    const clientColIndex = headers.indexOf('Клиент');
+    const paymentDocColIndex = headers.indexOf('Платежный документ');
+    const paymentAmountColIndex = headers.indexOf('Оплата');
+    
+    // Проверяем обязательные колонки для поиска
+    const requiredCols = [
+      {name: 'Статус', index: statusColIndex},
+      {name: 'Название', index: nameColIndex},
+      {name: 'Количество', index: quantityColIndex},
+      {name: 'Итоговая цена', index: totalPriceColIndex},
+      {name: 'Дата', index: dateColIndex},
+      {name: 'Телефон', index: phoneColIndex},
+      {name: 'Клиент', index: clientColIndex}
+    ];
+    
+    for (const col of requiredCols) {
+      if (col.index === -1) {
+        return createResponse(500, {
+          status: 'error',
+          message: `Неверная структура листа "Заказы": отсутствует колонка "${col.name}"`
+        });
+      }
+    }
+    
+    let anyUpdates = false;
+    let totalUpdated = 0;
+    let notFoundCount = 0;
+    
+    // Обрабатываем каждый элемент из массива updates
+    for (const update of updates) {
+      const {
+        client,
+        phone: clientPhone,
+        productName,
+        quantity,
+        totalPrice,
+        orderDate,
+        paymentDocument,
+        paymentAmount
+      } = update;
+      
+      // Проверяем обязательные поля для поиска
+      if (!client || !clientPhone || !productName || 
+          quantity === undefined || totalPrice === undefined || !orderDate) {
+        console.warn(`Пропущено обновление: отсутствуют обязательные поля ${JSON.stringify(update)}`);
+        continue;
+      }
+      
+      // Ищем заказ по полному составному ключу
+      let targetRow = -1;
+      
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        
+        const matches = 
+          row[statusColIndex] === 'доставлен' &&
+          row[nameColIndex] === productName &&
+          String(row[quantityColIndex]) === String(quantity) &&
+          String(row[totalPriceColIndex]) === String(totalPrice) &&
+          row[dateColIndex] === orderDate &&
+          row[phoneColIndex] === clientPhone &&
+          row[clientColIndex] === client;
+        
+        if (matches) {
+          targetRow = i + 1; // +1 для Google Sheets
+          break;
+        }
+      }
+      
+      if (targetRow === -1) {
+        notFoundCount++;
+        console.warn(`Не найден заказ для импорта: ${client} (${clientPhone}) - ${productName}`);
+        continue;
+      }
+      
+      let updatedFields = [];
+      
+      // Обновляем "Платежный документ" если есть
+      if (paymentDocument !== undefined && paymentDocColIndex !== -1) {
+        ordersSheet.getRange(targetRow, paymentDocColIndex + 1).setValue(paymentDocument);
+        updatedFields.push('Платежный документ');
+      }
+      
+      // Обновляем "Оплата" если есть
+      if (paymentAmount !== undefined && paymentAmountColIndex !== -1) {
+        ordersSheet.getRange(targetRow, paymentAmountColIndex + 1).setValue(paymentAmount);
+        updatedFields.push('Оплата');
+      }
+      
+      if (updatedFields.length > 0) {
+        totalUpdated++;
+        anyUpdates = true;
+        console.log(`✅ Обновлены поля [${updatedFields.join(', ')}] для заказа: ${client} - ${productName}`);
+      }
+    }
+    
+    // Обновляем метаданные если были изменения
+    if (anyUpdates) {
+      updateMetadata_('Заказы', new Date().toISOString(), 
+        phone || 'Мобильное приложение', 'API');
+    }
+    
+    const resultMessage = `Импорт завершен: обновлено ${totalUpdated} позиций`;
+    if (notFoundCount > 0) {
+      console.warn(`⚠️ Не найдено ${notFoundCount} заказов для импорта`);
+    }
+    
+    return createSuccessResponse({
+      message: resultMessage,
+      updatedCount: totalUpdated,
+      notFoundCount: notFoundCount
+    });
+    
+  } catch (error) {
+    console.error('Ошибка importData:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка импорта данных из платежной системы'
+    });
+  }
+}
+
+/**
+ * Обработчик для действия 'sendNotification'
+ * Возвращает FCM токены для указанных телефонов
+ * Фактическая отправка уведомлений выполняется во Flutter
+ */
+function handleSendNotification(phone, targetPhones) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Проверяем, что пользователь - сотрудник (только сотрудники могут отправлять уведомления)
+    const isEmployee = isPhoneInSheet(ss, 'Сотрудники', phone);
+    if (!isEmployee) {
+      return createResponse(403, {
+        status: 'error',
+        message: 'Отправка уведомлений доступна только сотрудникам'
+      });
+    }
+    
+    const tokens = [];
+    const notFound = [];
+    
+    // Ищем FCM токены в обоих листах
+    const sheetsToCheck = ['Сотрудники', 'Клиенты'];
+    
+    for (const targetPhone of targetPhones) {
+      let foundToken = false;
+      
+      for (const sheetName of sheetsToCheck) {
+        const sheet = ss.getSheetByName(sheetName);
+        if (!sheet) continue;
+        
+        const data = sheet.getDataRange().getValues();
+        if (data.length < 2) continue;
+        
+        const headers = data[0];
+        const phoneColIndex = headers.indexOf('Телефон');
+        const fcmColIndex = headers.indexOf('FCM_Token');
+        
+        if (phoneColIndex === -1 || fcmColIndex === -1) continue;
+        
+        for (let i = 1; i < data.length; i++) {
+          if (data[i][phoneColIndex] === targetPhone) {
+            const token = data[i][fcmColIndex];
+            if (token) {
+              tokens.push({
+                phone: targetPhone,
+                fcmToken: token,
+                userType: sheetName === 'Сотрудники' ? 'employee' : 'client'
+              });
+              foundToken = true;
+              break;
+            }
+          }
+        }
+        
+        if (foundToken) break;
+      }
+      
+      if (!foundToken) {
+        notFound.push(targetPhone);
+      }
+    }
+    
+    console.log(`✅ Найдено ${tokens.length} FCM токенов, не найдено: ${notFound.length}`);
+    
+    return createSuccessResponse({
+      tokens: tokens,
+      notFound: notFound
+    });
+    
+  } catch (error) {
+    console.error('Ошибка sendNotification:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка получения FCM токенов'
+    });
+  }
+}
+
+/**
+ * Обработчик для действия 'updateMetadata'
+ * Обновляет метаданные для указанных листов
+ * Используется для синхронизации после офлайн-изменений
+ */
+function handleUpdateMetadata(phone, metadataUpdates) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Проверяем, что пользователь - сотрудник (только сотрудники могут обновлять метаданные)
+    const isEmployee = isPhoneInSheet(ss, 'Сотрудники', phone);
+    if (!isEmployee) {
+      return createResponse(403, {
+        status: 'error',
+        message: 'Обновление метаданных доступно только сотрудникам'
+      });
+    }
+    
+    const metadataSheet = ss.getSheetByName('Метаданные');
+    if (!metadataSheet) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Лист "Метаданные" не найден'
+      });
+    }
+    
+    const metadataValues = metadataSheet.getDataRange().getValues();
+    let updatedCount = 0;
+    
+    // Обрабатываем каждое обновление метаданных
+    for (const update of metadataUpdates) {
+      const { sheetName, lastUpdate } = update;
+      
+      if (!sheetName || !lastUpdate) {
+        console.warn(`Пропущено обновление метаданных: отсутствуют данные ${JSON.stringify(update)}`);
+        continue;
+      }
+      
+      // Ищем существующую запись или добавляем новую
+      let targetRow = -1;
+      
+      for (let i = 0; i < metadataValues.length; i++) {
+        if (metadataValues[i][0] === sheetName) {
+          targetRow = i + 1;
+          break;
+        }
+      }
+      
+      if (targetRow === -1) {
+        targetRow = metadataValues.length + 1;
+        metadataSheet.getRange(targetRow, 1).setValue(sheet); // Лист
+      }
+      
+      // Обновляем метаданные
+      metadataSheet.getRange(targetRow, 2).setValue(lastUpdate); // lastUpdate
+      metadataSheet.getRange(targetRow, 3).setValue(phone); // editor
+      
+      updatedCount++;
+    }
+    
+    console.log(`✅ Обновлено ${updatedCount} записей метаданных`);
+    
+    return createSuccessResponse({
+      message: `Успешно обновлено ${updatedCount} метаданных`,
+      updatedCount: updatedCount
+    });
+    
+  } catch (error) {
+    console.error('Ошибка updateMetadata:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка обновления метаданных'
+    });
+  }
+}
+
+/**
+ * Обработчик для действия 'deleteOrder'
+ * Удаляет заказ (пока не реализовано)
+ */
+function handleDeleteOrder(phone, orderData) {
+  console.log('⚠️ Функция deleteOrder не реализована');
+  return createSuccessResponse({
+    message: 'Удаление заказов пока не поддерживается',
+    warning: 'not_implemented'
+  });
+}
+
+/**
+ * Обработчик для действия 'addWarehouseOperation'
+ * Добавляет складскую операцию в лист "Складские операции"
+ * Просто записывает полученные данные без генерации ID
+ */
+function handleAddWarehouseOperation(phone, operationData) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Проверяем, что пользователь - сотрудник
+    const isEmployee = isPhoneInSheet(ss, 'Сотрудники', phone);
+    if (!isEmployee) {
+      return createResponse(403, {
+        status: 'error',
+        message: 'Добавление складских операций доступно только сотрудникам'
+      });
+    }
+    
+    const warehouseSheet = ss.getSheetByName('Складские операции');
+    if (!warehouseSheet) {
+      return createResponse(404, {
+        status: 'error',
+        message: 'Лист "Складские операции" не найден'
+      });
+    }
+    
+    // Получаем текущие заголовки из листа
+    const lastColumn = warehouseSheet.getLastColumn();
+    const headers = warehouseSheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+    
+    // Подготавливаем строку для записи
+    const rowData = [];
+    
+    for (let i = 0; i < headers.length; i++) {
+      const header = headers[i];
+      if (header && header.toString().trim() !== '') {
+        const headerKey = header.toString().trim();
+        
+        if (operationData.hasOwnProperty(headerKey)) {
+          let value = operationData[headerKey];
+          
+          // Специальная обработка для дат
+          if (headerKey === 'Дата' || headerKey === 'Срок годности') {
+            value = formatDateToDDMMYYYY(value);
+          }
+          
+          rowData.push(value);
+        } else {
+          // Если поле не передано в JSON, оставляем пустым
+          rowData.push('');
+        }
+      } else {
+        rowData.push('');
+      }
+    }
+    
+    // Добавляем новую строку с полученными данными
+    warehouseSheet.appendRow(rowData);
+    
+    // Обновляем метаданные
+    try {
+      updateMetadata_('Складские операции', new Date().toISOString(), 
+        phone || 'Мобильное приложение', 'API');
+    } catch (error) {
+      console.warn('Предупреждение: не удалось обновить метаданные:', error.message);
+    }
+    
+    console.log(`✅ Складская операция добавлена: ${JSON.stringify(operationData)}`);
+    
+    return createSuccessResponse({
+      message: 'Складская операция успешно добавлена'
+    });
+    
+  } catch (error) {
+    console.error('Ошибка addWarehouseOperation:', error);
+    return createResponse(500, {
+      status: 'error',
+      message: 'Ошибка добавления складской операции'
+    });
+  }
+}
+
+/**
+ * Обработка добавления нового листа
+ */
+function handleSheetInserted(ss) {
+  const metadataSheet = ss.getSheetByName('Метаданные');
+  if (!metadataSheet) return;
+  
+  // Получаем все текущие листы
+  const allSheets = ss.getSheets();
+  
+  // Получаем существующие имена из метаданных
+  const existingNames = new Set();
+  const lastRow = metadataSheet.getLastRow();
+  if (lastRow > 1) {
+    const names = metadataSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    names.forEach(row => {
+      if (row[0]) existingNames.add(row[0]);
+    });
+  }
+  
+  // Ищем новые листы
+  const now = new Date().toISOString();
+  let newRow = lastRow + 1;
+  
+  allSheets.forEach(sheet => {
+    const sheetName = sheet.getName();
+    if (sheetName !== 'Метаданные' && !existingNames.has(sheetName)) {
+      console.log(`📝 Добавляем новый лист: ${sheetName}`);
+      
+      metadataSheet.getRange(newRow, 1).setValue(sheetName);
+      metadataSheet.getRange(newRow, 2).setValue(now);
+      metadataSheet.getRange(newRow, 3).setValue('system (auto)');
+      metadataSheet.getRange(newRow, 4).setValue('Автоматически');
+      
+      newRow++;
+    }
+  });
+}
+
+/**
+ * Обработка удаления листа
+ */
+function handleSheetRemoved(ss) {
+  const metadataSheet = ss.getSheetByName('Метаданные');
+  if (!metadataSheet) return;
+  
+  // Получаем текущие имена листов
+  const currentSheets = new Set(
+    ss.getSheets()
+      .map(sheet => sheet.getName())
+      .filter(name => name !== 'Метаданные')
+  );
+  
+  // Получаем данные метаданных
+  const lastRow = metadataSheet.getLastRow();
+  if (lastRow < 2) return;
+  
+  const data = metadataSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  
+  // Ищем строки для удаления (листы, которых больше нет)
+  const rowsToDelete = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    const sheetName = data[i][0];
+    if (sheetName && !currentSheets.has(sheetName)) {
+      console.log(`🗑️ Лист "${sheetName}" удален, удаляем из метаданных`);
+      rowsToDelete.push(i + 2); // +2 потому что данные начинаются с 2 строки
+    }
+  }
+  
+  // Удаляем строки в обратном порядке
+  rowsToDelete.sort((a, b) => b - a);
+  rowsToDelete.forEach(row => {
+    metadataSheet.deleteRow(row);
+  });
+  
+  if (rowsToDelete.length > 0) {
+    console.log(`✅ Удалено записей: ${rowsToDelete.length}`);
+  }
+}
+
+/**
+ * Обработка переименования листа
+ */
+function handleSheetRenamed(ss) {
+  const metadataSheet = ss.getSheetByName('Метаданные');
+  if (!metadataSheet) return;
+  
+  // Получаем все текущие листы с их ID
+  const currentSheets = {};
+  ss.getSheets().forEach(sheet => {
+    if (sheet.getName() !== 'Метаданные') {
+      currentSheets[sheet.getSheetId()] = sheet.getName();
+    }
+  });
+  
+  // Получаем данные метаданных
+  const lastRow = metadataSheet.getLastRow();
+  if (lastRow < 2) return;
+  
+  const data = metadataSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const now = new Date().toISOString();
+  let renamed = 0;
+  
+  // Проверяем каждую запись в метаданных
+  for (let i = 0; i < data.length; i++) {
+    const oldName = data[i][0];
+    if (!oldName) continue;
+    
+    // Проверяем, есть ли лист с таким именем сейчас
+    let found = false;
+    for (const sheetId in currentSheets) {
+      if (currentSheets[sheetId] === oldName) {
+        found = true;
+        break;
+      }
+    }
+    
+    // Если не нашли - возможно, лист переименован
+    if (!found) {
+      // Ищем новый лист, которого нет в метаданных
+      for (const sheetId in currentSheets) {
+        const newName = currentSheets[sheetId];
+        
+        // Проверяем, есть ли это имя в метаданных
+        let nameExists = false;
+        for (let j = 0; j < data.length; j++) {
+          if (data[j][0] === newName) {
+            nameExists = true;
+            break;
+          }
+        }
+        
+        if (!nameExists) {
+          console.log(`📝 Обновляем имя: "${oldName}" -> "${newName}"`);
+          
+          const rowNum = i + 2;
+          metadataSheet.getRange(rowNum, 1).setValue(newName);
+          metadataSheet.getRange(rowNum, 2).setValue(now);
+          metadataSheet.getRange(rowNum, 3).setValue('system (rename)');
+          metadataSheet.getRange(rowNum, 4).setValue('Автоматически');
+          
+          renamed++;
+          break;
+        }
+      }
+    }
+  }
+  
+  if (renamed > 0) {
+    console.log(`✅ Обновлено имен: ${renamed}`);
+  }
 }

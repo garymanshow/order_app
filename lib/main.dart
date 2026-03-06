@@ -5,10 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'dart:io'
-    show
-        Directory,
-        File; // ← Указываем явно, что это только для нативных платформ
+// Убираем импорт dart:io - он не нужен для веба
 
 // Screens
 import 'screens/auth_or_home_router.dart';
@@ -19,6 +16,7 @@ import 'screens/client_selection_screen.dart';
 
 // Services
 import 'services/image_preloader.dart';
+import 'services/api_service.dart'; // 👈 ДОБАВЛЕНО для тестирования API
 
 // Providers
 import 'providers/auth_provider.dart';
@@ -31,6 +29,12 @@ import 'widgets/network_indicator.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 🔥 ЗАГРУЗКА .env ДЛЯ ВСЕХ ПЛАТФОРМ
+  await _loadEnvFile();
+
+  // Проверяем соединение с API
+  await _testApiConnection();
+
   // Инициализация кэша предзагрузки
   final preloader = ImagePreloader();
   await preloader.initCache();
@@ -42,37 +46,68 @@ void main() async {
   await initializeDateFormatting('ru_RU', null);
   print('✅ Локализация дат инициализирована');
 
-  // 🔥 ИСПРАВЛЕНО: Полностью изолируем нативный код
+  // Firebase только для мобильных платформ (если нужно)
   if (!kIsWeb) {
-    // Этот код выполняется ТОЛЬКО на мобильных платформах и десктопе
-    try {
-      final envPath = Directory.current.path;
-      final envFile = File('$envPath/.env');
-
-      if (await envFile.exists()) {
-        await dotenv.load(fileName: '$envPath/.env');
-        print('✅ .env файл загружен');
-      } else {
-        print('⚠️ .env файл не найден. Используются значения по умолчанию.');
-      }
-
-      if (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.macOS) {
-        // await Firebase.initializeApp();
-      }
-    } catch (e) {
-      print('⚠️ Ошибка загрузки .env файла: $e');
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      // await Firebase.initializeApp();
     }
-  } else {
-    // Для веба используем значения по умолчанию
-    print('🌐 Веб-платформа: пропускаем загрузку .env файла');
-
-    // Здесь можно задать значения по умолчанию
-    // dotenv.env['APP_SCRIPT_URL'] = 'https://script.google.com/...';
   }
 
   runApp(MyApp());
+}
+
+// 🔥 ЗАГРУЗКА .env ФАЙЛА ДЛЯ ВСЕХ ПЛАТФОРМ
+Future<void> _loadEnvFile() async {
+  print('\n📁 ===== ЗАГРУЗКА .env ФАЙЛА =====');
+
+  try {
+    // Загружаем .env для ВСЕХ платформ (включая веб)
+    await dotenv.load(fileName: "assets/.env");
+    print('✅ .env файл загружен из assets/.env');
+
+    final scriptUrl = dotenv.env['APP_SCRIPT_URL'];
+    final secret = dotenv.env['APP_SCRIPT_SECRET'];
+    final vapidKey = dotenv.env['VAPID_PUBLIC_KEY'];
+
+    print('📌 APP_SCRIPT_URL: ${scriptUrl ?? '❌ НЕ НАЙДЕН'}');
+    print(
+        '📌 APP_SCRIPT_SECRET: ${secret != null ? '✓ найден' : '❌ НЕ НАЙДЕН'}');
+    print(
+        '📌 VAPID_PUBLIC_KEY: ${vapidKey != null ? '✓ найден' : '❌ НЕ НАЙДЕН'}');
+
+    if (scriptUrl == null || secret == null) {
+      print('⚠️ ВНИМАНИЕ: Не все ключи найдены в .env файле!');
+    }
+  } catch (e) {
+    print('❌ Ошибка загрузки .env файла: $e');
+    print('⚠️ Приложение будет работать со значениями по умолчанию');
+  }
+
+  print('📁 ===== КОНЕЦ ЗАГРУЗКИ =====\n');
+}
+
+// 🔥 ТЕСТИРОВАНИЕ СОЕДИНЕНИЯ С API
+Future<void> _testApiConnection() async {
+  print('\n🔧 ===== ПРОВЕРКА СОЕДИНЕНИЯ С API =====');
+
+  try {
+    final apiService = ApiService();
+    final isConnected = await apiService.testConnection();
+
+    if (isConnected) {
+      print('✅ API доступен и работает');
+    } else {
+      print('❌ API не отвечает. Проверьте:');
+      print('   1. Правильность APP_SCRIPT_URL в .env');
+      print('   2. Доступность скрипта (опубликован ли он)');
+      print('   3. Правильность APP_SCRIPT_SECRET');
+    }
+  } catch (e) {
+    print('❌ Ошибка при проверке API: $e');
+  }
+
+  print('🔧 ===== КОНЕЦ ПРОВЕРКИ =====\n');
 }
 
 class MyApp extends StatelessWidget {
@@ -100,12 +135,13 @@ class MyApp extends StatelessWidget {
 class MyAppContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // Явно обращаемся к провайдерам
     final authProvider = Provider.of<AuthProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     print(
         '🟢 MyAppContent: authProvider.isLoading = ${authProvider.isLoading}');
+    print(
+        '🟢 MyAppContent: authProvider.isAuthenticated = ${authProvider.isAuthenticated}');
 
     return NetworkIndicator(
       child: MaterialApp(
