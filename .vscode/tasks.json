@@ -1,0 +1,270 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "flutter: clean, get, run (Linux)",
+      "type": "shell",
+      "command": "flutter clean && rm -rf build/ && rm -f pubspec.lock && flutter pub get && flutter run -d linux",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "showReuseMessage": false,
+        "clear": true
+      },
+      "icon": {
+        "id": "device-desktop",
+        "color": "terminal.ansiBlue"
+      }
+    },
+    {
+      "label": "flutter: run (Linux)",
+      "type": "shell",
+      "command": "flutter run -d linux",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "icon": {
+        "id": "play",
+        "color": "terminal.ansiGreen"
+      }
+    },
+    {
+      "label": "flutter: clean",
+      "type": "shell",
+      "command": "flutter clean && rm -rf build/ && rm -f pubspec.lock",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "icon": {
+        "id": "trash",
+        "color": "terminal.ansiRed"
+      }
+    },
+    {
+      "label": "flutter: pub get",
+      "type": "shell",
+      "command": "flutter pub get",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "icon": {
+        "id": "package",
+        "color": "terminal.ansiCyan"
+      }
+    },
+    {
+      "label": "flutter: clean & get",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "flutter: clean",
+        "flutter: pub get"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "flutter: build web",
+      "type": "shell",
+      "command": "flutter build web --release",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "icon": {
+        "id": "globe",
+        "color": "terminal.ansiBlue"
+      }
+    },
+    {
+      "label": "serve: copy config",
+      "type": "shell",
+      "command": "cp serve.json build/web/",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "icon": {
+        "id": "copy",
+        "color": "terminal.ansiYellow"
+      }
+    },
+    {
+      "label": "serve: start",
+      "type": "shell",
+      "command": "npx serve -s build/web -p 3000 --cors",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "icon": {
+        "id": "server",
+        "color": "terminal.ansiGreen"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "web: build",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "flutter: build web",
+        "serve: copy config"
+      ],
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "web: build and serve",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "flutter: build web",
+        "serve: copy config",
+        "serve: start"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "icon": {
+        "id": "rocket",
+        "color": "terminal.ansiGreen"
+      }
+    },
+    {
+      "label": "flutter: run (Chrome)",
+      "type": "shell",
+      "command": "flutter run -d chrome",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "icon": {
+        "id": "browser",
+        "color": "terminal.ansiBlue"
+      }
+    },
+    {
+      "label": "flutter: run (Web Server)",
+      "type": "shell",
+      "command": "flutter run -d web-server --web-port 3000 --web-hostname 0.0.0.0",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "icon": {
+        "id": "globe",
+        "color": "terminal.ansiCyan"
+      }
+    },
+    {
+      "label": "pwa: rebuild",
+      "type": "shell",
+      "command": "flutter build web --release && cp serve.json build/web/",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "icon": {
+        "id": "refresh",
+        "color": "terminal.ansiYellow"
+      }
+    },
+    {
+      "label": "pwa: clean build",
+      "type": "shell",
+      "command": "flutter clean && rm -rf build/ && rm -f pubspec.lock && flutter pub get && flutter build web --release && cp serve.json build/web/",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "icon": {
+        "id": "refresh",
+        "color": "terminal.ansiRed"
+      }
+    },
+    {
+      "label": "pwa: clean build + serve",
+      "type": "shell",
+      "command": "flutter clean && rm -rf build/ && rm -f pubspec.lock && flutter pub get && flutter build web --release && cp serve.json build/web/ && npx serve -s build/web -p 3000 --cors",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true
+      },
+      "icon": {
+        "id": "rocket",
+        "color": "terminal.ansiGreen"
+      }
+    },
+    {
+      "label": "pwa: watch and build",
+      "type": "shell",
+      "command": "while true; do inotifywait -r -e modify,create,delete lib/ 2>/dev/null; echo '🔄 Rebuilding...'; flutter build web --release && cp serve.json build/web/ && echo '✅ Done!'; done",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "icon": {
+        "id": "eye",
+        "color": "terminal.ansiCyan"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "flutter: doctor",
+      "type": "shell",
+      "command": "flutter doctor -v",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "icon": {
+        "id": "info",
+        "color": "terminal.ansiCyan"
+      }
+    },
+    {
+      "label": "flutter: devices",
+      "type": "shell",
+      "command": "flutter devices",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
+}

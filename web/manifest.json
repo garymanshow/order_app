@@ -1,4 +1,5 @@
 {
+    "id": "/",
     "name": "Вкусные моменты",
     "short_name": "ВкусМомент",
     "description": "Приложение для заказа десертов и сладостей",
@@ -15,21 +16,21 @@
             "src": "screenshots/home.webp",
             "sizes": "1080x1527",
             "type": "image/webp",
-            "platform": "wide",
+            "form_factor": "narrow",
             "label": "Прайс-лист с товарами"
         },
         {
             "src": "screenshots/product.webp",
             "sizes": "1080x1527",
             "type": "image/webp",
-            "platform": "wide",
+            "form_factor": "narrow",
             "label": "Детальная карточка товара"
         },
         {
             "src": "screenshots/cart.webp",
             "sizes": "1080x1827",
             "type": "image/webp",
-            "platform": "wide",
+            "form_factor": "narrow",
             "label": "Корзина с выбранными товарами"
         }
     ],
