@@ -15,6 +15,7 @@ import 'screens/client_orders_screen.dart';
 import 'screens/client_selection_screen.dart';
 
 // Services
+import 'services/env_service.dart';
 import 'services/image_preloader.dart';
 import 'services/api_service.dart'; // 👈 ДОБАВЛЕНО для тестирования API
 
@@ -59,32 +60,30 @@ void main() async {
 
 // 🔥 ЗАГРУЗКА .env ФАЙЛА ДЛЯ ВСЕХ ПЛАТФОРМ
 Future<void> _loadEnvFile() async {
-  print('\n📁 ===== ЗАГРУЗКА .env ФАЙЛА =====');
+  print('\n📁 ===== ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ =====');
 
-  try {
-    // Загружаем .env для ВСЕХ платформ (включая веб)
-    await dotenv.load(fileName: "assets/.env");
-    print('✅ .env файл загружен из assets/.env');
+  if (kIsWeb) {
+    // Для Web переменные уже в window.ENV
+    print('🌐 Web: используем window.ENV');
+    final url = EnvService.get('APP_SCRIPT_URL');
+    final secret = EnvService.get('APP_SCRIPT_SECRET');
+    final vapid = EnvService.get('VAPID_PUBLIC_KEY');
 
-    final scriptUrl = dotenv.env['APP_SCRIPT_URL'];
-    final secret = dotenv.env['APP_SCRIPT_SECRET'];
-    final vapidKey = dotenv.env['VAPID_PUBLIC_KEY'];
-
-    print('📌 APP_SCRIPT_URL: ${scriptUrl ?? '❌ НЕ НАЙДЕН'}');
     print(
-        '📌 APP_SCRIPT_SECRET: ${secret != null ? '✓ найден' : '❌ НЕ НАЙДЕН'}');
-    print(
-        '📌 VAPID_PUBLIC_KEY: ${vapidKey != null ? '✓ найден' : '❌ НЕ НАЙДЕН'}');
-
-    if (scriptUrl == null || secret == null) {
-      print('⚠️ ВНИМАНИЕ: Не все ключи найдены в .env файле!');
+        '📌 APP_SCRIPT_URL: ${url.isEmpty ? "❌" : "✅ ${url.substring(0, 50)}..."}');
+    print('📌 APP_SCRIPT_SECRET: ${secret.isEmpty ? "❌" : "✅"}');
+    print('📌 VAPID_PUBLIC_KEY: ${vapid.isEmpty ? "❌" : "✅"}');
+  } else {
+    // Для мобильных - загружаем .env
+    try {
+      await dotenv.load(fileName: "assets/.env");
+      print('✅ .env загружен для мобильной платформы');
+    } catch (e) {
+      print('❌ Ошибка загрузки .env: $e');
     }
-  } catch (e) {
-    print('❌ Ошибка загрузки .env файла: $e');
-    print('⚠️ Приложение будет работать со значениями по умолчанию');
   }
 
-  print('📁 ===== КОНЕЦ ЗАГРУЗКИ =====\n');
+  print('📁 ===== КОНЕЦ =====\n');
 }
 
 // 🔥 ТЕСТИРОВАНИЕ СОЕДИНЕНИЯ С API
@@ -98,13 +97,18 @@ Future<void> _testApiConnection() async {
     if (isConnected) {
       print('✅ API доступен и работает');
     } else {
-      print('❌ API не отвечает. Проверьте:');
-      print('   1. Правильность APP_SCRIPT_URL в .env');
-      print('   2. Доступность скрипта (опубликован ли он)');
-      print('   3. Правильность APP_SCRIPT_SECRET');
+      print('❌ API не отвечает');
     }
   } catch (e) {
+    // 🔥 Детальный вывод ошибки
     print('❌ Ошибка при проверке API: $e');
+    print('❌ Тип ошибки: ${e.runtimeType}');
+
+    // Если это DioError
+    if (e.toString().contains('DioError') ||
+        e.toString().contains('DioException')) {
+      print('❌ Это сетевая ошибка Dio');
+    }
   }
 
   print('🔧 ===== КОНЕЦ ПРОВЕРКИ =====\n');
