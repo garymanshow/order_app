@@ -1,20 +1,31 @@
 <!DOCTYPE html>
 <html>
-
 <head>
   <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
+    ============================================================
+    FLUTTER PWA ДЛЯ GITHUB PAGES - ПРИМЕР INDEX.HTML
+    ============================================================
+    
+    ВАЖНЫЕ ЗАМЕЧАНИЯ:
+    
+    1. <base href="$FLUTTER_BASE_HREF"> - НЕ ИЗМЕНЯЙТЕ ЭТО ЗНАЧЕНИЕ!
+       Flutter автоматически заменит $FLUTTER_BASE_HREF на правильный путь
+       при сборке с флагом --base-href
+    
+    2. Используйте ОТНОСИТЕЛЬНЫЕ пути для всех ресурсов:
+       ✅ href="manifest.json"
+       ✅ href="icons/Icon-192.png"
+       ❌ href="/manifest.json"
+       ❌ href="/icons/Icon-192.png"
+    
+    3. Для локальной разработки используйте:
+       flutter run -d chrome
+       
+       Для сборки на GitHub Pages:
+       flutter build web --base-href "/repository-name/"
+    ============================================================
   -->
+  
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
@@ -36,6 +47,16 @@
 
   <title>Вкусные моменты</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- 🔥 Переменные окружения для Web -->
+  <script>
+    window.ENV = {
+      APP_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycby27428vR9BT3OO6Ya-M1XTkAeU9Nvfg9vwhYrMoo3h6My_zGRYpJhdPU-hEi7magpVmg/exec',
+      APP_SCRIPT_SECRET: 's3ivohyRqt7ZZTys3khBkTpsg+sP9tQzC9pyVabQd7Q=',
+      GOOGLE_SERVICE_ACCOUNT_BASE64: '1zXLAmW2kxfHUimaXTrbJHjl5MqGtnRX7',
+      VAPID_PUBLIC_KEY: 'BMpzIzZ2LhJf5bK62MA6NlOVUCRQP4vz-yVHgv-dmYVeDpiwieph16f2qXvZRfZdDuRsHcUj765dQPN5ExlyY40'
+    };
+  </script>
 
   <style>
     #update-notification {
@@ -64,53 +85,33 @@
 </head>
 
 <body>
-  <!-- Подключаем клиент для push-уведомлений -->
   <script src="scripts/push-client.js"></script>
-
   <script src="flutter_bootstrap.js" async></script>
 
   <script>
-    // Регистрация Service Workers
+    // 🔥 УПРОЩЁННАЯ РЕГИСТРАЦИЯ SW БЕЗ АВТООБНОВЛЕНИЯ
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        // Регистрируем основной Service Worker
-        navigator.serviceWorker.register('sw.js').then(function (registration) {
-          console.log('✅ Основной Service Worker зарегистрирован');
-
-          // 🔥 ТИХОЕ ОБНОВЛЕНИЕ
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('🔄 Новая версия готова, обновляем...');
-                // Тихо обновляем при следующей загрузке
-                if (registration.waiting) {
-                  registration.waiting.postMessage({ action: 'skipWaiting' });
-                }
-              }
-            });
+        // Регистрируем sw.js (кастомный для оффлайна)
+        navigator.serviceWorker.register('sw.js')
+          .then(function (reg) {
+            console.log('✅ SW зарегистрирован');
+          })
+          .catch(function (err) {
+            console.warn('⚠️ Ошибка SW:', err);
           });
-        });
 
-        // Регистрируем Push Service Worker
-        navigator.serviceWorker.register('push-sw.js').then(function (registration) {
-          console.log('📬 Push Service Worker зарегистрирован');
-        });
-      });
-
-      // Обработка сообщений от Service Worker
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data && event.data.action === 'reload') {
-          window.location.reload();
-        }
-      });
-
-      // Обновление при смене Service Worker
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('🔄 Service Worker обновлен, перезагрузка...');
-        window.location.reload();
+        // Регистрируем push-sw.js
+        navigator.serviceWorker.register('push-sw.js')
+          .then(function (reg) {
+            console.log('📬 Push SW зарегистрирован');
+          })
+          .catch(function (err) {
+            console.warn('⚠️ Ошибка Push SW:', err);
+          });
       });
     }
+    // 🔥 НЕТ БОЛЬШЕ controllerchange - НЕТ БЕСКОНЕЧНОГО ЦИКЛА!
   </script>
 </body>
 

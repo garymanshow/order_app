@@ -1,7 +1,5 @@
 // lib/services/api_service.dart
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../models/order_item.dart';
 import '../models/sheet_metadata.dart';
@@ -10,12 +8,12 @@ import '../models/product.dart';
 import '../models/client.dart';
 import '../models/employee.dart';
 import '../models/delivery_condition.dart';
+import 'env_service.dart';
 
 class ApiService {
-  static String get _scriptUrl =>
-      dotenv.env['APP_SCRIPT_URL'] ?? 'URL_NOT_FOUND';
-  static String get _secret =>
-      dotenv.env['APP_SCRIPT_SECRET'] ?? 'SECRET_NOT_FOUND';
+  // 🔥 ИСПОЛЬЗУЕМ EnvService вместо dotenv
+  static String get _scriptUrl => EnvService.get('APP_SCRIPT_URL');
+  static String get _secret => EnvService.get('APP_SCRIPT_SECRET');
 
   // 🔥 ЕДИНЫЙ МЕТОД ДЛЯ ВСЕХ ЗАПРОСОВ
   Future<http.Response> _makeRequest(
@@ -62,22 +60,31 @@ class ApiService {
   Future<bool> testConnection() async {
     print('\n🔧 ===== ТЕСТИРОВАНИЕ СОЕДИНЕНИЯ =====');
     print('🔧 URL: $_scriptUrl');
-    print('🔧 Секрет: $_secret');
+    print('🔧 Секрет: ${_secret.isEmpty ? "ПУСТО" : "найден"}');
 
     try {
       final response = await _makeRequest('test', {});
 
       if (response.statusCode == 200) {
+        // 🔥 Проверяем, не вернулся ли HTML вместо JSON
+        final body = response.body.trim();
+        if (body.startsWith('<!DOCTYPE') || body.startsWith('<html')) {
+          print('❌ Получен HTML вместо JSON! Возможно, CORS ошибка.');
+          print('❌ Ответ: ${body.substring(0, 200)}...');
+          return false;
+        }
+
         final Map<String, dynamic> data = jsonDecode(response.body);
         print('🔧 Ответ: $data');
         print('🔧 ===== ТЕСТ УСПЕШЕН =====\n');
-        return data['status'] == 'success';
+        return data['status'] == 'success' || data['success'] == true;
       } else {
         print('🔧 ===== ТЕСТ НЕ УДАЛСЯ =====\n');
         return false;
       }
     } catch (e) {
       print('🔧 Ошибка: $e');
+      print('🔧 Тип: ${e.runtimeType}');
       print('🔧 ===== ТЕСТ НЕ УДАЛСЯ =====\n');
       return false;
     }
@@ -91,7 +98,7 @@ class ApiService {
   }) async {
     print('\n🔐 ===== НАЧАЛО АУТЕНТИФИКАЦИИ =====');
     print('🔐 Телефон: $phone');
-    print('🔐 Секретный ключ: $_secret');
+    print('🔐 Секретный ключ: ${_secret.isEmpty ? "ПУСТО" : "найден"}');
     print('🔐 URL скрипта: $_scriptUrl');
     print('🔐 FCM токен: ${fcmToken ?? 'не передан'}');
     print('🔐 Локальные метаданные: ${localMetadata.length} листов');
