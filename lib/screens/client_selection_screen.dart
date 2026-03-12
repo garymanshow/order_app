@@ -46,10 +46,7 @@ class ClientSelectionScreen extends StatelessWidget {
     return total >= minAmount;
   }
 
-  // Проверка наличия неотправленных заказов
-  bool _hasUnsavedOrders(List<OrderItem> orders) {
-    return orders.any((order) => order.quantity > 0);
-  }
+  // 🔥 УДАЛЕНО: _hasUnsavedOrders (не используется)
 
   // Метод выхода с проверкой несохраненных изменений
   Future<void> _logoutAndReturnToAuth(BuildContext context) async {
@@ -102,16 +99,16 @@ class ClientSelectionScreen extends StatelessWidget {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Сброс настроек'),
-        content: Text('Вы уверены? Это удалит все локальные данные.'),
+        title: const Text('Сброс настроек'),
+        content: const Text('Вы уверены? Это удалит все локальные данные.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Отмена'),
+            child: const Text('Отмена'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('Сбросить', style: TextStyle(color: Colors.red)),
+            child: const Text('Сбросить', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -130,13 +127,13 @@ class ClientSelectionScreen extends StatelessWidget {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Настройки сброшены!')),
+          const SnackBar(content: Text('Настройки сброшены!')),
         );
       }
     }
   }
 
-  // Отправка всех заказов с проверкой минимальных сумм
+  // 🔥 ИСПРАВЛЕНО: Отправка всех заказов с правильным вызовом submitAllOrders
   Future<void> _submitAllOrders(
       BuildContext context, AuthProvider authProvider) async {
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
@@ -208,7 +205,11 @@ class ClientSelectionScreen extends StatelessWidget {
 
     if (confirm != true) return;
 
-    final success = await cartProvider.submitAllOrders(apiService);
+    // 🔥 ИСПРАВЛЕНО: передаем context и apiService
+    final success = await cartProvider.submitAllOrders(
+      context,
+      apiService,
+    );
 
     if (context.mounted) {
       if (success) {
@@ -233,8 +234,8 @@ class ClientSelectionScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Загрузка данных...'),
-                  CircularProgressIndicator(),
+                  const Text('Загрузка данных...'),
+                  const CircularProgressIndicator(),
                 ],
               ),
             ),
@@ -287,29 +288,31 @@ class ClientSelectionScreen extends StatelessWidget {
                 ),
               if (kDebugMode)
                 IconButton(
-                  icon:
-                      Icon(Icons.settings_backup_restore, color: Colors.orange),
+                  icon: const Icon(Icons.settings_backup_restore,
+                      color: Colors.orange),
                   tooltip: 'Сбросить настройки (отладка)',
                   onPressed: () => _resetAppSettings(context),
                 ),
-              // 🔥 Кнопка выхода с предупреждением
+              // Кнопка выхода с предупреждением
               Stack(
                 children: [
                   IconButton(
-                    icon: Icon(Icons.logout),
+                    icon: const Icon(Icons.logout),
                     tooltip: 'Выйти',
                     onPressed: () => _logoutAndReturnToAuth(context),
                   ),
                   if (hasUnsavedOrders)
-                    Positioned(
+                    const Positioned(
                       right: 8,
                       top: 8,
-                      child: Container(
+                      child: SizedBox(
                         width: 10,
                         height: 10,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
                     ),
@@ -358,7 +361,7 @@ class _ClientWithTotal {
   final double total;
   final bool meetsMinimum;
 
-  _ClientWithTotal({
+  const _ClientWithTotal({
     required this.client,
     required this.total,
     required this.meetsMinimum,

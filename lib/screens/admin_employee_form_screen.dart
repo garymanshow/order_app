@@ -1,8 +1,12 @@
 // lib/screens/admin_employee_form_screen.dart
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../services/google_sheets_service.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../models/employee.dart';
+import '../models/client.dart'; // 👈 ДОБАВЛЕНО для приведения типов
 import '../utils/phone_validator.dart';
 
 class AdminEmployeeFormScreen extends StatefulWidget {
@@ -17,20 +21,21 @@ class AdminEmployeeFormScreen extends StatefulWidget {
 
 class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _service = GoogleSheetsService(dotenv.env['SPREADSHEET_ID']!);
+  final ApiService _apiService = ApiService();
 
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   late String _selectedRole;
+  late bool _twoFactorAuth;
 
   List<String> _availableRoles = [];
   bool _isLoadingRoles = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
 
-    // Загружаем доступные роли
     _loadAvailableRoles();
 
     if (widget.employee != null) {
@@ -39,10 +44,12 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
       _phoneController =
           TextEditingController(text: widget.employee!.phone ?? '');
       _selectedRole = widget.employee!.role ?? '';
+      _twoFactorAuth = widget.employee!.twoFactorAuth;
     } else {
       _nameController = TextEditingController();
       _phoneController = TextEditingController();
-      _selectedRole = ''; // будет установлено после загрузки ролей
+      _selectedRole = '';
+      _twoFactorAuth = false;
     }
   }
 
@@ -53,29 +60,31 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
     super.dispose();
   }
 
+  // ЗАГРУЗКА ДОСТУПНЫХ РОЛЕЙ
   Future<void> _loadAvailableRoles() async {
-    setState(() {
-      _isLoadingRoles = true;
-    });
+    setState(() => _isLoadingRoles = true);
 
     try {
-      await _service.init();
-      final data = await _service.read(sheetName: 'Сотрудники');
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-      final roles = data
-          .map((row) => row['Роль']?.toString() ?? '')
-          .where((role) => role.isNotEmpty)
+      final employees =
+          authProvider.clientData?.clients.whereType<Employee>().toList() ?? [];
+
+      final roles = employees
+          .map((e) => e.role)
+          .where((role) => role != null && role.isNotEmpty)
           .toSet()
-          .toList();
+          .toList() as List<String>;
 
-      // Добавляем стандартные роли на русском, если таблица пустая
       if (roles.isEmpty) {
         roles.addAll([
           'Администратор',
           'Менеджер',
           'Водитель',
           'Разработчик',
-          'Кладовщик'
+          'Кладовщик',
+          'Повар',
+          'Упаковщик',
         ]);
       }
 
@@ -89,99 +98,108 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
         }
       });
     } catch (e) {
-      print('Ошибка загрузки ролей: $e');
-      // Стандартные роли на случай ошибки
+      print('❌ Ошибка загрузки ролей: $e');
       setState(() {
         _availableRoles = [
           'Администратор',
           'Менеджер',
           'Водитель',
           'Разработчик',
-          'Кладовщик'
+          'Кладовщик',
+          'Повар',
+          'Упаковщик',
         ];
         if (widget.employee == null && _selectedRole.isEmpty) {
-          _selectedRole = 'Администратор';
+          _selectedRole = 'Менеджер';
         }
       });
     } finally {
-      setState(() {
-        _isLoadingRoles = false;
-      });
+      setState(() => _isLoadingRoles = false);
     }
   }
 
+  // СОХРАНЕНИЕ СОТРУДНИКА
   Future<void> _saveEmployee() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final employee = Employee(
-      name: _nameController.text.trim().isNotEmpty
-          ? _nameController.text.trim()
-          : null,
-      phone: PhoneValidator.normalizePhone(_phoneController.text.trim()) ?? '',
-      role: _selectedRole.isNotEmpty ? _selectedRole : null,
-      // FCM не редактируется вручную
-    );
+    setState(() => _isSaving = true);
 
     try {
-      await _service.init();
+      final normalizedPhone =
+          PhoneValidator.normalizePhone(_phoneController.text.trim()) ?? '';
+
+      final employee = Employee(
+        name: _nameController.text.trim().isNotEmpty
+            ? _nameController.text.trim()
+            : null,
+        phone: normalizedPhone,
+        role: _selectedRole.isNotEmpty ? _selectedRole : null,
+        twoFactorAuth: _twoFactorAuth,
+        fcm: widget.employee?.fcm,
+      );
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
       if (widget.employee != null) {
-        // Обновление существующего сотрудника
-        final updates = <String, dynamic>{};
+        // Обновление
+        final index = authProvider.clientData!.clients.indexWhere((c) {
+          if (c is Employee) {
+            return c.phone == widget.employee!.phone;
+          }
+          return false;
+        });
 
-        if (employee.name != widget.employee!.name) {
-          updates['Сотрудник'] = employee.name ?? '';
+        if (index != -1) {
+          // 🔥 ЯВНОЕ ПРИВЕДЕНИЕ К ТИПУ Client
+          authProvider.clientData!.clients[index] = employee as Client;
+          authProvider.clientData!.buildIndexes();
+          await _apiService.updateEmployee(employee);
+          print('✅ Сотрудник обновлен: ${employee.name}');
         }
-        if (employee.phone != widget.employee!.phone) {
-          updates['Телефон'] = employee.phone ?? '';
-        }
-        if (employee.role != widget.employee!.role) {
-          updates['Роль'] = employee.role ?? '';
-        }
-
-        if (updates.isNotEmpty) {
-          // Безопасная обработка nullable телефона
-          final phoneFilter = widget.employee!.phone ?? '';
-          await _service.update(
-            sheetName: 'Сотрудники',
-            filters: [
-              {'column': 'Телефон', 'value': phoneFilter},
-            ],
-            data: updates,
-          );
-        }
-
-        Navigator.pop(context, employee);
       } else {
-        // Создание нового сотрудника
-        final record = [
-          employee.name ?? '',
-          employee.phone ?? '',
-          employee.role ?? '',
-          employee.fcm ?? '',
-        ];
-
-        await _service.create(
-          sheetName: 'Сотрудники',
-          records: [record],
-        );
-
-        Navigator.pop(context, true);
+        // Создание
+        // 🔥 ЯВНОЕ ПРИВЕДЕНИЕ К ТИПУ Client
+        authProvider.clientData!.clients.add(employee as Client);
+        authProvider.clientData!.buildIndexes();
+        await _apiService.createEmployee(employee);
+        print('✅ Новый сотрудник создан: ${employee.name}');
       }
 
+      await _saveEmployeesToPrefs(authProvider);
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Сохранено успешно!')),
-        );
+        Navigator.pop(context, true);
+        _showSnackBar('Сотрудник успешно сохранен', Colors.green);
       }
     } catch (e) {
+      print('❌ Ошибка сохранения сотрудника: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка сохранения: $e')),
-        );
+        _showSnackBar('Ошибка сохранения: $e', Colors.red);
       }
-      print('Ошибка сохранения: $e');
+    } finally {
+      setState(() => _isSaving = false);
     }
+  }
+
+  // СОХРАНЕНИЕ В SHAREDPREFERENCES
+  Future<void> _saveEmployeesToPrefs(AuthProvider authProvider) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final clientDataJson = authProvider.clientData!.toJson();
+      await prefs.setString('client_data', jsonEncode(clientDataJson));
+    } catch (e) {
+      print('❌ Ошибка сохранения ClientData: $e');
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -191,81 +209,193 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
         title: Text(widget.employee != null
             ? 'Редактировать сотрудника'
             : 'Новый сотрудник'),
+        backgroundColor: Theme.of(context).primaryColor,
+        elevation: 0,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: InputDecoration(labelText: 'Сотрудник *'),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Обязательное поле';
-                  }
-                  return null;
-                },
-              ),
-              TextFormField(
-                controller: _phoneController,
-                decoration: InputDecoration(
-                  labelText: 'Телефон *',
-                  hintText: '+7 XXX XXX XX XX',
+      body: _isSaving
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  children: [
+                    Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              controller: _nameController,
+                              decoration: InputDecoration(
+                                labelText: 'Сотрудник *',
+                                prefixIcon: const Icon(Icons.person),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Обязательное поле';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _phoneController,
+                              decoration: InputDecoration(
+                                labelText: 'Телефон *',
+                                hintText: '+7 XXX XXX XX XX',
+                                prefixIcon: const Icon(Icons.phone),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              keyboardType: TextInputType.phone,
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Обязательное поле';
+                                }
+                                final normalized =
+                                    PhoneValidator.normalizePhone(value);
+                                if (normalized == null) {
+                                  return 'Неверный формат телефона';
+                                }
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Роль сотрудника',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            if (_isLoadingRoles)
+                              const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: CircularProgressIndicator(),
+                                ),
+                              ),
+                            if (!_isLoadingRoles)
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _availableRoles.map((role) {
+                                  final isSelected = _selectedRole == role;
+                                  return FilterChip(
+                                    label: Text(role),
+                                    selected: isSelected,
+                                    onSelected: (selected) {
+                                      setState(() {
+                                        _selectedRole = role;
+                                      });
+                                    },
+                                    backgroundColor: Colors.grey[100],
+                                    selectedColor: Colors.green.shade100,
+                                    checkmarkColor: Colors.green,
+                                  );
+                                }).toList(),
+                              ),
+                            if (_selectedRole.isEmpty && !_isLoadingRoles)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Выберите роль',
+                                  style: TextStyle(
+                                      color: Colors.red, fontSize: 12),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Безопасность',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            SwitchListTile(
+                              title: const Text('Двухфакторная аутентификация'),
+                              subtitle: const Text(
+                                'Требовать подтверждение по SMS при входе',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              value: _twoFactorAuth,
+                              onChanged: (value) {
+                                setState(() {
+                                  _twoFactorAuth = value;
+                                });
+                              },
+                              secondary: Icon(
+                                _twoFactorAuth
+                                    ? Icons.security
+                                    : Icons.security_outlined,
+                                color:
+                                    _twoFactorAuth ? Colors.green : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: _saveEmployee,
+                      icon: const Icon(Icons.save),
+                      label: Text(
+                        widget.employee != null
+                            ? 'Сохранить'
+                            : 'Добавить сотрудника',
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                keyboardType: TextInputType.phone,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Обязательное поле';
-                  }
-                  return PhoneValidator.validatePhone(value);
-                },
               ),
-
-              // Выбор роли из выпадающего списка (русские названия)
-              if (_isLoadingRoles)
-                ListTile(
-                  title: Text('Загрузка ролей...'),
-                  leading: CircularProgressIndicator(),
-                ),
-              if (!_isLoadingRoles)
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedRole.isEmpty ? null : _selectedRole,
-                  decoration: InputDecoration(
-                    labelText: 'Роль *',
-                    errorText: _selectedRole.isEmpty ? 'Выберите роль' : null,
-                  ),
-                  items: _availableRoles.map((String role) {
-                    return DropdownMenuItem<String>(
-                      value: role,
-                      child: Text(role),
-                    );
-                  }).toList(),
-                  onChanged: (String? newValue) {
-                    setState(() {
-                      _selectedRole = newValue ?? '';
-                    });
-                  },
-                  validator: (value) {
-                    if (_selectedRole.isEmpty) {
-                      return 'Выберите роль';
-                    }
-                    return null;
-                  },
-                ),
-
-              SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _saveEmployee,
-                child: Text(widget.employee != null ? 'Сохранить' : 'Добавить'),
-                style: ElevatedButton.styleFrom(
-                    minimumSize: Size(double.infinity, 50)),
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }

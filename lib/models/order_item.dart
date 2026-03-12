@@ -163,6 +163,26 @@ class OrderItem {
     );
   }
 
+  // 🔥 ДОБАВЛЕНО: доступные следующие статусы
+  List<String> getAvailableStatuses() {
+    switch (status) {
+      case 'оформлен':
+        return ['производство', 'отменен'];
+      case 'производство':
+        return ['готов', 'отменен'];
+      case 'готов':
+        return ['доставлен', 'отменен'];
+      case 'доставлен':
+        return ['оплачен', 'отменен'];
+      case 'оплачен':
+        return []; // Нельзя изменить после оплаты
+      case 'отменен':
+        return []; // Нельзя изменить после отмены
+      default:
+        return [];
+    }
+  }
+
   // Бизнес-логика (без изменений)
   bool get isDelivered => status == 'доставлен';
   bool get isPaid => paymentAmount >= totalPrice && paymentDocument.isNotEmpty;

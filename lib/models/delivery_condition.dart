@@ -1,7 +1,7 @@
 // lib/models/delivery_condition.dart
 import '../utils/parsing_utils.dart';
 
-//Условия доставки
+// Условия доставки
 class DeliveryCondition {
   final String location; // Пункт доставки (город, поселок и т.д.)
   final double deliveryAmount; // Сумма доставки
@@ -34,7 +34,7 @@ class DeliveryCondition {
   // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
-      'location': location ?? '',
+      'location': location,
       'deliveryAmount': deliveryAmount,
       'hiddenMarkup': hiddenMarkup,
     };
@@ -43,7 +43,7 @@ class DeliveryCondition {
   // 🔥 ИСПРАВЛЕНО: безопасный toMap
   Map<String, dynamic> toMap() {
     return {
-      'Пункт': location ?? '',
+      'Пункт': location,
       'Сумма доставки': deliveryAmount.toString(),
       'Транпортные':
           hiddenMarkup != null ? '${hiddenMarkup!.toStringAsFixed(0)}%' : '',

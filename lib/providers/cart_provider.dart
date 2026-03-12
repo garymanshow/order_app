@@ -9,6 +9,7 @@ import '../models/product.dart';
 import '../models/delivery_condition.dart';
 import '../models/price_list_mode.dart';
 import '../services/api_service.dart';
+import '../services/delivery_conditions_service.dart' as delivery;
 
 class CartProvider with ChangeNotifier {
   Client? _currentClient;
@@ -45,7 +46,7 @@ class CartProvider with ChangeNotifier {
     return order?.quantity ?? 0;
   }
 
-// 🔥 Установка количества - напрямую в заказ
+  // 🔥 Установка количества - напрямую в заказ
   Future<void> setQuantity(
       String productId, int quantity, int multiplicity) async {
     if (_currentClient == null || _allOrders == null || _allProducts == null)
@@ -148,22 +149,98 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // 🔥 Обновление условий доставки
   void _updateDeliveryCondition() {
-    // Здесь логика определения условий доставки
     _deliveryCondition = null;
   }
 
+  // 🔥 Получение условий доставки с контекстом (используем getConditionForLocation)
+  DeliveryCondition? getDeliveryCondition(BuildContext context) {
+    if (_currentClient == null || _currentClient!.city == null) return null;
+
+    final deliveryService = delivery.DeliveryConditionsService();
+    return deliveryService.getConditionForLocation(
+        _currentClient!.city!, context);
+  }
+
+  // 🔥 Получение минимальной суммы заказа для города клиента (используем getMinOrderAmount)
+  double getMinOrderAmount(BuildContext context) {
+    if (_currentClient == null || _currentClient!.city == null) return 0.0;
+
+    final deliveryService = delivery.DeliveryConditionsService();
+    return deliveryService.getMinOrderAmount(_currentClient!.city!, context);
+  }
+
+  // 🔥 Получение наценки для клиента (используем getMarkupForCity)
+  double getMarkupForClient(BuildContext context) {
+    if (_currentClient == null || _currentClient!.city == null) return 0.0;
+
+    final deliveryService = delivery.DeliveryConditionsService();
+    return deliveryService.getMarkupForCity(_currentClient!.city!, context);
+  }
+
+  // 🔥 Получение скидки клиента
+  double getClientDiscount() {
+    return _currentClient?.discount ?? 0.0;
+  }
+
+  // 🔥 Расчет итоговой цены товара с учетом наценки и скидки
+  double calculateFinalPrice(double basePrice, BuildContext context) {
+    final markup = getMarkupForClient(context);
+    final discount = getClientDiscount();
+    return basePrice * (1 + (markup - discount) / 100);
+  }
+
+  // 🔥 Проверка минимальной суммы заказа
+  bool meetsMinimumOrderAmount(BuildContext context) {
+    final cartTotal = cartItems.fold(0.0, (sum, item) => sum + item.totalPrice);
+    final minAmount = getMinOrderAmount(context);
+    return cartTotal >= minAmount;
+  }
+
   // 🔥 Отправка всех заказов
-  Future<bool> submitAllOrders(ApiService apiService) async {
+  Future<bool> submitAllOrders(
+    BuildContext context,
+    ApiService apiService,
+  ) async {
     if (_allOrders == null || _allOrders!.isEmpty) return false;
 
     try {
+      // Получаем город и адрес текущего клиента
+      final deliveryCity = _currentClient?.city ?? '';
+      final deliveryAddress = _currentClient?.deliveryAddress ?? '';
+      final cartTotal =
+          cartItems.fold(0.0, (sum, item) => sum + item.totalPrice);
+      final minAmount = getMinOrderAmount(context);
+      final discount = getClientDiscount();
+
+      print('📦 Отправка заказа: сумма=$cartTotal, мин.сумма=$minAmount');
+
+      // Проверяем минимальную сумму заказа
+      if (!meetsMinimumOrderAmount(context)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Минимальная сумма заказа ${minAmount.toStringAsFixed(0)}₽'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return false;
+      }
+
+      // Формируем комментарий к заказу
+      String comment = '';
+      if (discount > 0) {
+        comment = 'Скидка ${discount.toStringAsFixed(0)}%';
+      }
+
       // Группируем заказы по клиентам
       final ordersByClient = <String, List<OrderItem>>{};
 
       for (var order in _allOrders!) {
         if (order.quantity > 0) {
-          // Отправляем только с quantity > 0
           final key = '${order.clientPhone}_${order.clientName}';
           ordersByClient.putIfAbsent(key, () => []).add(order);
         }
@@ -175,22 +252,54 @@ class CartProvider with ChangeNotifier {
 
         final client = orders.first;
         final items = orders.map((o) => o.toJson()).toList();
+        final totalAmount = orders.fold(0.0, (sum, o) => sum + o.totalPrice);
 
-        await apiService.createOrder(
+        final result = await apiService.createOrder(
           clientId: client.clientPhone,
           employeeId: 'автомат',
           items: items,
-          totalAmount: orders.fold(0.0, (sum, o) => sum + o.totalPrice),
-          deliveryCity: '', // TODO: добавить город доставки
-          deliveryAddress: '', // TODO: добавить адрес
-          comment: '',
+          totalAmount: totalAmount,
+          deliveryCity: deliveryCity,
+          deliveryAddress: deliveryAddress,
+          comment: comment,
+        );
+
+        if (result == null) {
+          throw Exception('Ошибка отправки заказа для ${client.clientName}');
+        }
+
+        // Если заказ успешно отправлен, удаляем его из локального списка
+        for (var order in orders) {
+          _allOrders!.remove(order);
+        }
+      }
+
+      // Сохраняем обновленный список заказов
+      await _saveOrdersToPreferences();
+
+      print('✅ Все заказы успешно отправлены');
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Заказы успешно отправлены!'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
 
-      print('✅ Все заказы успешно отправлены');
       return true;
     } catch (e) {
       print('❌ Ошибка отправки заказов: $e');
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка отправки заказов: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return false;
     }
   }

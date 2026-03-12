@@ -1,14 +1,22 @@
 // lib/screens/price_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'dart:convert';
 import '../models/product.dart';
 import '../models/client.dart';
 import '../models/client_data.dart';
 import '../models/price_list_mode.dart';
+import '../models/composition.dart';
+import '../models/nutrition_info.dart';
+import '../models/storage_condition.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/product_card.dart';
 import '../services/image_preloader.dart';
+import '../services/export_service.dart';
 import 'product_detail_screen.dart';
 
 class PriceListScreen extends StatefulWidget {
@@ -21,6 +29,16 @@ class PriceListScreen extends StatefulWidget {
 class _PriceListScreenState extends State<PriceListScreen> {
   bool _isInitialized = false;
   bool _preloaded = false;
+  final ExportService _exportService = ExportService();
+
+  // Состояние для выбора полей при экспорте
+  final Map<String, bool> _exportFields = {
+    'basic': true,
+    'composition': true,
+    'nutrition': true,
+    'storage': true,
+    'photos': false,
+  };
 
   @override
   void didChangeDependencies() {
@@ -50,7 +68,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
 
       cartProvider.loadPriceListMode();
 
-      // 🔥 Предзагрузка изображений товаров (первые 10)
+      // Предзагрузка изображений товаров (первые 10)
       if (!_preloaded) {
         _preloaded = true;
         ImagePreloader().preloadProducts(
@@ -154,7 +172,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
               PopupMenuButton<String>(
                 onSelected: (String result) {
                   if (result == 'export') {
-                    _showExportDialog(context);
+                    _showExportDialog(context, allProducts);
                   }
                 },
                 itemBuilder: (context) => [
@@ -246,7 +264,8 @@ class _PriceListScreenState extends State<PriceListScreen> {
     }
   }
 
-  void _showExportDialog(BuildContext context) {
+  // 🔥 ИСПРАВЛЕНО: диалог экспорта с передачей products
+  void _showExportDialog(BuildContext context, List<Product> products) {
     String selectedFormat = 'pdf';
 
     showDialog(
@@ -255,48 +274,91 @@ class _PriceListScreenState extends State<PriceListScreen> {
         builder: (context, setState) {
           return AlertDialog(
             title: const Text('Экспорт прайс-листа'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RadioListTile<String>(
-                  title: const Text('PDF — полная информация о продукции'),
-                  subtitle: const Text('Для каталогов, презентаций, печати'),
-                  value: 'pdf',
-                  groupValue: selectedFormat,
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        selectedFormat = value;
-                      });
-                    }
-                  },
-                ),
-                RadioListTile<String>(
-                  title: const Text('CSV — для этикеток и систем учета'),
-                  subtitle: const Text('Только структурированные данные'),
-                  value: 'csv',
-                  groupValue: selectedFormat,
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        selectedFormat = value;
-                      });
-                    }
-                  },
-                ),
-                if (selectedFormat == 'pdf')
-                  ExpansionTile(
-                    title: const Text('Что включить в PDF'),
-                    initiallyExpanded: true,
-                    children: [
-                      _buildFieldToggle('Основные поля', true),
-                      _buildFieldToggle('Состав', true),
-                      _buildFieldToggle('КБЖУ', true),
-                      _buildFieldToggle('Условия хранения', true),
-                      _buildFieldToggle('Фотографии', false),
-                    ],
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<String>(
+                    title: const Text('PDF — полная информация о продукции'),
+                    subtitle: const Text('Для каталогов, презентаций, печати'),
+                    value: 'pdf',
+                    groupValue: selectedFormat,
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          selectedFormat = value;
+                        });
+                      }
+                    },
                   ),
-              ],
+                  RadioListTile<String>(
+                    title: const Text('CSV — для этикеток и систем учета'),
+                    subtitle: const Text('Только структурированные данные'),
+                    value: 'csv',
+                    groupValue: selectedFormat,
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          selectedFormat = value;
+                        });
+                      }
+                    },
+                  ),
+                  if (selectedFormat == 'pdf')
+                    ExpansionTile(
+                      title: const Text('Что включить в PDF'),
+                      initiallyExpanded: true,
+                      children: [
+                        CheckboxListTile(
+                          title: const Text('Основные поля'),
+                          value: _exportFields['basic'] ?? true,
+                          onChanged: (value) {
+                            setState(() {
+                              _exportFields['basic'] = value ?? true;
+                            });
+                          },
+                        ),
+                        CheckboxListTile(
+                          title: const Text('Состав'),
+                          value: _exportFields['composition'] ?? true,
+                          onChanged: (value) {
+                            setState(() {
+                              _exportFields['composition'] = value ?? true;
+                            });
+                          },
+                        ),
+                        CheckboxListTile(
+                          title: const Text('КБЖУ'),
+                          value: _exportFields['nutrition'] ?? true,
+                          onChanged: (value) {
+                            setState(() {
+                              _exportFields['nutrition'] = value ?? true;
+                            });
+                          },
+                        ),
+                        CheckboxListTile(
+                          title: const Text('Условия хранения'),
+                          value: _exportFields['storage'] ?? true,
+                          onChanged: (value) {
+                            setState(() {
+                              _exportFields['storage'] = value ?? true;
+                            });
+                          },
+                        ),
+                        CheckboxListTile(
+                          title: const Text('Фотографии'),
+                          value: _exportFields['photos'] ?? false,
+                          onChanged: (value) {
+                            setState(() {
+                              _exportFields['photos'] = value ?? false;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ),
             actions: [
               TextButton(
@@ -305,8 +367,8 @@ class _PriceListScreenState extends State<PriceListScreen> {
               ),
               ElevatedButton(
                 onPressed: () {
-                  _exportPriceList(context, format: selectedFormat);
                   Navigator.of(context).pop();
+                  _exportPriceList(context, products, format: selectedFormat);
                 },
                 child: const Text('Экспортировать'),
               ),
@@ -317,23 +379,112 @@ class _PriceListScreenState extends State<PriceListScreen> {
     );
   }
 
-  Widget _buildFieldToggle(String label, bool defaultValue) {
-    return CheckboxListTile(
-      title: Text(label),
-      value: defaultValue,
-      onChanged: (bool? value) {
-        // TODO: сохранять выбор в состояние
-      },
-    );
-  }
+  // 🔥 ИСПРАВЛЕНО: реализация экспорта
+  Future<void> _exportPriceList(
+    BuildContext context,
+    List<Product> products, {
+    required String format,
+  }) async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final client = authProvider.currentUser as Client;
+      final clientData = authProvider.clientData!;
 
-  Future<void> _exportPriceList(BuildContext context,
-      {required String format}) async {
-    // TODO: Реализовать экспорт в PDF/CSV
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content:
-              Text('Функция экспорта будет доступна в ближайшем обновлении!')),
-    );
+      // Подготавливаем данные для экспорта
+      final compositionsByProduct = <String, List<Composition>>{};
+      final nutritionByProduct = <String, NutritionInfo>{};
+      final storageByProduct = <String, StorageCondition>{};
+
+      for (var product in products) {
+        compositionsByProduct[product.id] = clientData.compositions
+            .where((c) => c.sheetName == 'Состав' && c.entityId == product.id)
+            .toList();
+
+        try {
+          nutritionByProduct[product.id] = clientData.nutritionInfos
+              .firstWhere((n) => n.priceListId == product.id);
+        } catch (e) {
+          // нет КБЖУ - пропускаем
+        }
+
+        try {
+          storageByProduct[product.id] = clientData.storageConditions
+              .firstWhere((s) =>
+                  s.sheetName == 'Прайс-лист' && s.entityId == product.id);
+        } catch (e) {
+          // нет условий хранения - пропускаем
+        }
+      }
+
+      // Настраиваем ExportService
+      _exportService.format = format;
+      _exportService.includeBasic = _exportFields['basic'] ?? true;
+      _exportService.includeComposition = _exportFields['composition'] ?? true;
+      _exportService.includeNutrition = _exportFields['nutrition'] ?? true;
+      _exportService.includeStorage = _exportFields['storage'] ?? true;
+      _exportService.includePhotos = _exportFields['photos'] ?? false;
+
+      // Показываем индикатор загрузки
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Генерация файла...'),
+            ],
+          ),
+        ),
+      );
+
+      final file = await _exportService.generatePriceList(
+        products: products,
+        clientName: client.name ?? 'Клиент',
+        clientPhone: client.phone ?? '',
+        compositionsByProduct: compositionsByProduct,
+        nutritionByProduct: nutritionByProduct,
+        storageByProduct: storageByProduct,
+      );
+
+      // Закрываем диалог загрузки
+      if (mounted) Navigator.of(context).pop();
+
+      if (file != null && mounted) {
+        // Делимся файлом
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text: 'Прайс-лист ${client.name}',
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Файл успешно создан: ${file.path.split('/').last}'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        throw Exception('Не удалось создать файл');
+      }
+    } catch (e) {
+      // Закрываем диалог загрузки если он еще открыт
+      if (mounted) {
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка экспорта: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      print('❌ Ошибка экспорта: $e');
+    }
   }
 }

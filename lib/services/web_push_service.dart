@@ -2,6 +2,10 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:js_interop';
+import 'dart:js' as js;
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'env_service.dart';
 
 @JS('PushManager')
 external JSPushManager? get pushManager;
@@ -30,6 +34,18 @@ class WebPushService {
   bool _isSubscribed = false;
   String? _vapidPublicKey;
 
+  // 🔥 ДОБАВЛЕНО: проверка поддержки
+  Future<bool> isSupported() async {
+    if (!kIsWeb) return false;
+
+    try {
+      final type = typeofPushManager.toDart;
+      return type != 'undefined';
+    } catch (e) {
+      return false;
+    }
+  }
+
   Future<void> initialize(String vapidPublicKey) async {
     if (!kIsWeb) {
       print('📱 Push-уведомления работают только в веб-версии');
@@ -42,7 +58,7 @@ class WebPushService {
 
     try {
       // Проверяем доступность PushManager
-      final available = await _checkPushManager();
+      final available = await isSupported();
       if (!available) {
         print('❌ PushManager не доступен');
         return;
@@ -74,17 +90,6 @@ class WebPushService {
     }
   }
 
-  Future<bool> _checkPushManager() async {
-    try {
-      // 🔧 ИСПРАВЛЕНО: используем JS функцию для проверки
-      final type = typeofPushManager.toDart;
-      return type != 'undefined';
-    } catch (e) {
-      print('❌ Ошибка проверки PushManager: $e');
-      return false;
-    }
-  }
-
   Future<String?> _requestPermission() async {
     try {
       if (pushManager == null) return null;
@@ -96,6 +101,7 @@ class WebPushService {
     }
   }
 
+  // 🔥 Подписка на уведомления с отправкой на сервер
   Future<bool> subscribe() async {
     if (!kIsWeb || !_isInitialized) return false;
 
@@ -128,7 +134,8 @@ class WebPushService {
               await pushManager!.getSubscriptionData().toDart;
           print('📦 Данные подписки: $subscriptionResult');
 
-          // TODO: отправить subscriptionData на ваш сервер
+          // 🔥 ОТПРАВЛЯЕМ НА СЕРВЕР
+          await _sendSubscriptionToServer(subscriptionResult);
         } catch (e) {
           print('⚠️ Не удалось получить данные подписки: $e');
         }
@@ -141,15 +148,81 @@ class WebPushService {
     }
   }
 
+  // 🔥 ОТПРАВКА ПОДПИСКИ НА GAS
+  Future<void> _sendSubscriptionToServer(JSObject subscriptionData) async {
+    final scriptUrl = EnvService.scriptUrl;
+    if (scriptUrl.isEmpty) {
+      print('⚠️ URL скрипта не указан');
+      return;
+    }
+
+    final scriptSecret = EnvService.scriptSecret;
+    if (scriptSecret.isEmpty) {
+      print('⚠️ Секретный ключ не указан');
+      return;
+    }
+
+    try {
+      // Конвертируем JS объект в Map
+      final subMap = subscriptionData.dartify() as Map<String, dynamic>;
+
+      // Получаем userId из SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('push_user_id') ?? 'unknown';
+
+      // Формируем запрос
+      final response = await http.post(
+        Uri.parse(scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'savePushSubscription',
+          'secret': scriptSecret,
+          'phone': userId,
+          'subscription': {
+            'endpoint': subMap['endpoint'],
+            'keys': subMap['keys'],
+            'userAgent': _getUserAgent(),
+          }
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ Подписка отправлена на сервер');
+
+        // Сохраняем userId для последующих запросов
+        await prefs.setString('push_user_id', userId);
+      } else {
+        print('❌ Ошибка отправки подписки: ${response.statusCode}');
+        print('📦 Ответ: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Ошибка отправки подписки на сервер: $e');
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ USER-AGENT
+  String _getUserAgent() {
+    try {
+      final navigator = js.context['navigator'];
+      return navigator['userAgent'].toString();
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
+
+  // 🔥 Отписка от уведомлений
   Future<bool> unsubscribe() async {
     if (!kIsWeb || !_isInitialized) return false;
 
     try {
-      // TODO: реализовать отписку
+      // TODO: реализовать отписку в JS
       _isSubscribed = false;
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('push_subscribed');
+
+      // 🔥 Уведомляем сервер об отписке
+      await _sendUnsubscribeToServer();
 
       print('✅ Отписка от уведомлений выполнена');
       return true;
@@ -159,12 +232,49 @@ class WebPushService {
     }
   }
 
+  // 🔥 УВЕДОМЛЕНИЕ СЕРВЕРА ОБ ОТПИСКЕ
+  Future<void> _sendUnsubscribeToServer() async {
+    final scriptUrl = EnvService.scriptUrl;
+    if (scriptUrl.isEmpty) return;
+
+    final scriptSecret = EnvService.scriptSecret;
+    if (scriptSecret.isEmpty) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('push_user_id');
+
+      if (userId != null && userId.isNotEmpty) {
+        final response = await http.post(
+          Uri.parse(scriptUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'action': 'deletePushSubscription',
+            'secret': scriptSecret,
+            'phone': userId,
+          }),
+        );
+
+        if (response.statusCode == 200) {
+          print('✅ Отписка отправлена на сервер');
+          await prefs.remove('push_user_id');
+        } else {
+          print('⚠️ Ошибка отправки отписки: ${response.statusCode}');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Ошибка отправки отписки: $e');
+    }
+  }
+
+  // 🔥 Получение статуса подписки
   Future<void> _checkSubscriptionStatus() async {
     final prefs = await SharedPreferences.getInstance();
     _isSubscribed = prefs.getBool('push_subscribed') ?? false;
     print('📱 Статус подписки: ${_isSubscribed ? 'подписан' : 'не подписан'}');
   }
 
+  // 🔥 Геттеры
   bool get isSubscribed => _isSubscribed;
   bool get isInitialized => _isInitialized;
 }

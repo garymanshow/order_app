@@ -1,34 +1,34 @@
-import 'package:flutter/foundation.dart';
+// lib/services/env_service.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-
-// Для Web
 import 'dart:js' as js;
 
 class EnvService {
-  static String get(String key, {String defaultValue = ''}) {
-    // 🔥 Для Web: читаем из window.ENV
+  static final EnvService _instance = EnvService._internal();
+  factory EnvService() => _instance;
+  EnvService._internal();
+
+  static String get(String key) {
     if (kIsWeb) {
+      // Для веба берем из window.ENV
       try {
-        final env = js.context['ENV'];
-        if (env != null) {
-          final value = env[key];
-          if (value != null && value.toString().isNotEmpty) {
-            return value.toString();
-          }
+        final jsEnv = js.context['ENV'];
+        if (jsEnv != null) {
+          return jsEnv[key]?.toString() ?? '';
         }
       } catch (e) {
-        print('⚠️ Ошибка чтения $key из window.ENV: $e');
+        print('⚠️ Ошибка доступа к window.ENV: $e');
       }
+      return '';
+    } else {
+      // Для мобильных берем из dotenv
+      return dotenv.env[key] ?? '';
     }
-
-    // 🔥 Fallback: из dotenv (для мобильных)
-    final value = dotenv.env[key];
-    if (value != null && value.isNotEmpty) {
-      return value;
-    }
-
-    return defaultValue;
   }
 
-  static bool has(String key) => get(key).isNotEmpty;
+  static String get scriptUrl => get('APP_SCRIPT_URL');
+  static String get scriptSecret => get('APP_SCRIPT_SECRET');
+  static String get vapidPublicKey => get('VAPID_PUBLIC_KEY');
+  static String get googleDriveImagesFolderID =>
+      get('GOOGLE_DRIVE_IMAGES_FOLDER_ID');
 }

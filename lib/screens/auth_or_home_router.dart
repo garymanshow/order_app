@@ -8,7 +8,7 @@ import 'auth_phone_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'driver_screen.dart';
 import 'manager_screen.dart';
-import 'warehouse_screen.dart';
+import 'admin_warehouse_screen.dart';
 import 'role_selection_screen.dart';
 // ← ДОБАВЛЕНО
 // ← ДОБАВЛЕНО
@@ -48,7 +48,7 @@ class AuthOrHomeRouter extends StatelessWidget {
         case 'Менеджер':
           return ManagerScreen();
         case 'Кладовщик':
-          return WarehouseScreen();
+          return AdminWarehouseScreen();
         default:
           return _GenericEmployeeScreen(employee: employee);
       }
