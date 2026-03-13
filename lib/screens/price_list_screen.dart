@@ -2,9 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:path_provider/path_provider.dart';
-import 'dart:io';
-import 'dart:convert';
 import '../models/product.dart';
 import '../models/client.dart';
 import '../models/client_data.dart';
@@ -109,7 +106,10 @@ class _PriceListScreenState extends State<PriceListScreen> {
                   const Text('Ошибка загрузки данных'),
                   ElevatedButton(
                     onPressed: () async {
-                      await authProvider.login(currentClient.phone!);
+                      await authProvider.login(
+                        currentClient.phone!,
+                        context: context, // 👈 ДОБАВЛЯЕМ context
+                      );
                     },
                     child: const Text('Попробовать снова'),
                   ),

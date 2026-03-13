@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <!--
     ============================================================
@@ -25,7 +26,7 @@
        flutter build web --base-href "/repository-name/"
     ============================================================
   -->
-  
+
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
@@ -47,6 +48,25 @@
 
   <title>Вкусные моменты</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- 🔥 Firebase SDK для Google Sign-In -->
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+
+  <script>
+    // 🔥 Инициализация Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBc2C0gNtnvzFpDK5kGBQtyzf_O5TI9EEo",
+      authDomain: "order-app-9cf50.firebaseapp.com",
+      projectId: "order-app-9cf50",
+      storageBucket: "order-app-9cf50.firebasestorage.app",
+      messagingSenderId: "237431695039",
+      appId: "1:237431695039:web:53fb85f6e22dcf2c6a080a"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    console.log('🔥 Firebase инициализирован');
+  </script>
 
   <!-- 🔥 Переменные окружения для Web -->
   <script>

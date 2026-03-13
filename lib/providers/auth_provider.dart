@@ -1,4 +1,5 @@
 // lib/providers/auth_provider.dart
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -16,6 +17,7 @@ import '../models/product.dart';
 import '../models/sheet_metadata.dart';
 import '../models/nutrition_info.dart';
 import '../models/user.dart';
+import '../screens/two_factor_screen.dart';
 import '../services/api_service.dart';
 import '../utils/phone_validator.dart';
 
@@ -402,7 +404,8 @@ class AuthProvider with ChangeNotifier {
   }
 
   // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN
-  Future<void> login(String phone, {String? fcmToken}) async {
+  Future<void> login(String phone,
+      {String? fcmToken, required BuildContext context}) async {
     _isLoading = true;
     notifyListeners();
 
@@ -448,19 +451,59 @@ class AuthProvider with ChangeNotifier {
         final userData = authResponse['user'];
         print('🟢 userData получен: $userData');
 
+        User? tempUser;
+
         if (userData is List) {
           _availableRoles = userData
               .map((item) => Employee.fromJson(item as Map<String, dynamic>))
               .toList();
-          _currentUser = null;
+          tempUser = null;
         } else {
           if (userData['role'] != null) {
-            _currentUser = Employee.fromJson(userData);
+            tempUser = Employee.fromJson(userData);
             _availableRoles = null;
           } else {
-            _currentUser = Client.fromJson(userData);
+            tempUser = Client.fromJson(userData);
             _availableRoles = null;
           }
+        }
+
+        print('🟢 Временный пользователь: $tempUser');
+
+        // 🔥 ПРОВЕРКА 2FA ДЛЯ СОТРУДНИКОВ
+        if (tempUser is Employee && tempUser.twoFactorAuth) {
+          print('🔐 Требуется 2FA для сотрудника: ${tempUser.name}');
+
+          if (!tempUser.canUseTwoFactor) {
+            throw Exception('Для сотрудника с 2FA не указан email');
+          }
+
+          // Передаем tempUser (успешно приведенный к типу Employee)
+          final twoFactorResult = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  TwoFactorScreen(employee: tempUser as Employee),
+            ),
+          );
+
+          if (twoFactorResult != true) {
+            print('❌ 2FA не пройдена или отменена');
+            _isLoading = false;
+            notifyListeners();
+            return; // Прерываем вход
+          }
+
+          print('✅ 2FA успешно пройдена');
+        }
+
+        // 🔥 2FA ПРОЙДЕНА - УСТАНАВЛИВАЕМ ПОЛЬЗОВАТЕЛЯ
+        // tempUser уже содержит правильного Employee или Client
+        _currentUser = tempUser;
+
+        // Если был список ролей, currentUser пока null, но список сохранен
+        if (userData is List && _availableRoles != null) {
+          // Логика выбора роли, если нужно
         }
 
         print('🟢 После установки _currentUser:');
@@ -492,17 +535,8 @@ class AuthProvider with ChangeNotifier {
         if (_clientData != null) {
           try {
             print('🟢 Шаг 5: Проверка клиентов перед сохранением');
-            for (int i = 0; i < _clientData!.clients.length; i++) {
-              final client = _clientData!.clients[i];
-              try {
-                print('   Клиент $i: ${client.name}');
-                final clientJson = client.toJson();
-                print('   ✅ toJson для клиента $i успешен');
-              } catch (e) {
-                print('❌ Ошибка toJson для клиента $i: $e');
-                rethrow;
-              }
-            }
+
+            // Убрано создание неиспользуемой переменной clientJson
 
             print('🟢 Шаг 6: Начинаем toJson для всех клиентов');
             final clientDataJson = _clientData!.toJson();

@@ -6,6 +6,7 @@ import '../utils/parsing_utils.dart';
 class Employee extends User {
   final String? role;
   final bool twoFactorAuth;
+  final String? email; // 👈 ДОБАВЛЕНО поле для 2FA через Google
   String? fcm;
 
   Employee({
@@ -13,6 +14,7 @@ class Employee extends User {
     String? phone,
     this.role,
     this.twoFactorAuth = false,
+    this.email, // 👈 ДОБАВЛЕНО в конструктор
     this.fcm,
   }) : super(phone: phone, name: name);
 
@@ -23,6 +25,7 @@ class Employee extends User {
       phone: map['Телефон']?.toString(),
       role: map['Роль']?.toString(),
       twoFactorAuth: ParsingUtils.parseBool(map['2FA']?.toString()) ?? false,
+      email: map['Email']?.toString(), // 👈 ДОБАВЛЕНО чтение email из таблицы
       fcm: map['FCM']?.toString(),
     );
   }
@@ -45,6 +48,7 @@ class Employee extends User {
       phone: json['phone']?.toString(),
       role: json['role']?.toString(),
       twoFactorAuth: safeBool(json['twoFactorAuth']),
+      email: json['email']?.toString(), // 👈 ДОБАВЛЕНО чтение из JSON
       fcm: json['fcm']?.toString(),
     );
   }
@@ -57,11 +61,10 @@ class Employee extends User {
       'phone': phone,
       'role': role,
       'twoFactorAuth': twoFactorAuth,
+      'email': email, // 👈 ДОБАВЛЕНО сохранение в JSON
       'fcm': fcm,
     };
   }
-  // Здесь всё нормально, так как JSON допускает null значения
-  // name, phone, role, fcm могут быть null - это допустимо
 
   // 🔥 ДОБАВЛЕН toMap для Google Таблиц
   Map<String, dynamic> toMap() {
@@ -70,12 +73,17 @@ class Employee extends User {
       'Телефон': phone ?? '',
       'Роль': role ?? '',
       '2FA': twoFactorAuth.toString(),
+      'Email': email ?? '', // 👈 ДОБАВЛЕНО для обратной записи в таблицу
       'FCM': fcm ?? '',
     };
   }
 
   // Проверка, требуется ли 2FA
   bool get requiresTwoFactorAuth => twoFactorAuth;
+
+  // Проверка наличия email для 2FA
+  bool get canUseTwoFactor =>
+      twoFactorAuth && email != null && email!.isNotEmpty;
 
   // Для отображения в списке
   String get getDisplayName {

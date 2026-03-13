@@ -73,7 +73,11 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.login(phone);
+      // 🔥 ИСПРАВЛЕНО: передаем context в метод login
+      await authProvider.login(
+        phone,
+        context: context, // 👈 ДОБАВЛЯЕМ context
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
