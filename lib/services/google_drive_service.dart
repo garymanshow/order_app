@@ -3,17 +3,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/auth_io.dart' as auth;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'env_service.dart';
 
 class GoogleDriveService {
   late drive.DriveApi _driveApi;
 
   /// Инициализация сервиса с использованием Service Account
   Future<void> init() async {
-    final accountJsonBase64 = dotenv.env['GOOGLE_SERVICE_ACCOUNT_BASE64'];
-    if (accountJsonBase64 == null) {
-      throw Exception('GOOGLE_SERVICE_ACCOUNT_BASE64 not found in .env');
-    }
+    final accountJsonBase64 = EnvService.googleDriveImagesFolderID;
 
     final jsonKey = utf8.decode(base64.decode(accountJsonBase64));
     final credentials = auth.ServiceAccountCredentials.fromJson(

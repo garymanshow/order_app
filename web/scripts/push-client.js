@@ -97,6 +97,30 @@ window.PushManager = {
     }
   },
   
+  // 🔥 НОВЫЙ МЕТОД: Отписка от уведомлений
+  unsubscribe: async function() {
+    console.log('📱 Отписка от уведомлений');
+    
+    try {
+      if (!this.registration) {
+        await this.init(this.vapidPublicKey);
+      }
+      
+      const subscription = await this.registration.pushManager.getSubscription();
+      if (subscription) {
+        await subscription.unsubscribe();
+        console.log('✅ Отписка выполнена успешно');
+        return true;
+      } else {
+        console.log('ℹ️ Нет активной подписки');
+        return true; // Возвращаем true, так как подписки уже нет
+      }
+    } catch (error) {
+      console.error('❌ Ошибка отписки:', error);
+      return false;
+    }
+  },
+  
   // Получение данных подписки для отправки на сервер
   getSubscriptionData: async function() {
     const subscription = await this.getSubscription();

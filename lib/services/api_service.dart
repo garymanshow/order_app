@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/order_item.dart';
 import '../models/sheet_metadata.dart';
 import '../models/status_update.dart';
+import '../models/price_category.dart';
 import '../models/product.dart';
 import '../models/client.dart';
 import '../models/employee.dart';
@@ -11,18 +12,19 @@ import '../models/delivery_condition.dart';
 import 'env_service.dart';
 
 class ApiService {
-  // 🔥 ИСПОЛЬЗУЕМ EnvService вместо dotenv
-  static String get _scriptUrl => EnvService.get('APP_SCRIPT_URL');
-  static String get _secret => EnvService.get('APP_SCRIPT_SECRET');
+  // 🔥 ИСПОЛЬЗУЕМ EnvService для URL (секрет больше не нужен!)
+  static String get _scriptUrl => EnvService.scriptUrl;
+
+  // 👇 secret больше не используется, но оставим для обратной совместимости
+  // В будущем можно полностью удалить
 
   // 🔥 ЕДИНЫЙ МЕТОД ДЛЯ ВСЕХ ЗАПРОСОВ
   Future<http.Response> _makeRequest(
       String action, Map<String, dynamic> data) async {
     final url = Uri.parse(_scriptUrl);
 
-    // Добавляем action и secret к данным
+    // Добавляем action к данным (secret больше не отправляем!)
     data['action'] = action;
-    data['secret'] = _secret;
 
     // Всегда отправляем как text/plain для веба
     final headers = {
@@ -38,7 +40,6 @@ class ApiService {
     print('📤 Body: $body');
 
     try {
-      // Для веба используем стандартный post, браузер сам обработает редиректы
       final response = await http.post(
         url,
         headers: headers,
@@ -60,17 +61,14 @@ class ApiService {
   Future<bool> testConnection() async {
     print('\n🔧 ===== ТЕСТИРОВАНИЕ СОЕДИНЕНИЯ =====');
     print('🔧 URL: $_scriptUrl');
-    print('🔧 Секрет: ${_secret.isEmpty ? "ПУСТО" : "найден"}');
 
     try {
       final response = await _makeRequest('test', {});
 
       if (response.statusCode == 200) {
-        // 🔥 Проверяем, не вернулся ли HTML вместо JSON
         final body = response.body.trim();
         if (body.startsWith('<!DOCTYPE') || body.startsWith('<html')) {
-          print('❌ Получен HTML вместо JSON! Возможно, CORS ошибка.');
-          print('❌ Ответ: ${body.substring(0, 200)}...');
+          print('❌ Получен HTML вместо JSON!');
           return false;
         }
 
@@ -84,23 +82,19 @@ class ApiService {
       }
     } catch (e) {
       print('🔧 Ошибка: $e');
-      print('🔧 Тип: ${e.runtimeType}');
       print('🔧 ===== ТЕСТ НЕ УДАЛСЯ =====\n');
       return false;
     }
   }
 
-  // 🔥 АУТЕНТИФИКАЦИЯ
+  // 🔥 АУТЕНТИФИКАЦИЯ (без FCM)
   Future<Map<String, dynamic>?> authenticate({
     required String phone,
     required Map<String, SheetMetadata> localMetadata,
-    String? fcmToken,
   }) async {
     print('\n🔐 ===== НАЧАЛО АУТЕНТИФИКАЦИИ =====');
     print('🔐 Телефон: $phone');
-    print('🔐 Секретный ключ: ${_secret.isEmpty ? "ПУСТО" : "найден"}');
     print('🔐 URL скрипта: $_scriptUrl');
-    print('🔐 FCM токен: ${fcmToken ?? 'не передан'}');
     print('🔐 Локальные метаданные: ${localMetadata.length} листов');
 
     try {
@@ -109,7 +103,6 @@ class ApiService {
         'localMetadata': localMetadata.map(
           (key, value) => MapEntry(key, value.toJson()),
         ),
-        if (fcmToken != null && fcmToken.isNotEmpty) 'fcmToken': fcmToken,
       };
 
       final response = await _makeRequest('authenticate', data);
@@ -161,29 +154,55 @@ class ApiService {
     }
   }
 
-  // 🔔 FCM: отправка токена
-  Future<Map<String, dynamic>> sendFcmToken({
-    required String phoneNumber,
-    required String fcmToken,
-    String? role,
+  // Получает push-подписки для указанных телефонов (Web Push)
+  Future<List<Map<String, dynamic>>> getPushSubscriptions({
+    required String requesterPhone,
+    required List<String> targetPhones,
   }) async {
     try {
-      final data = {
-        'phoneNumber': phoneNumber,
-        'fcmToken': fcmToken,
-        if (role != null) 'role': role,
-      };
-
-      final response = await _makeRequest('saveFcmToken', data);
+      final response = await _makeRequest('getPushSubscriptions', {
+        'requesterPhone': requesterPhone,
+        'targetPhones': targetPhones,
+      });
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Ошибка сохранения FCM токена: ${response.statusCode}');
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['status'] == 'success' && result['subscriptions'] != null) {
+          return List<Map<String, dynamic>>.from(result['subscriptions']);
+        }
       }
+      return [];
     } catch (e) {
-      print('❌ Ошибка отправки FCM токена: $e');
-      rethrow;
+      print('❌ Ошибка получения подписок: $e');
+      return [];
+    }
+  }
+
+  // lib/services/api_service.dart
+  Future<bool> sendNotification({
+    required String targetPhone,
+    required String title,
+    required String body,
+    String? role,
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      final response = await _makeRequest('sendNotification', {
+        'targetPhone': targetPhone,
+        'title': title,
+        'body': body,
+        if (role != null) 'role': role,
+        if (data != null) 'data': data,
+      });
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка отправки уведомления: $e');
+      return false;
     }
   }
 
@@ -376,34 +395,6 @@ class ApiService {
     }
   }
 
-  // 🔔 FCM: ОТПРАВКА УВЕДОМЛЕНИЯ
-  Future<bool> sendNotification({
-    required String targetPhone,
-    required String title,
-    required String body,
-    String? role,
-  }) async {
-    try {
-      final data = {
-        'targetPhone': targetPhone,
-        'title': title,
-        'body': body,
-        if (role != null) 'role': role,
-      };
-
-      final response = await _makeRequest('sendNotification', data);
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> result = jsonDecode(response.body);
-        return result['success'] == true;
-      }
-      return false;
-    } catch (e) {
-      print('❌ Ошибка отправки уведомления: $e');
-      return false;
-    }
-  }
-
   // 🔥 УДАЛЕНИЕ ЗАКАЗА
   Future<bool> deleteOrder(String orderId) async {
     try {
@@ -494,7 +485,80 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: СОЗДАНИЕ ПРОДУКТА
+  // 🔥 СОЗДАНИЕ КАТЕГОРИИ ТОВАРА
+  Future<bool> createPriceCategory(PriceCategory category) async {
+    try {
+      final response = await _makeRequest(
+          'createPriceCategory', {'category': category.toJson()});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка создания категории товара: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ОБНОВЛЕНИЕ КАТЕГОРИИ ТОВАРА
+  Future<bool> updatePriceCategory(PriceCategory category) async {
+    try {
+      final response = await _makeRequest(
+          'updatePriceCategory', {'category': category.toJson()});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка обновления категории товара: $e');
+      return false;
+    }
+  }
+
+  // 🔥 УДАЛЕНИЕ КАТЕГОРИИ ТОВАРА
+  Future<bool> deletePriceCategory(String categoryId) async {
+    try {
+      final response =
+          await _makeRequest('deletePriceCategory', {'categoryId': categoryId});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления категории товара: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ВСЕХ КАТЕГОРИЙ ТОВАРОВ
+  Future<List<PriceCategory>?> fetchPriceCategories() async {
+    try {
+      final response = await _makeRequest('fetchPriceCategories', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['categories'] != null) {
+          final categoriesList = result['categories'] as List;
+          return categoriesList
+              .map((item) =>
+                  PriceCategory.fromJson(item as Map<String, dynamic>))
+              .toList();
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки категорий товаров: $e');
+      return null;
+    }
+  }
+
+  // 🔥 СОЗДАНИЕ ПРОДУКТА
   Future<bool> createProduct(Product product) async {
     try {
       final response =
@@ -511,7 +575,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: ОБНОВЛЕНИЕ ПРОДУКТА
+  // 🔥 ОБНОВЛЕНИЕ ПРОДУКТА
   Future<bool> updateProduct(Product product) async {
     try {
       final response =
@@ -528,7 +592,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: УДАЛЕНИЕ ПРОДУКТА
+  // 🔥 УДАЛЕНИЕ ПРОДУКТА
   Future<bool> deleteProduct(String productId) async {
     try {
       final response =
@@ -545,7 +609,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: СОЗДАНИЕ КЛИЕНТА
+  // 🔥 СОЗДАНИЕ КЛИЕНТА
   Future<bool> createClient(Client client) async {
     try {
       final response =
@@ -562,7 +626,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: ОБНОВЛЕНИЕ КЛИЕНТА
+  // 🔥 ОБНОВЛЕНИЕ КЛИЕНТА
   Future<bool> updateClient(Client client) async {
     try {
       final response =
@@ -579,7 +643,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: УДАЛЕНИЕ КЛИЕНТА
+  // 🔥 УДАЛЕНИЕ КЛИЕНТА
   Future<bool> deleteClient(String clientPhone) async {
     try {
       final response =
@@ -596,7 +660,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: СОЗДАНИЕ СОТРУДНИКА
+  // 🔥 СОЗДАНИЕ СОТРУДНИКА
   Future<bool> createEmployee(Employee employee) async {
     try {
       final response =
@@ -613,7 +677,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: ОБНОВЛЕНИЕ СОТРУДНИКА
+  // 🔥 ОБНОВЛЕНИЕ СОТРУДНИКА
   Future<bool> updateEmployee(Employee employee) async {
     try {
       final response =
@@ -630,7 +694,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: УДАЛЕНИЕ СОТРУДНИКА
+  // 🔥 УДАЛЕНИЕ СОТРУДНИКА
   Future<bool> deleteEmployee(String employeePhone) async {
     try {
       final response = await _makeRequest(
@@ -647,7 +711,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: СОЗДАНИЕ УСЛОВИЯ ДОСТАВКИ
+  // 🔥 СОЗДАНИЕ УСЛОВИЯ ДОСТАВКИ
   Future<bool> createDeliveryCondition(DeliveryCondition condition) async {
     try {
       final response = await _makeRequest(
@@ -664,7 +728,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: ОБНОВЛЕНИЕ УСЛОВИЯ ДОСТАВКИ
+  // 🔥 ОБНОВЛЕНИЕ УСЛОВИЯ ДОСТАВКИ
   Future<bool> updateDeliveryCondition(DeliveryCondition condition) async {
     try {
       final response = await _makeRequest(
@@ -681,7 +745,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: УДАЛЕНИЕ УСЛОВИЯ ДОСТАВКИ
+  // 🔥 УДАЛЕНИЕ УСЛОВИЯ ДОСТАВКИ
   Future<bool> deleteDeliveryCondition(String location) async {
     try {
       final response =
@@ -698,7 +762,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: МАССОВОЕ ОБНОВЛЕНИЕ ТЕЛЕФОНА В ЗАКАЗАХ
+  // 🔥 МАССОВОЕ ОБНОВЛЕНИЕ ТЕЛЕФОНА В ЗАКАЗАХ
   Future<bool> updateOrdersPhone(String oldPhone, String newPhone) async {
     try {
       final data = {
@@ -719,7 +783,7 @@ class ApiService {
     }
   }
 
-  // 🔥 НОВЫЙ МЕТОД: МАССОВОЕ ОБНОВЛЕНИЕ СТАТУСОВ ЗАКАЗОВ
+  // 🔥 МАССОВОЕ ОБНОВЛЕНИЕ СТАТУСОВ ЗАКАЗОВ
   Future<bool> updateOrdersBatch(List<OrderItem> orders) async {
     try {
       final ordersData = orders.map((o) => o.toJson()).toList();

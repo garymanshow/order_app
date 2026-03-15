@@ -1,258 +1,165 @@
-// lib/services/web_push_service.dart
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:js_interop';
-import 'dart:js' as js;
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/env_service.dart'; // 👈 ДЛЯ ДОСТУПА К ПЕРЕМЕННЫМ
+// lib/main.dart
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
-@JS('PushManager')
-external JSPushManager? get pushManager;
+// Screens
+import 'screens/admin_dashboard_screen.dart';
+import 'screens/auth_or_home_router.dart';
+import 'screens/price_list_screen.dart';
+import 'screens/cart_screen.dart';
+import 'screens/client_orders_screen.dart';
+import 'screens/client_selection_screen.dart';
+import 'screens/notifications_screen.dart';
+import 'screens/driver_screen.dart';
+import 'screens/manager_screen.dart';
+import 'screens/admin_warehouse_screen.dart';
 
-@JS()
-@staticInterop
-class JSPushManager {}
+// Services
+import 'services/image_preloader.dart';
+import 'services/api_service.dart';
+import 'services/env_service.dart'; // 👈 ЕДИНСТВЕННЫЙ СЕРВИС ДЛЯ ENV
 
-extension JSPushManagerExtension on JSPushManager {
-  external JSPromise<JSBoolean> init(String vapidKey);
-  external JSPromise<JSString> requestPermission();
-  external JSPromise<JSBoolean> subscribe(int userId);
-  external JSPromise<JSObject> getSubscriptionData();
+// Providers
+import 'providers/auth_provider.dart';
+import 'providers/cart_provider.dart';
+import 'providers/theme_provider.dart';
+
+// Widgets
+import 'widgets/network_indicator.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔥 ИНИЦИАЛИЗАЦИЯ EnvService (вся логика загрузки внутри)
+  await EnvService.init();
+
+  // Проверяем соединение с API
+  await _testApiConnection();
+
+  // Инициализация кэша предзагрузки
+  final preloader = ImagePreloader();
+  await preloader.initCache();
+
+  // Предзагрузка фонов авторизации
+  await preloader.preloadAuthBackgrounds();
+
+  // Инициализация локализации дат для русского языка
+  await initializeDateFormatting('ru_RU', null);
+  print('✅ Локализация дат инициализирована');
+
+  // Firebase только для мобильных платформ (если нужно)
+  if (!kIsWeb) {
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      // await Firebase.initializeApp();
+    }
+  }
+
+  runApp(MyApp());
 }
 
-// Определяем JS функцию для проверки наличия PushManager
-@JS('typeofPushManager')
-external JSString get typeofPushManager;
+// 🔥 Тестирование соединения с API
+Future<void> _testApiConnection() async {
+  print('\n🔧 ===== ПРОВЕРКА СОЕДИНЕНИЯ С API =====');
 
-class WebPushService {
-  static final WebPushService _instance = WebPushService._internal();
-  factory WebPushService() => _instance;
-  WebPushService._internal();
+  try {
+    final apiService = ApiService();
+    final isConnected = await apiService.testConnection();
 
-  bool _isInitialized = false;
-  bool _isSubscribed = false;
-  String? _vapidPublicKey;
-
-  Future<void> initialize(String vapidPublicKey) async {
-    if (!kIsWeb) {
-      print('📱 Push-уведомления работают только в веб-версии');
-      return;
+    if (isConnected) {
+      print('✅ API доступен и работает');
+    } else {
+      print('❌ API не отвечает. Проверьте:');
+      print('   1. Правильность APP_SCRIPT_URL в .env');
+      print('   2. Доступность скрипта (опубликован ли он)');
+      print('   3. Правильность APP_SCRIPT_SECRET');
     }
-
-    if (_isInitialized) return;
-
-    _vapidPublicKey = vapidPublicKey;
-
-    try {
-      // Проверяем доступность PushManager
-      final available = await _checkPushManager();
-      if (!available) {
-        print('❌ PushManager не доступен');
-        return;
-      }
-
-      // Инициализируем
-      final result = await _initJs();
-
-      if (result) {
-        _isInitialized = true;
-        print('✅ WebPushService инициализирован');
-
-        // Проверяем текущий статус
-        await _checkSubscriptionStatus();
-      }
-    } catch (e) {
-      print('❌ Ошибка инициализации WebPushService: $e');
-    }
+  } catch (e) {
+    print('❌ Ошибка при проверке API: $e');
   }
 
-  Future<bool> _initJs() async {
-    try {
-      if (pushManager == null) return false;
-      final result = await pushManager!.init(_vapidPublicKey!).toDart;
-      return result.toDart;
-    } catch (e) {
-      print('❌ Ошибка инициализации JS: $e');
-      return false;
-    }
+  print('🔧 ===== КОНЕЦ ПРОВЕРКИ =====\n');
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => ThemeProvider()..init()),
+        ChangeNotifierProvider(
+          create: (context) {
+            print('🟢 Создание AuthProvider');
+            final provider = AuthProvider(navigatorKey: navigatorKey);
+            print('🟢 Вызов AuthProvider.init()');
+            provider.init();
+            return provider;
+          },
+        ),
+        ChangeNotifierProvider(create: (context) => CartProvider()),
+      ],
+      child: MyAppContent(),
+    );
   }
+}
 
-  Future<bool> _checkPushManager() async {
-    try {
-      // 🔧 ИСПРАВЛЕНО: используем JS функцию для проверки
-      final type = typeofPushManager.toDart;
-      return type != 'undefined';
-    } catch (e) {
-      print('❌ Ошибка проверки PushManager: $e');
-      return false;
-    }
+class MyAppContent extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
+    print(
+        '🟢 MyAppContent: authProvider.isLoading = ${authProvider.isLoading}');
+    print(
+        '🟢 MyAppContent: authProvider.isAuthenticated = ${authProvider.isAuthenticated}');
+
+    return NetworkIndicator(
+      child: MaterialApp(
+        navigatorKey: navigatorKey,
+        title: 'Вкусные моменты',
+        theme: ThemeData.light(),
+        darkTheme: ThemeData.dark(),
+        themeMode: themeProvider.themeMode,
+        home: AuthOrHomeRouter(),
+        debugShowCheckedModeBanner: false,
+
+        // Локализация Material-компонентов
+        locale: const Locale('ru', 'RU'),
+        supportedLocales: const [
+          Locale('ru', 'RU'),
+          Locale('en', 'US'),
+        ],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+
+        routes: {
+          '/price': (context) => const PriceListScreen(),
+          '/cart': (context) => const CartScreen(),
+          '/orders': (context) => const ClientOrdersScreen(),
+          '/notifications': (context) => const NotificationsScreen(),
+          '/admin': (context) => AdminDashboardScreen(),
+          '/driver': (context) => DriverScreen(),
+          '/manager': (context) => ManagerScreen(),
+          '/warehouse': (context) => AdminWarehouseScreen(),
+          '/clientSelection': (context) {
+            final args = ModalRoute.of(context)!.settings.arguments
+                as Map<String, dynamic>;
+            return ClientSelectionScreen(
+              phone: args['phone'],
+              clients: args['clients'],
+            );
+          },
+        },
+      ),
+    );
   }
-
-  Future<String?> _requestPermission() async {
-    try {
-      if (pushManager == null) return null;
-      final result = await pushManager!.requestPermission().toDart;
-      return result.toDart;
-    } catch (e) {
-      print('❌ Ошибка запроса разрешения: $e');
-      return null;
-    }
-  }
-
-  // 🔥 Подписка на уведомления с отправкой на сервер
-  Future<bool> subscribe() async {
-    if (!kIsWeb || !_isInitialized) return false;
-
-    try {
-      // Запрашиваем разрешение
-      final permission = await _requestPermission();
-
-      if (permission != 'granted') {
-        print('❌ Разрешение не получено');
-        return false;
-      }
-
-      // Подписываемся
-      if (pushManager == null) return false;
-      final result = await pushManager!.subscribe(0).toDart;
-      final success = result.toDart;
-
-      if (success) {
-        _isSubscribed = true;
-
-        // Сохраняем статус
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('push_subscribed', true);
-
-        print('✅ Подписка на уведомления оформлена');
-
-        // Получаем данные подписки для отправки на сервер
-        try {
-          final subscriptionResult =
-              await pushManager!.getSubscriptionData().toDart;
-          print('📦 Данные подписки: $subscriptionResult');
-
-          // 🔥 ОТПРАВЛЯЕМ НА СЕРВЕР
-          await _sendSubscriptionToServer(subscriptionResult);
-        } catch (e) {
-          print('⚠️ Не удалось получить данные подписки: $e');
-        }
-      }
-
-      return success;
-    } catch (e) {
-      print('❌ Ошибка подписки: $e');
-      return false;
-    }
-  }
-
-  // 🔥 ОТПРАВКА ПОДПИСКИ НА GAS
-  Future<void> _sendSubscriptionToServer(JSObject subscriptionData) async {
-    final scriptUrl = EnvService.scriptUrl;
-    if (scriptUrl.isEmpty) {
-      print('⚠️ URL скрипта не указан');
-      return;
-    }
-
-    try {
-      // Конвертируем JS объект в Map
-      final subMap = subscriptionData.dartify() as Map<String, dynamic>;
-
-      // Получаем userId из SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getString('push_user_id') ?? 'unknown';
-
-      // Формируем запрос
-      final response = await http.post(
-        Uri.parse(scriptUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'action': 'savePushSubscription',
-          'secret': EnvService.scriptSecret,
-          'phone': userId,
-          'subscription': {
-            'endpoint': subMap['endpoint'],
-            'keys': subMap['keys'],
-            'userAgent': _getUserAgent(),
-          }
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        print('✅ Подписка отправлена на сервер');
-      } else {
-        print('❌ Ошибка отправки подписки: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('❌ Ошибка отправки подписки на сервер: $e');
-    }
-  }
-
-  // 🔥 ПОЛУЧЕНИЕ USER-AGENT
-  String _getUserAgent() {
-    try {
-      final navigator = js.context['navigator'];
-      return navigator['userAgent'].toString();
-    } catch (e) {
-      return 'Unknown';
-    }
-  }
-
-  // 🔥 Отписка от уведомлений
-  Future<bool> unsubscribe() async {
-    if (!kIsWeb || !_isInitialized) return false;
-
-    try {
-      // TODO: реализовать отписку в JS
-      _isSubscribed = false;
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('push_subscribed');
-
-      // 🔥 Уведомляем сервер об отписке
-      await _sendUnsubscribeToServer();
-
-      print('✅ Отписка от уведомлений выполнена');
-      return true;
-    } catch (e) {
-      print('❌ Ошибка отписки: $e');
-      return false;
-    }
-  }
-
-  // 🔥 УВЕДОМЛЕНИЕ СЕРВЕРА ОБ ОТПИСКЕ
-  Future<void> _sendUnsubscribeToServer() async {
-    final scriptUrl = EnvService.scriptUrl;
-    if (scriptUrl.isEmpty) return;
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getString('push_user_id');
-
-      if (userId != null) {
-        await http.post(
-          Uri.parse(scriptUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'action': 'deletePushSubscription',
-            'secret': EnvService.scriptSecret,
-            'phone': userId,
-          }),
-        );
-        print('✅ Отписка отправлена на сервер');
-      }
-    } catch (e) {
-      print('⚠️ Ошибка отправки отписки: $e');
-    }
-  }
-
-  Future<void> _checkSubscriptionStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isSubscribed = prefs.getBool('push_subscribed') ?? false;
-    print('📱 Статус подписки: ${_isSubscribed ? 'подписан' : 'не подписан'}');
-  }
-
-  bool get isSubscribed => _isSubscribed;
-  bool get isInitialized => _isInitialized;
 }

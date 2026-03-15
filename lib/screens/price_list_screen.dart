@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/product.dart';
 import '../models/client.dart';
 import '../models/client_data.dart';
@@ -14,7 +15,10 @@ import '../providers/cart_provider.dart';
 import '../widgets/product_card.dart';
 import '../services/image_preloader.dart';
 import '../services/export_service.dart';
+import '../services/web_push_service.dart';
+import '../services/env_service.dart';
 import 'product_detail_screen.dart';
+import 'notifications_screen.dart';
 
 class PriceListScreen extends StatefulWidget {
   const PriceListScreen({super.key});
@@ -26,6 +30,7 @@ class PriceListScreen extends StatefulWidget {
 class _PriceListScreenState extends State<PriceListScreen> {
   bool _isInitialized = false;
   bool _preloaded = false;
+  bool _showNotificationDot = false;
   final ExportService _exportService = ExportService();
 
   // Состояние для выбора полей при экспорте
@@ -36,6 +41,30 @@ class _PriceListScreenState extends State<PriceListScreen> {
     'storage': true,
     'photos': false,
   };
+
+  @override
+  void initState() {
+    super.initState();
+    _checkNotificationStatus();
+  }
+
+  // 🔔 Проверяем, подписан ли клиент
+  Future<void> _checkNotificationStatus() async {
+    if (!kIsWeb) return;
+
+    try {
+      final pushService = WebPushService();
+      await pushService.initialize(EnvService.vapidPublicKey);
+
+      if (mounted) {
+        setState(() {
+          _showNotificationDot = !pushService.isSubscribed;
+        });
+      }
+    } catch (e) {
+      print('⚠️ Ошибка проверки статуса уведомлений: $e');
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -108,7 +137,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
                     onPressed: () async {
                       await authProvider.login(
                         currentClient.phone!,
-                        context: context, // 👈 ДОБАВЛЯЕМ context
+                        context: context,
                       );
                     },
                     child: const Text('Попробовать снова'),
@@ -165,6 +194,39 @@ class _PriceListScreenState extends State<PriceListScreen> {
               onPressed: () => Navigator.pop(context),
             ),
             actions: [
+              // 🔔 КНОПКА УВЕДОМЛЕНИЙ ДЛЯ КЛИЕНТА
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_outlined),
+                    onPressed: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationsScreen(),
+                        ),
+                      );
+                      // После возврата с экрана уведомлений обновляем статус
+                      _checkNotificationStatus();
+                    },
+                    tooltip: 'Уведомления о заказах',
+                  ),
+                  if (_showNotificationDot)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
               IconButton(
                 icon: const Icon(Icons.calendar_today),
                 onPressed: () => Navigator.pushNamed(context, '/orders'),
@@ -264,7 +326,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
     }
   }
 
-  // 🔥 ИСПРАВЛЕНО: диалог экспорта с передачей products
+  // 🔥 ДИАЛОГ ЭКСПОРТА
   void _showExportDialog(BuildContext context, List<Product> products) {
     String selectedFormat = 'pdf';
 
@@ -379,7 +441,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
     );
   }
 
-  // 🔥 ИСПРАВЛЕНО: реализация экспорта
+  // 🔥 РЕАЛИЗАЦИЯ ЭКСПОРТА
   Future<void> _exportPriceList(
     BuildContext context,
     List<Product> products, {

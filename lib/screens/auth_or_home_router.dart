@@ -10,8 +10,6 @@ import 'driver_screen.dart';
 import 'manager_screen.dart';
 import 'admin_warehouse_screen.dart';
 import 'role_selection_screen.dart';
-// ← ДОБАВЛЕНО
-// ← ДОБАВЛЕНО
 
 class AuthOrHomeRouter extends StatelessWidget {
   @override

@@ -1,10 +1,9 @@
 // lib/providers/auth_provider.dart
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:firebase_core/firebase_core.dart'; // ← ДОБАВЛЕНО
-import 'dart:convert';
 import '../models/client_category.dart';
 import '../models/client.dart';
 import '../models/client_data.dart';
@@ -19,24 +18,29 @@ import '../models/nutrition_info.dart';
 import '../models/user.dart';
 import '../screens/two_factor_screen.dart';
 import '../services/api_service.dart';
+import '../services/web_push_service.dart';
+import '../services/env_service.dart';
 import '../utils/phone_validator.dart';
 
 class AuthProvider with ChangeNotifier {
+  final GlobalKey<NavigatorState> navigatorKey;
+
   User? _currentUser;
   ClientData? _clientData;
   Map<String, SheetMetadata>? _metadata;
   List<Employee>? _availableRoles;
   bool _isLoading = false;
-  String? _fcmToken;
 
-  // Флаг для отслеживания инициализации Firebase
-  bool _firebaseInitialized = false;
+  // 👇 ДЛЯ PUSH (только Web Push, без FCM)
+  bool _pushSubscriptionAttempted = false;
+  Timer? _pushReminderTimer;
+
+  AuthProvider({required this.navigatorKey});
 
   User? get currentUser => _currentUser;
   ClientData? get clientData => _clientData;
   Map<String, SheetMetadata>? get metadata => _metadata;
   List<Employee>? get availableRoles => _availableRoles;
-  String? get fcmToken => _fcmToken;
 
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _currentUser != null;
@@ -45,148 +49,263 @@ class AuthProvider with ChangeNotifier {
   bool get hasMultipleRoles =>
       _availableRoles != null && _availableRoles!.length > 1;
 
-  // 🔥 Проверка, поддерживается ли FCM на текущей платформе
-  bool get _isFcmSupported {
-    // FCM не поддерживается на десктопе
-    if (defaultTargetPlatform == TargetPlatform.linux ||
-        defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS) {
-      return false;
+  // ================== PUSH УВЕДОМЛЕНИЯ ==================
+
+  /// 🔔 Автоматическая подписка на push после входа
+  Future<void> _handlePushSubscription(String phone) async {
+    if (!kIsWeb) return;
+
+    // Предотвращаем множественные попытки
+    if (_pushSubscriptionAttempted) {
+      print('ℹ️ Подписка уже была предпринята ранее');
+      return;
     }
 
-    // Для веба нужна дополнительная проверка
-    if (kIsWeb) {
-      // Здесь можно добавить проверку поддержки браузером
-      return true; // или false, если хотите отключить
-    }
-
-    // Для мобильных платформ поддерживается
-    return true;
-  }
-
-  // 🔥 Проверка инициализации Firebase
-  Future<bool> _ensureFirebaseInitialized() async {
-    if (_firebaseInitialized) return true;
+    _pushSubscriptionAttempted = true;
 
     try {
-      // Пробуем получить экземпляр Firebase
-      Firebase.app();
-      _firebaseInitialized = true;
-      return true;
-    } catch (e) {
-      // Firebase не инициализирован
-      print('⚠️ Firebase не инициализирован');
-      return false;
-    }
-  }
+      final pushService = WebPushService();
+      await pushService.initialize(EnvService.vapidPublicKey);
 
-  // 🔔 FCM: метод получения токена с учётом платформы
-  Future<String?> getFcmToken() async {
-    // Проверяем поддержку платформы
-    if (!_isFcmSupported) {
-      print('⚠️ FCM не поддерживается на этой платформе');
-      return null;
-    }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('push_user_id', phone);
 
-    // Проверяем инициализацию Firebase
-    final isFirebaseReady = await _ensureFirebaseInitialized();
-    if (!isFirebaseReady) {
-      print('⚠️ Firebase не готов, FCM токен не может быть получен');
-      return null;
-    }
-
-    try {
-      // Для веба запрашиваем разрешения
-      if (kIsWeb) {
-        try {
-          final status = await FirebaseMessaging.instance.requestPermission(
-            alert: true,
-            announcement: false,
-            badge: true,
-            carPlay: false,
-            criticalAlert: false,
-            provisional: false,
-            sound: true,
-          );
-
-          if (status.authorizationStatus != AuthorizationStatus.authorized) {
-            print('⚠️ Пользователь не разрешил уведомления');
-            return null;
-          }
-        } catch (e) {
-          print('⚠️ Ошибка запроса разрешений: $e');
-          return null;
-        }
-      }
-
-      final token = await FirebaseMessaging.instance.getToken();
-
-      if (token != null) {
-        _fcmToken = token;
-        print('✅ FCM Token получен: ${token.substring(0, 20)}...');
-        return token;
+      if (_currentUser is Employee) {
+        // 🔴 СОТРУДНИКИ - обязательная подписка с напоминаниями
+        await _handleEmployeePushSubscription(pushService);
       } else {
-        print('⚠️ FCM Token не получен (token is null)');
-        return null;
+        // 🟢 КЛИЕНТЫ - опциональная подписка с предложением
+        await _handleClientPushSubscription(pushService);
       }
     } catch (e) {
-      print('❌ Ошибка получения FCM токена: $e');
-      return null;
+      print('❌ Ошибка в _handlePushSubscription: $e');
     }
   }
 
-  // 🔔 FCM: метод отправки токена на сервер
-  Future<void> sendFcmTokenToServer(String? phoneNumber, String? token) async {
-    if (phoneNumber == null ||
-        phoneNumber.isEmpty ||
-        token == null ||
-        token.isEmpty) {
-      return;
-    }
+  /// 🔴 ДЛЯ СОТРУДНИКОВ - с напоминаниями
+  Future<void> _handleEmployeePushSubscription(
+      WebPushService pushService) async {
+    bool subscribed = await pushService.subscribe();
 
-    try {
-      final apiService = ApiService();
-      await apiService.sendFcmToken(phoneNumber: phoneNumber, fcmToken: token);
-      print('✅ FCM Token отправлен на сервер для $phoneNumber');
-    } catch (e) {
-      print('❌ Ошибка отправки FCM токена на сервер: $e');
+    if (!subscribed) {
+      print('⚠️ Сотрудник не подписался, запускаем напоминания');
+      _startPushReminders();
+    } else {
+      print('✅ Сотрудник успешно подписан');
     }
   }
 
-  // 🔔 FCM: подписка на обновление токена
-  void subscribeToFcmTokenRefresh() {
-    // Проверяем поддержку платформы
-    if (!_isFcmSupported) {
-      print('⚠️ FCM не поддерживается на этой платформе. Пропускаем подписку.');
+  /// 🟢 ДЛЯ КЛИЕНТОВ - спрашиваем разрешение
+  Future<void> _handleClientPushSubscription(WebPushService pushService) async {
+    // Проверяем, может уже подписан
+    if (pushService.isSubscribed) {
       return;
     }
 
-    // Асинхронно проверяем Firebase и подписываемся
-    _ensureFirebaseInitialized().then((isReady) {
-      if (!isReady) return;
+    // Проверяем, может уже отказывались
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('push_offer_declined') == true) {
+      print('ℹ️ Клиент ранее отказался от уведомлений');
+      return;
+    }
 
-      try {
-        FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-          print('🔄 FCM Token обновлён: ${newToken.substring(0, 20)}...');
+    // Показываем диалог с объяснением выгоды
+    final shouldSubscribe = await _showPushOfferDialog();
 
-          _fcmToken = newToken;
+    if (shouldSubscribe) {
+      bool subscribed = await pushService.subscribe();
 
-          if (_currentUser != null && _currentUser!.phone?.isNotEmpty == true) {
-            await sendFcmTokenToServer(_currentUser!.phone, newToken);
-          }
-
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('fcm_token', newToken);
-
-          notifyListeners();
-        });
-      } catch (e) {
-        print('⚠️ Ошибка подписки на обновление токена: $e');
+      if (subscribed) {
+        print('✅ Клиент согласился на уведомления');
+        _showThankYouMessage();
+      } else {
+        print('ℹ️ Клиент хотел подписаться, но не получилось');
       }
+    } else {
+      print('ℹ️ Клиент отказался от уведомлений');
+      await prefs.setBool('push_offer_declined', true);
+    }
+  }
+
+  /// 💬 Диалог предложения push для клиента
+  Future<bool> _showPushOfferDialog() async {
+    final context = navigatorKey.currentContext;
+    if (context == null) return false;
+
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.notifications_active, color: Colors.blue, size: 28),
+                SizedBox(width: 8),
+                Expanded(child: Text('🔔 Быть в курсе заказа?')),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Мы будем присылать уведомления, когда:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 12),
+                _buildBenefitItem(
+                    Icons.check_circle, '✅ Заказ принят в обработку'),
+                _buildBenefitItem(
+                    Icons.factory, '🏭 Заказ запущен в производство'),
+                _buildBenefitItem(
+                    Icons.check_circle, '🍰 Заказ готов к выдаче'),
+                _buildBenefitItem(
+                    Icons.local_shipping, '🚚 Статус доставки изменился'),
+                _buildBenefitItem(Icons.help, '❓ Появились вопросы по заказу'),
+                SizedBox(height: 16),
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info, color: Colors.blue.shade700),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Это бесплатно и займет всего 2 секунды!',
+                          style: TextStyle(color: Colors.blue.shade700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child:
+                    Text('Нет, спасибо', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text('✅ Да, хочу быть в курсе!'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Widget _buildBenefitItem(IconData icon, String text) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.green),
+          SizedBox(width: 8),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
+
+  void _showThankYouMessage() {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.notifications_active, color: Colors.white),
+            SizedBox(width: 8),
+            Expanded(
+                child: Text(
+                    '✅ Отлично! Теперь вы будете в курсе всех изменений!')),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 4),
+      ),
+    );
+  }
+
+  /// 🔔 Запуск напоминаний для сотрудников
+  void _startPushReminders() {
+    if (_pushReminderTimer != null) return;
+
+    // Показываем напоминание через 5 секунд
+    Future.delayed(Duration(seconds: 5), () {
+      _checkSubscriptionAndRemind();
+    });
+
+    // Запускаем таймер для периодических напоминаний
+    _pushReminderTimer = Timer.periodic(Duration(minutes: 2), (timer) {
+      _checkSubscriptionAndRemind();
     });
   }
 
-  // 🔥 ДЕСЕРИАЛИЗАЦИЯ ДАННЫХ КЛИЕНТА
+  Future<void> _checkSubscriptionAndRemind() async {
+    if (!kIsWeb) return;
+
+    final pushService = WebPushService();
+    await pushService.initialize(EnvService.vapidPublicKey);
+
+    if (pushService.isSubscribed) {
+      _pushReminderTimer?.cancel();
+      _pushReminderTimer = null;
+      return;
+    }
+
+    _showPushReminder();
+  }
+
+  void _showPushReminder() {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('🔔 Не забудьте включить уведомления'),
+        content: const Text(
+            'Для быстрого реагирования на заказы необходимо разрешить уведомления.\n\n'
+            'Нажмите "Разрешить" в следующем диалоге браузера.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Напомнить позже'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final pushService = WebPushService();
+              await pushService.initialize(EnvService.vapidPublicKey);
+              final subscribed = await pushService.subscribe();
+
+              if (subscribed) {
+                _pushReminderTimer?.cancel();
+                _pushReminderTimer = null;
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('✅ Уведомления включены!')));
+              }
+            },
+            child: const Text('Попробовать сейчас'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ================== ДЕСЕРИАЛИЗАЦИЯ ДАННЫХ ==================
+
   ClientData _deserializeClientData(dynamic data) {
     if (data == null || data is! Map<String, dynamic>) {
       return ClientData();
@@ -290,7 +409,6 @@ class AuthProvider with ChangeNotifier {
     return clientData;
   }
 
-  // 🔥 ДЕСЕРИАЛИЗАЦИЯ МЕТАДАННЫХ
   Map<String, SheetMetadata> _deserializeMetadata(dynamic metadata) {
     print('📊 _deserializeMetadata START');
     print('📊 Тип metadata: ${metadata.runtimeType}');
@@ -332,6 +450,8 @@ class AuthProvider with ChangeNotifier {
     return result;
   }
 
+  // ================== ИНИЦИАЛИЗАЦИЯ ==================
+
   Future<void> init() async {
     print('🟢 AuthProvider.init() START');
     _isLoading = true;
@@ -341,29 +461,11 @@ class AuthProvider with ChangeNotifier {
     print('🟢 SharedPreferences получены');
     final userData = prefs.getString('auth_user');
     final timestamp = prefs.getString('auth_timestamp');
-    final cachedToken = prefs.getString('fcm_token');
     final cachedClientData = prefs.getString('client_data');
 
     print('🟢 userData: ${userData != null}');
     print('🟢 timestamp: ${timestamp != null}');
-    print('🟢 cachedToken: ${cachedToken != null}');
     print('🟢 cachedClientData: ${cachedClientData != null}');
-
-    subscribeToFcmTokenRefresh();
-
-    // Получаем FCM токен асинхронно
-    getFcmToken().then((token) {
-      _fcmToken = token ?? cachedToken;
-
-      if (token != null &&
-          token != cachedToken &&
-          _currentUser != null &&
-          _currentUser!.phone?.isNotEmpty == true) {
-        sendFcmTokenToServer(_currentUser!.phone, token);
-      }
-    }).catchError((error) {
-      print('⚠️ Ошибка при получении FCM токена: $error');
-    });
 
     if (userData != null && timestamp != null) {
       try {
@@ -374,7 +476,6 @@ class AuthProvider with ChangeNotifier {
         } else {
           _currentUser = Employee.fromJson(json);
         }
-        _fcmToken = cachedToken;
 
         if (cachedClientData != null) {
           try {
@@ -403,9 +504,9 @@ class AuthProvider with ChangeNotifier {
     print('🟢 AuthProvider.init() END');
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД LOGIN
-  Future<void> login(String phone,
-      {String? fcmToken, required BuildContext context}) async {
+  // ================== АУТЕНТИФИКАЦИЯ ==================
+
+  Future<void> login(String phone, {required BuildContext context}) async {
     _isLoading = true;
     notifyListeners();
 
@@ -417,18 +518,6 @@ class AuthProvider with ChangeNotifier {
         throw Exception('Неверный формат телефона');
       }
       print('🟢 Нормализованный телефон: $normalizedPhone');
-
-      String? tokenToUse;
-
-      // FCM токен только для мобильных платформ
-      if (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS) {
-        try {
-          tokenToUse = fcmToken ?? await getFcmToken();
-        } catch (e) {
-          print('⚠️ Ошибка получения FCM токена: $e');
-        }
-      }
 
       final prefs = await SharedPreferences.getInstance();
       final localMetaJson = prefs.getString('local_metadata');
@@ -444,7 +533,6 @@ class AuthProvider with ChangeNotifier {
       final authResponse = await apiService.authenticate(
         phone: normalizedPhone,
         localMetadata: localMetadata,
-        fcmToken: tokenToUse,
       );
 
       if (authResponse != null) {
@@ -478,7 +566,6 @@ class AuthProvider with ChangeNotifier {
             throw Exception('Для сотрудника с 2FA не указан email');
           }
 
-          // Передаем tempUser (успешно приведенный к типу Employee)
           final twoFactorResult = await Navigator.push<bool>(
             context,
             MaterialPageRoute(
@@ -491,17 +578,14 @@ class AuthProvider with ChangeNotifier {
             print('❌ 2FA не пройдена или отменена');
             _isLoading = false;
             notifyListeners();
-            return; // Прерываем вход
+            return;
           }
 
           print('✅ 2FA успешно пройдена');
         }
 
-        // 🔥 2FA ПРОЙДЕНА - УСТАНАВЛИВАЕМ ПОЛЬЗОВАТЕЛЯ
-        // tempUser уже содержит правильного Employee или Client
         _currentUser = tempUser;
 
-        // Если был список ролей, currentUser пока null, но список сохранен
         if (userData is List && _availableRoles != null) {
           // Логика выбора роли, если нужно
         }
@@ -529,15 +613,9 @@ class AuthProvider with ChangeNotifier {
         _metadata = _deserializeMetadata(metadata);
         print('🟢 Шаг 3: _metadata заполнен, листов: ${_metadata?.length}');
 
-        _fcmToken = tokenToUse;
-        print('🟢 Шаг 4: _fcmToken установлен');
-
         if (_clientData != null) {
           try {
             print('🟢 Шаг 5: Проверка клиентов перед сохранением');
-
-            // Убрано создание неиспользуемой переменной clientJson
-
             print('🟢 Шаг 6: Начинаем toJson для всех клиентов');
             final clientDataJson = _clientData!.toJson();
             await prefs.setString('client_data', jsonEncode(clientDataJson));
@@ -559,14 +637,17 @@ class AuthProvider with ChangeNotifier {
         await prefs.setString(
             'local_metadata', jsonEncode(serializableMetadata ?? {}));
 
-        if (tokenToUse != null) {
-          await prefs.setString('fcm_token', tokenToUse);
-        }
-
         print('✅ Авторизация успешна, данные загружены');
         print('🟢 Финальное состояние:');
         print('   - _currentUser: ${_currentUser}');
         print('   - isAuthenticated: ${isAuthenticated}');
+
+        // 👇 ВЫЗЫВАЕМ ПОДПИСКУ НА PUSH ПОСЛЕ УСПЕШНОГО ВХОДА
+        if (kIsWeb && _currentUser != null) {
+          _handlePushSubscription(_currentUser!.phone!).catchError((e) {
+            print('⚠️ Ошибка фоновой подписки: $e');
+          });
+        }
       } else {
         throw Exception('Сервер вернул null ответ');
       }
@@ -575,13 +656,14 @@ class AuthProvider with ChangeNotifier {
       _currentUser = null;
       _clientData = null;
       _metadata = null;
-      _fcmToken = null;
       rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
+
+  // ================== УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЕМ ==================
 
   void selectRole(Employee selectedRole) {
     _currentUser = selectedRole;
@@ -595,11 +677,14 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _pushSubscriptionAttempted = false;
+    _pushReminderTimer?.cancel();
+    _pushReminderTimer = null;
+
     _currentUser = null;
     _clientData = null;
     _metadata = null;
     _availableRoles = null;
-    _fcmToken = null;
 
     notifyListeners();
 
@@ -609,9 +694,9 @@ class AuthProvider with ChangeNotifier {
       await prefs.remove('auth_timestamp');
       await prefs.remove('local_metadata');
       await prefs.remove('client_data');
-      await prefs.remove('fcm_token');
       await prefs.remove('selected_client_id');
       await prefs.remove('current_user_phone');
+      await prefs.remove('push_offer_declined');
       print('✅ Все данные очищены при выходе');
     } catch (e) {
       print('❌ Ошибка при выходе: $e');
@@ -629,7 +714,12 @@ class AuthProvider with ChangeNotifier {
     _clientData = null;
     _metadata = null;
     _availableRoles = null;
-    _fcmToken = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _pushReminderTimer?.cancel();
+    super.dispose();
   }
 }

@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../providers/auth_provider.dart';
 import '../models/order_item.dart';
-import '../utils/parsing_utils.dart';
 import 'admin_client_orders_screen.dart';
 
 class AdminOrdersCalendarScreen extends StatefulWidget {

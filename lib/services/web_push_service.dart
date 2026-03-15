@@ -2,10 +2,9 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:js_interop';
-import 'dart:js' as js;
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'env_service.dart';
+import '../services/env_service.dart';
 
 @JS('PushManager')
 external JSPushManager? get pushManager;
@@ -19,9 +18,9 @@ extension JSPushManagerExtension on JSPushManager {
   external JSPromise<JSString> requestPermission();
   external JSPromise<JSBoolean> subscribe(int userId);
   external JSPromise<JSObject> getSubscriptionData();
+  external JSPromise<JSBoolean> unsubscribe();
 }
 
-// Определяем JS функцию для проверки наличия PushManager
 @JS('typeofPushManager')
 external JSString get typeofPushManager;
 
@@ -34,18 +33,6 @@ class WebPushService {
   bool _isSubscribed = false;
   String? _vapidPublicKey;
 
-  // 🔥 ДОБАВЛЕНО: проверка поддержки
-  Future<bool> isSupported() async {
-    if (!kIsWeb) return false;
-
-    try {
-      final type = typeofPushManager.toDart;
-      return type != 'undefined';
-    } catch (e) {
-      return false;
-    }
-  }
-
   Future<void> initialize(String vapidPublicKey) async {
     if (!kIsWeb) {
       print('📱 Push-уведомления работают только в веб-версии');
@@ -57,21 +44,17 @@ class WebPushService {
     _vapidPublicKey = vapidPublicKey;
 
     try {
-      // Проверяем доступность PushManager
-      final available = await isSupported();
+      final available = await _checkPushManager();
       if (!available) {
         print('❌ PushManager не доступен');
         return;
       }
 
-      // Инициализируем
       final result = await _initJs();
 
       if (result) {
         _isInitialized = true;
         print('✅ WebPushService инициализирован');
-
-        // Проверяем текущий статус
         await _checkSubscriptionStatus();
       }
     } catch (e) {
@@ -90,6 +73,16 @@ class WebPushService {
     }
   }
 
+  Future<bool> _checkPushManager() async {
+    try {
+      final type = typeofPushManager.toDart;
+      return type != 'undefined';
+    } catch (e) {
+      print('❌ Ошибка проверки PushManager: $e');
+      return false;
+    }
+  }
+
   Future<String?> _requestPermission() async {
     try {
       if (pushManager == null) return null;
@@ -101,12 +94,22 @@ class WebPushService {
     }
   }
 
-  // 🔥 Подписка на уведомления с отправкой на сервер
+  Future<bool> isSupported() async {
+    if (!kIsWeb) return false;
+
+    try {
+      final available = await _checkPushManager();
+      return available;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 🔥 Подписка на уведомления
   Future<bool> subscribe() async {
     if (!kIsWeb || !_isInitialized) return false;
 
     try {
-      // Запрашиваем разрешение
       final permission = await _requestPermission();
 
       if (permission != 'granted') {
@@ -114,28 +117,25 @@ class WebPushService {
         return false;
       }
 
-      // Подписываемся
       if (pushManager == null) return false;
-      final result = await pushManager!.subscribe(0).toDart;
+
+      final prefs = await SharedPreferences.getInstance();
+      final phone = prefs.getString('push_user_id') ?? 'unknown';
+      final userId = phone.hashCode;
+
+      final result = await pushManager!.subscribe(userId).toDart;
       final success = result.toDart;
 
       if (success) {
         _isSubscribed = true;
 
-        // Сохраняем статус
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('push_subscribed', true);
+        print('✅ Подписка на уведомления оформлена для $phone');
 
-        print('✅ Подписка на уведомления оформлена');
-
-        // Получаем данные подписки для отправки на сервер
         try {
           final subscriptionResult =
               await pushManager!.getSubscriptionData().toDart;
-          print('📦 Данные подписки: $subscriptionResult');
-
-          // 🔥 ОТПРАВЛЯЕМ НА СЕРВЕР
-          await _sendSubscriptionToServer(subscriptionResult);
+          await _sendSubscriptionToServer(phone, subscriptionResult);
         } catch (e) {
           print('⚠️ Не удалось получить данные подписки: $e');
         }
@@ -148,133 +148,107 @@ class WebPushService {
     }
   }
 
-  // 🔥 ОТПРАВКА ПОДПИСКИ НА GAS
-  Future<void> _sendSubscriptionToServer(JSObject subscriptionData) async {
-    final scriptUrl = EnvService.scriptUrl;
-    if (scriptUrl.isEmpty) {
-      print('⚠️ URL скрипта не указан');
-      return;
-    }
-
-    final scriptSecret = EnvService.scriptSecret;
-    if (scriptSecret.isEmpty) {
-      print('⚠️ Секретный ключ не указан');
-      return;
-    }
-
-    try {
-      // Конвертируем JS объект в Map
-      final subMap = subscriptionData.dartify() as Map<String, dynamic>;
-
-      // Получаем userId из SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getString('push_user_id') ?? 'unknown';
-
-      // Формируем запрос
-      final response = await http.post(
-        Uri.parse(scriptUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'action': 'savePushSubscription',
-          'secret': scriptSecret,
-          'phone': userId,
-          'subscription': {
-            'endpoint': subMap['endpoint'],
-            'keys': subMap['keys'],
-            'userAgent': _getUserAgent(),
-          }
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        print('✅ Подписка отправлена на сервер');
-
-        // Сохраняем userId для последующих запросов
-        await prefs.setString('push_user_id', userId);
-      } else {
-        print('❌ Ошибка отправки подписки: ${response.statusCode}');
-        print('📦 Ответ: ${response.body}');
-      }
-    } catch (e) {
-      print('❌ Ошибка отправки подписки на сервер: $e');
-    }
-  }
-
-  // 🔥 ПОЛУЧЕНИЕ USER-AGENT
-  String _getUserAgent() {
-    try {
-      final navigator = js.context['navigator'];
-      return navigator['userAgent'].toString();
-    } catch (e) {
-      return 'Unknown';
-    }
-  }
-
   // 🔥 Отписка от уведомлений
   Future<bool> unsubscribe() async {
     if (!kIsWeb || !_isInitialized) return false;
 
     try {
-      // TODO: реализовать отписку в JS
-      _isSubscribed = false;
+      if (pushManager == null) return false;
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('push_subscribed');
+      final result = await pushManager!.unsubscribe().toDart;
+      final success = result.toDart;
 
-      // 🔥 Уведомляем сервер об отписке
-      await _sendUnsubscribeToServer();
+      if (success) {
+        _isSubscribed = false;
 
-      print('✅ Отписка от уведомлений выполнена');
-      return true;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('push_subscribed');
+
+        final phone = prefs.getString('push_user_id');
+        if (phone != null) {
+          await _sendUnsubscribeToServer(phone);
+        }
+
+        print('✅ Отписка от уведомлений выполнена');
+        return true;
+      } else {
+        print('❌ JS метод unsubscribe вернул false');
+        return false;
+      }
     } catch (e) {
       print('❌ Ошибка отписки: $e');
       return false;
     }
   }
 
-  // 🔥 УВЕДОМЛЕНИЕ СЕРВЕРА ОБ ОТПИСКЕ
-  Future<void> _sendUnsubscribeToServer() async {
+  // 🔥 Отправка подписки на сервер
+  Future<void> _sendSubscriptionToServer(
+      String phone, JSObject subscriptionData) async {
+    final scriptUrl = EnvService.scriptUrl;
+    if (scriptUrl.isEmpty) {
+      print('⚠️ URL скрипта не указан');
+      return;
+    }
+
+    try {
+      final subMap = subscriptionData.dartify() as Map<String, dynamic>;
+
+      final response = await http.post(
+        Uri.parse(scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'savePushSubscription',
+          'phone': phone,
+          'subscription': {
+            'endpoint': subMap['endpoint'],
+            'keys': subMap['keys'],
+          }
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ Подписка отправлена на сервер для $phone');
+      } else {
+        print('❌ Ошибка отправки подписки: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Ошибка отправки подписки на сервер: $e');
+    }
+  }
+
+  // 🔥 Уведомление сервера об отписке
+  Future<void> _sendUnsubscribeToServer(String phone) async {
     final scriptUrl = EnvService.scriptUrl;
     if (scriptUrl.isEmpty) return;
 
-    final scriptSecret = EnvService.scriptSecret;
-    if (scriptSecret.isEmpty) return;
-
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getString('push_user_id');
+      final response = await http.post(
+        Uri.parse(scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'deletePushSubscription',
+          'phone': phone,
+        }),
+      );
 
-      if (userId != null && userId.isNotEmpty) {
-        final response = await http.post(
-          Uri.parse(scriptUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'action': 'deletePushSubscription',
-            'secret': scriptSecret,
-            'phone': userId,
-          }),
-        );
-
-        if (response.statusCode == 200) {
-          print('✅ Отписка отправлена на сервер');
-          await prefs.remove('push_user_id');
-        } else {
-          print('⚠️ Ошибка отправки отписки: ${response.statusCode}');
-        }
+      if (response.statusCode == 200) {
+        print('✅ Отписка отправлена на сервер для $phone');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('push_user_id');
+      } else {
+        print('⚠️ Ошибка отправки отписки: ${response.statusCode}');
       }
     } catch (e) {
       print('⚠️ Ошибка отправки отписки: $e');
     }
   }
 
-  // 🔥 Получение статуса подписки
   Future<void> _checkSubscriptionStatus() async {
     final prefs = await SharedPreferences.getInstance();
     _isSubscribed = prefs.getBool('push_subscribed') ?? false;
     print('📱 Статус подписки: ${_isSubscribed ? 'подписан' : 'не подписан'}');
   }
 
-  // 🔥 Геттеры
   bool get isSubscribed => _isSubscribed;
   bool get isInitialized => _isInitialized;
 }

@@ -9,7 +9,6 @@ import '../models/price_item.dart';
 import '../models/product.dart';
 import '../models/composition.dart';
 import '../models/nutrition_info.dart';
-import '../models/storage_condition.dart';
 import '../models/ingredient_info.dart';
 
 class AdminPriceItemFormScreen extends StatefulWidget {

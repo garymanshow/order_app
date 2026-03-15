@@ -8,6 +8,7 @@ import 'delivery_condition.dart';
 import 'client_category.dart';
 import 'client.dart';
 import 'storage_condition.dart';
+import 'price_category.dart'; // 👈 НОВЫЙ ИМПОРТ
 
 class ClientData {
   List<Product> products = [];
@@ -19,6 +20,7 @@ class ClientData {
   List<ClientCategory> clientCategories = [];
   List<Client> clients = [];
   List<StorageCondition> storageConditions = [];
+  List<PriceCategory> priceCategories = []; // 👈 НОВОЕ ПОЛЕ
   Map<String, dynamic> cart = {};
 
   // Индексы для быстрого поиска
@@ -26,6 +28,7 @@ class ClientData {
   Map<String, List<Composition>> compositionIndex = {};
   Map<String, Filling> fillingIndex = {};
   Map<String, List<String>> clientCategoryIndex = {};
+  Map<String, PriceCategory> priceCategoryIndex = {}; // 👈 НОВЫЙ ИНДЕКС
 
   ClientData();
 
@@ -49,6 +52,9 @@ class ClientData {
       }
       clientCategoryIndex[category.clientName]!.add(category.entityId);
     }
+
+    // 👈 НОВЫЙ ИНДЕКС ДЛЯ КАТЕГОРИЙ
+    priceCategoryIndex = {for (var pc in priceCategories) pc.id: pc};
   }
 
   factory ClientData.fromJson(Map<String, dynamic> json) {
@@ -112,6 +118,21 @@ class ClientData {
           .toList();
     }
 
+    // 🔥 Безопасная обработка условий хранения
+    if (json['storageConditions'] is List) {
+      clientData.storageConditions = (json['storageConditions'] as List)
+          .map(
+              (item) => StorageCondition.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    // 🔥 НОВОЕ: обработка категорий прайса
+    if (json['priceCategories'] is List) {
+      clientData.priceCategories = (json['priceCategories'] as List)
+          .map((item) => PriceCategory.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
     // 🔥 Безопасная обработка корзины
     if (json['cart'] is Map) {
       clientData.cart = json['cart'] as Map<String, dynamic>;
@@ -131,6 +152,8 @@ class ClientData {
     print('   - deliveryConditions: ${deliveryConditions.length}');
     print('   - clientCategories: ${clientCategories.length}');
     print('   - clients: ${clients.length}');
+    print('   - storageConditions: ${storageConditions.length}');
+    print('   - priceCategories: ${priceCategories.length}'); // 👈 НОВОЕ
 
     final json = {
       'products': products.map((p) => p.toJson()).toList(),
@@ -141,6 +164,9 @@ class ClientData {
       'deliveryConditions': deliveryConditions.map((d) => d.toJson()).toList(),
       'clientCategories': clientCategories.map((c) => c.toJson()).toList(),
       'clients': clients.map((c) => c.toJson()).toList(),
+      'storageConditions': storageConditions.map((s) => s.toJson()).toList(),
+      'priceCategories':
+          priceCategories.map((pc) => pc.toJson()).toList(), // 👈 НОВОЕ
       'cart': cart,
     };
 
