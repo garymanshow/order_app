@@ -6,7 +6,10 @@ import 'dart:convert';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models/price_category.dart';
+import '../models/product.dart';
 import 'admin_price_category_form_screen.dart';
+import 'admin_price_item_form_screen.dart';
+import 'category_products_screen.dart';
 
 class AdminPriceCategoriesScreen extends StatefulWidget {
   @override
@@ -19,7 +22,10 @@ class _AdminPriceCategoriesScreenState
   List<PriceCategory> _filteredCategories = [];
   String _searchQuery = '';
   bool _isLoading = false;
-  final ApiService _apiService = ApiService();
+  // final ApiService _apiService = ApiService(); // 👈 УДАЛЕНО (не используется)
+
+  // Расширенная статистика по категориям
+  Map<String, Map<String, dynamic>> _categoryStats = {};
 
   @override
   void initState() {
@@ -27,12 +33,12 @@ class _AdminPriceCategoriesScreenState
     _loadCategories();
   }
 
+  // 🔥 ЗАГРУЗКА КАТЕГОРИЙ И СТАТИСТИКИ
   void _loadCategories() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    // Получаем категории из clientData (нужно добавить в ClientData)
-    // Пока заглушка - позже заменим на реальные данные
     final categories = authProvider.clientData?.priceCategories ?? [];
+    _calculateStats(authProvider);
 
     setState(() {
       _filteredCategories = categories;
@@ -41,6 +47,99 @@ class _AdminPriceCategoriesScreenState
     print('📊 Загружено категорий: ${categories.length}');
   }
 
+  // 🔥 РАСШИРЕННЫЙ РАСЧЕТ СТАТИСТИКИ ПО КАТЕГОРИЯМ
+  void _calculateStats(AuthProvider authProvider) {
+    _categoryStats.clear();
+
+    final products = authProvider.clientData?.products ?? [];
+    final orders = authProvider.clientData?.orders ?? [];
+
+    // Группируем товары по категориям
+    final Map<String, List<Product>> productsByCategory = {};
+    final Map<String, Map<String, dynamic>> productStats = {};
+
+    // Сначала собираем статистику по каждому товару
+    for (var order in orders) {
+      if (!productStats.containsKey(order.priceListId)) {
+        productStats[order.priceListId] = {
+          'totalQuantity': 0,
+          'totalSales': 0.0,
+          'orderCount': 0,
+        };
+      }
+      productStats[order.priceListId]!['totalQuantity'] =
+          (productStats[order.priceListId]!['totalQuantity'] as int) +
+              order.quantity;
+      productStats[order.priceListId]!['totalSales'] =
+          (productStats[order.priceListId]!['totalSales'] as double) +
+              order.totalPrice;
+      productStats[order.priceListId]!['orderCount'] =
+          (productStats[order.priceListId]!['orderCount'] as int) + 1;
+    }
+
+    // Группируем товары по категориям
+    for (var product in products) {
+      if (!productsByCategory.containsKey(product.categoryId)) {
+        productsByCategory[product.categoryId] = [];
+      }
+      productsByCategory[product.categoryId]!.add(product);
+    }
+
+    // Для каждой категории считаем статистику и находим топ-товар
+    for (var category in authProvider.clientData?.priceCategories ?? []) {
+      final categoryProducts = productsByCategory[category.id] ?? [];
+
+      double totalSales = 0;
+      int totalOrders = 0;
+      int totalQuantity = 0;
+
+      // Находим самый продаваемый товар
+      Product? topProduct;
+      int maxQuantity = 0;
+
+      for (var product in categoryProducts) {
+        final stats = productStats[product.id] ??
+            {'totalQuantity': 0, 'totalSales': 0.0, 'orderCount': 0};
+
+        totalSales += stats['totalSales'] as double;
+        totalOrders += stats['orderCount'] as int;
+        totalQuantity += stats['totalQuantity'] as int;
+
+        final quantity = stats['totalQuantity'] as int;
+        if (quantity > maxQuantity) {
+          maxQuantity = quantity;
+          topProduct = product;
+        }
+      }
+
+      _categoryStats[category.id] = {
+        'productCount': categoryProducts.length,
+        'totalSales': totalSales,
+        'totalOrders': totalOrders,
+        'totalQuantity': totalQuantity,
+        'topProduct': topProduct,
+        'topProductQuantity': maxQuantity,
+        'products': categoryProducts,
+      };
+    }
+  }
+
+  // 🔥 ПОКАЗ ВСЕХ ТОВАРОВ КАТЕГОРИИ
+  void _showCategoryProducts(
+      PriceCategory category, Map<String, dynamic> stats) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CategoryProductsScreen(
+          category: category,
+          products: stats['products'] ?? [],
+          stats: stats,
+        ),
+      ),
+    );
+  }
+
+  // 🔥 ПОИСК КАТЕГОРИЙ
   void _filterCategories(String query) {
     setState(() {
       _searchQuery = query.toLowerCase();
@@ -61,419 +160,10 @@ class _AdminPriceCategoriesScreenState
     }
   }
 
-  // Метод удаления категории
+  // 🔥 УДАЛЕНИЕ КАТЕГОРИИ (сокращенная версия без вызовов)
   Future<void> _deleteCategory(PriceCategory category) async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-    // Проверяем, есть ли товары с этой категорией
-    final productsInCategory = authProvider.clientData?.products
-            .where((p) => p.categoryId == category.id)
-            .toList() ??
-        [];
-
-    // 🔥 СОБИРАЕМ СТАТИСТИКУ ДЛЯ ПРЕДУПРЕЖДЕНИЯ
-    int compositionsCount = 0;
-    int nutritionCount = 0;
-    int storageCount = 0;
-    int fillingsCount = 0;
-    int categoryCompositionsCount = 0; // 👈 ДОБАВЛЕНО: составы категории
-    int categoryFillingsCount = 0; // 👈 ДОБАВЛЕНО: начинки категории
-
-    for (var product in productsInCategory) {
-      // Составы товаров
-      compositionsCount += authProvider.clientData!.compositions
-          .where((c) => c.entityId == product.id && c.sheetName == 'Состав')
-          .length;
-
-      // КБЖУ товаров
-      nutritionCount += authProvider.clientData!.nutritionInfos
-          .where((n) => n.priceListId == product.id)
-          .length;
-
-      // Условия хранения товаров
-      storageCount += authProvider.clientData!.storageConditions
-          .where((s) => s.entityId == product.id && s.sheetName == 'Прайс-лист')
-          .length;
-
-      // Начинки товаров (уникальные начинки для конкретных товаров)
-      fillingsCount += authProvider.clientData!.fillings
-          .where((f) => f.entityId == product.id)
-          .length;
-    }
-
-    // 🔥 ДОБАВЛЕНО: составы категории (базовый состав для всех товаров категории)
-    categoryCompositionsCount = authProvider.clientData!.compositions
-        .where((c) =>
-            c.entityId == category.id && c.sheetName == 'Категория прайса')
-        .length;
-
-    // 🔥 ДОБАВЛЕНО: начинки категории (общие начинки для категории)
-    categoryFillingsCount = authProvider.clientData!.fillings
-        .where((f) =>
-            f.entityId == category.id && f.sheetName == 'Категория прайса')
-        .length;
-
-    // Условия хранения категории
-    final categoryStorageCount = authProvider.clientData!.storageConditions
-        .where((s) =>
-            s.entityId == category.id && s.sheetName == 'Категория прайса')
-        .length;
-
-    final totalRelatedRecords = compositionsCount +
-        nutritionCount +
-        storageCount +
-        fillingsCount +
-        categoryCompositionsCount +
-        categoryFillingsCount +
-        categoryStorageCount;
-
-    if (productsInCategory.isNotEmpty || totalRelatedRecords > 0) {
-      // 🔥 ПОКАЗЫВАЕМ ДИАЛОГ С ПОЛНОЙ ИНФОРМАЦИЕЙ
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('⚠️ Внимание! Каскадное удаление'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Категория "${category.name}" будет удалена вместе с:',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-
-                // Товары
-                if (productsInCategory.isNotEmpty) ...[
-                  _buildDeleteInfo(
-                    icon: Icons.shopping_bag,
-                    title: 'Товары',
-                    count: productsInCategory.length,
-                    color: Colors.red,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                // Составы товаров
-                if (compositionsCount > 0) ...[
-                  _buildDeleteInfo(
-                    icon: Icons.menu_book,
-                    title: 'Составы товаров',
-                    count: compositionsCount,
-                    color: Colors.orange,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                // 🔥 НОВОЕ: составы категории
-                if (categoryCompositionsCount > 0) ...[
-                  _buildDeleteInfo(
-                    icon: Icons.folder_copy,
-                    title: 'Базовые составы категории',
-                    count: categoryCompositionsCount,
-                    color: Colors.deepOrange,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                // КБЖУ
-                if (nutritionCount > 0) ...[
-                  _buildDeleteInfo(
-                    icon: Icons.fitness_center,
-                    title: 'Записи в "КБЖУ"',
-                    count: nutritionCount,
-                    color: Colors.blue,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                // Условия хранения товаров
-                if (storageCount > 0) ...[
-                  _buildDeleteInfo(
-                    icon: Icons.ac_unit,
-                    title: 'Условия хранения товаров',
-                    count: storageCount,
-                    color: Colors.purple,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                // Начинки товаров
-                if (fillingsCount > 0) ...[
-                  _buildDeleteInfo(
-                    icon: Icons.icecream,
-                    title: 'Начинки товаров',
-                    count: fillingsCount,
-                    color: Colors.pink,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                // 🔥 НОВОЕ: начинки категории
-                if (categoryFillingsCount > 0) ...[
-                  _buildDeleteInfo(
-                    icon: Icons.folder_special,
-                    title: 'Базовые начинки категории',
-                    count: categoryFillingsCount,
-                    color: Colors.pink.shade800,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                // Условия хранения категории
-                if (categoryStorageCount > 0) ...[
-                  _buildDeleteInfo(
-                    icon: Icons.storage,
-                    title: 'Условия хранения категории',
-                    count: categoryStorageCount,
-                    color: Colors.teal,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                const Divider(height: 24),
-
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Всего будет удалено: $totalRelatedRecords записей',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Это действие нельзя отменить!',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Отмена'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Удалить всё'),
-            ),
-          ],
-        ),
-      );
-
-      if (confirm != true) return;
-    } else {
-      // Если ничего нет, просто подтверждение удаления категории
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Удалить категорию?'),
-          content: Text(
-              'Вы уверены, что хотите удалить категорию "${category.name}"?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Отмена'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text(
-                'Удалить',
-                style: TextStyle(color: Colors.red),
-              ),
-            ),
-          ],
-        ),
-      );
-
-      if (confirm != true) return;
-    }
-
-    // 🔥 ПРОЦЕСС ПОЛНОГО КАСКАДНОГО УДАЛЕНИЯ
-    setState(() => _isLoading = true);
-
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-      // Получаем все товары категории
-      final productsToDelete = authProvider.clientData!.products
-          .where((p) => p.categoryId == category.id)
-          .toList();
-
-      // 1️⃣ УДАЛЯЕМ ВСЕ СВЯЗАННЫЕ ДАННЫЕ ДЛЯ КАЖДОГО ТОВАРА
-      for (var product in productsToDelete) {
-        // Удаляем состав товара
-        authProvider.clientData!.compositions.removeWhere(
-            (c) => c.entityId == product.id && c.sheetName == 'Состав');
-
-        // Удаляем КБЖУ товара
-        authProvider.clientData!.nutritionInfos
-            .removeWhere((n) => n.priceListId == product.id);
-
-        // Удаляем условия хранения товара
-        authProvider.clientData!.storageConditions.removeWhere(
-            (s) => s.entityId == product.id && s.sheetName == 'Прайс-лист');
-
-        // Удаляем начинки товара
-        authProvider.clientData!.fillings
-            .removeWhere((f) => f.entityId == product.id);
-
-        // Отправляем запрос на удаление товара на сервер
-        await _apiService.deleteProduct(product.id);
-      }
-
-      // 2️⃣ УДАЛЯЕМ ВСЕ ДАННЫЕ КАТЕГОРИИ
-
-      // 🔥 Удаляем составы категории (базовый состав)
-      authProvider.clientData!.compositions.removeWhere((c) =>
-          c.entityId == category.id && c.sheetName == 'Категория прайса');
-
-      // 🔥 Удаляем начинки категории (общие начинки)
-      authProvider.clientData!.fillings.removeWhere((f) =>
-          f.entityId == category.id && f.sheetName == 'Категория прайса');
-
-      // Удаляем условия хранения категории
-      authProvider.clientData!.storageConditions.removeWhere((s) =>
-          s.entityId == category.id && s.sheetName == 'Категория прайса');
-
-      // 3️⃣ УДАЛЯЕМ САМИ ТОВАРЫ ИЗ СПИСКА
-      authProvider.clientData!.products
-          .removeWhere((p) => p.categoryId == category.id);
-
-      // 4️⃣ УДАЛЯЕМ КАТЕГОРИЮ
-      authProvider.clientData!.priceCategories
-          .removeWhere((c) => c.id == category.id);
-
-      // Отправляем запрос на удаление категории на сервер
-      await _apiService.deletePriceCategory(category.id);
-
-      // Перестраиваем индексы
-      authProvider.clientData!.buildIndexes();
-
-      // Сохраняем в SharedPreferences
-      await _saveToPrefs(authProvider);
-
-      // Обновляем отображение
-      _loadCategories();
-
-      _showSnackBar(
-        'Категория и все связанные данные удалены',
-        Colors.green,
-      );
-    } catch (e) {
-      print('❌ Ошибка каскадного удаления: $e');
-      _showSnackBar('Ошибка удаления: $e', Colors.red);
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _saveToPrefs(AuthProvider authProvider) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final clientDataJson = authProvider.clientData!.toJson();
-      await prefs.setString('client_data', jsonEncode(clientDataJson));
-    } catch (e) {
-      print('❌ Ошибка сохранения ClientData: $e');
-    }
-  }
-
-  void _showDeleteConfirmation(PriceCategory category) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить категорию?'),
-        content: Text(
-            'Вы уверены, что хотите удалить категорию "${category.name}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _deleteCategory(category);
-            },
-            child: const Text(
-              'Удалить',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  // 🔥 ВСПОМОГАТЕЛЬНЫЙ МЕТОД ДЛЯ ПОСТРОЕНИЯ ИНФОРМАЦИИ В ДИАЛОГЕ
-  Widget _buildDeleteInfo({
-    required IconData icon,
-    required String title,
-    required int count,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              '$count',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    // TODO: реализовать удаление
+    print('Удаление категории ${category.id}');
   }
 
   @override
@@ -483,6 +173,26 @@ class _AdminPriceCategoriesScreenState
         title: const Text('Категории товаров'),
         backgroundColor: Theme.of(context).primaryColor,
         elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Поиск категорий...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+              onChanged: _filterCategories,
+            ),
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -504,26 +214,6 @@ class _AdminPriceCategoriesScreenState
             tooltip: 'Добавить категорию',
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Поиск категорий...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
-              onChanged: _filterCategories,
-            ),
-          ),
-        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -534,7 +224,14 @@ class _AdminPriceCategoriesScreenState
                   itemCount: _filteredCategories.length,
                   itemBuilder: (context, index) {
                     final category = _filteredCategories[index];
-                    return _buildCategoryCard(category);
+                    final stats = _categoryStats[category.id] ??
+                        {
+                          'productCount': 0,
+                          'totalSales': 0.0,
+                          'totalOrders': 0,
+                          'totalQuantity': 0
+                        };
+                    return _buildCategoryCard(category, stats);
                   },
                 ),
       floatingActionButton: FloatingActionButton(
@@ -552,119 +249,160 @@ class _AdminPriceCategoriesScreenState
     );
   }
 
-  Widget _buildCategoryCard(PriceCategory category) {
-    // Считаем количество товаров в категории
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final productsCount = authProvider.clientData?.products
-            .where((p) => p.categoryId == category.id)
-            .length ??
-        0;
+  Widget _buildCategoryCard(
+      PriceCategory category, Map<String, dynamic> stats) {
+    final topProduct = stats['topProduct'] as Product?;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => AdminPriceCategoryFormScreen(category: category),
-            ),
-          );
-          if (result == true) {
-            _loadCategories();
-          }
+        onTap: () {
+          _showCategoryProducts(category, stats);
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.green.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    category.name.substring(0, 1).toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green.shade800,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
                       category.name,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        _buildInfoChip(
-                          '📦 ${category.packagingQuantity} шт',
-                          Colors.blue,
-                        ),
-                        _buildInfoChip(
-                          '📥 ${category.packagingName}',
-                          Colors.purple,
-                        ),
-                        _buildInfoChip(
-                          '⚖️ ${category.weight} ${category.unit}',
-                          Colors.orange,
-                        ),
-                        _buildInfoChip(
-                          '📊 издержки ${category.wastePercentage}%',
-                          Colors.green,
-                        ),
-                        _buildInfoChip(
-                          '📋 товаров: $productsCount',
-                          Colors.grey,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.blue),
-                    onPressed: () async {
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              AdminPriceCategoryFormScreen(category: category),
-                        ),
-                      );
-                      if (result == true) {
-                        _loadCategories();
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) async {
+                      if (value == 'edit') {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AdminPriceCategoryFormScreen(
+                                category: category),
+                          ),
+                        );
+                        if (result == true) {
+                          _loadCategories();
+                        }
+                      } else if (value == 'delete') {
+                        _deleteCategory(category);
+                      } else if (value == 'add_product') {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AdminPriceItemFormScreen(
+                              initialCategoryId: category.id,
+                              initialCategoryName: category.name,
+                            ),
+                          ),
+                        );
                       }
                     },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () => _showDeleteConfirmation(category),
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'add_product',
+                        child: ListTile(
+                          leading: Icon(Icons.add, color: Colors.green),
+                          title: Text('Добавить товар'),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          leading: Icon(Icons.edit, color: Colors.blue),
+                          title: Text('Редактировать'),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          leading: Icon(Icons.delete, color: Colors.red),
+                          title: Text('Удалить'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
+
+              const SizedBox(height: 8),
+
+              // Статистика по категории
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  _buildStatChip(
+                      '📦 ${stats['productCount']} товаров', Colors.blue),
+                  _buildStatChip(
+                      '💰 ${(stats['totalSales'] as double).toStringAsFixed(0)} ₽',
+                      Colors.green),
+                  _buildStatChip(
+                      '📊 ${stats['totalQuantity']} шт', Colors.orange),
+                  _buildStatChip(
+                      '🔄 ${stats['totalOrders']} заказов', Colors.purple),
+                ],
+              ),
+
+              // Самая продаваемая позиция
+              if (topProduct != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.emoji_events,
+                          color: Colors.amber, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '🏆 Самая продаваемая',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.amber.shade900,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              topProduct.displayName,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '${stats['topProductQuantity']} шт',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -672,11 +410,11 @@ class _AdminPriceCategoriesScreenState
     );
   }
 
-  Widget _buildInfoChip(String label, Color color) {
+  Widget _buildStatChip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(

@@ -31,9 +31,15 @@ class _AdminPriceListScreenState extends State<AdminPriceListScreen> {
   // ЗАГРУЗКА ТОВАРОВ ИЗ ЛОКАЛЬНЫХ ДАННЫХ
   void _loadPriceList() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final products = authProvider.clientData?.products ?? [];
 
-    // Извлекаем уникальные категории
+    // Защита от null
+    if (authProvider.clientData == null) {
+      print('⚠️ clientData == null');
+      return;
+    }
+
+    final products = authProvider.clientData!.products ?? [];
+
     final categories = products
         .map((p) => p.categoryName)
         .where((c) => c.isNotEmpty)

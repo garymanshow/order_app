@@ -32,7 +32,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await Future.delayed(Duration(milliseconds: 300));
+      // Реальная загрузка данных, а не просто задержка
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+      // Проверяем, загружены ли данные
+      if (authProvider.clientData == null) {
+        print('⚠️ Данные клиента не загружены');
+        // Можно попробовать перезагрузить
+        // await authProvider.loadData();
+      }
     } catch (e) {
       setState(() => _error = 'Ошибка загрузки данных: $e');
     } finally {

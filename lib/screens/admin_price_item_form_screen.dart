@@ -13,8 +13,15 @@ import '../models/ingredient_info.dart';
 
 class AdminPriceItemFormScreen extends StatefulWidget {
   final PriceItem? item;
+  final String? initialCategoryId;
+  final String? initialCategoryName;
 
-  const AdminPriceItemFormScreen({Key? key, this.item}) : super(key: key);
+  const AdminPriceItemFormScreen({
+    Key? key,
+    this.item,
+    this.initialCategoryId,
+    this.initialCategoryName,
+  }) : super(key: key);
 
   @override
   _AdminPriceItemFormScreenState createState() =>
@@ -90,6 +97,16 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       _wastePercentageController = TextEditingController(text: '10');
 
       _loadAllProductNames();
+    }
+    // Если есть initialCategoryName, устанавливаем его
+    if (widget.initialCategoryName != null &&
+        widget.initialCategoryName!.isNotEmpty) {
+      _categoryController.text = widget.initialCategoryName!;
+    }
+
+    if (widget.initialCategoryId != null &&
+        widget.initialCategoryId!.isNotEmpty) {
+      _categoryIdController.text = widget.initialCategoryId!;
     }
   }
 
