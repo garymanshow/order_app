@@ -6,7 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 // Screens
-import 'screens/admin_dashboard_screen.dart';
+import 'screens/admin/admin_dashboard_screen.dart';
 import 'screens/auth_or_home_router.dart';
 import 'screens/price_list_screen.dart';
 import 'screens/cart_screen.dart';
@@ -14,8 +14,8 @@ import 'screens/client_orders_screen.dart';
 import 'screens/client_selection_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/driver_screen.dart';
-import 'screens/manager_screen.dart';
-import 'screens/admin_warehouse_screen.dart';
+import 'screens/manager/manager_screen.dart';
+import 'screens/admin/admin_warehouse_screen.dart';
 
 // Services
 import 'services/image_preloader.dart';

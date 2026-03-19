@@ -178,7 +178,6 @@ class ApiService {
     }
   }
 
-  // lib/services/api_service.dart
   Future<bool> sendNotification({
     required String targetPhone,
     required String title,
@@ -483,6 +482,235 @@ class ApiService {
       print('❌ Ошибка сохранения операции склада: $e');
       return false;
     }
+  }
+
+// Добавить после существующих методов, например после методов для склада
+
+  // ==================== ПРОИЗВОДСТВО (CRUD) ====================
+
+  // 🔥 ПОЛУЧЕНИЕ ВСЕХ ПРОИЗВОДСТВЕННЫХ ОПЕРАЦИЙ
+  Future<List<Map<String, dynamic>>?> fetchProductionOperations() async {
+    try {
+      final response = await _makeRequest('fetchProductionOperations', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['operations'] != null) {
+          return List<Map<String, dynamic>>.from(result['operations']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки производственных операций: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ОПЕРАЦИЙ ПО ФИЛЬТРАМ
+  Future<List<Map<String, dynamic>>?> fetchProductionOperationsFiltered({
+    String? sheet, // "Начинки" или "Прайс-лист"
+    int? entityId, // ID сущности
+    DateTime? fromDate, // С даты
+    DateTime? toDate, // По дату
+  }) async {
+    try {
+      final data = {
+        if (sheet != null) 'sheet': sheet,
+        if (entityId != null) 'entityId': entityId,
+        if (fromDate != null) 'fromDate': _formatDate(fromDate),
+        if (toDate != null) 'toDate': _formatDate(toDate),
+      };
+
+      final response =
+          await _makeRequest('fetchProductionOperationsFiltered', data);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['operations'] != null) {
+          return List<Map<String, dynamic>>.from(result['operations']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки отфильтрованных операций: $e');
+      return null;
+    }
+  }
+
+  // 🔥 СОЗДАНИЕ ПРОИЗВОДСТВЕННОЙ ОПЕРАЦИИ
+  Future<bool> createProductionOperation({
+    required String sheet, // "Начинки" или "Прайс-лист"
+    required int entityId, // ID начинки или продукта
+    required String name, // Наименование
+    required double quantity, // Количество
+    String? unit, // Единица измерения (если есть)
+    required DateTime date, // Дата производства
+  }) async {
+    try {
+      final data = {
+        'sheet': sheet,
+        'entityId': entityId,
+        'name': name,
+        'quantity': quantity,
+        'date': _formatDate(date),
+        if (unit != null && unit.isNotEmpty) 'unit': unit,
+      };
+
+      print('📝 Создание производственной операции: $data');
+
+      final response = await _makeRequest('createProductionOperation', data);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка создания производственной операции: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ОБНОВЛЕНИЕ ПРОИЗВОДСТВЕННОЙ ОПЕРАЦИИ
+  Future<bool> updateProductionOperation({
+    required int rowId, // ID строки в таблице
+    String? sheet,
+    int? entityId,
+    String? name,
+    double? quantity,
+    String? unit,
+    DateTime? date,
+  }) async {
+    try {
+      final data = {
+        'rowId': rowId,
+        if (sheet != null) 'sheet': sheet,
+        if (entityId != null) 'entityId': entityId,
+        if (name != null) 'name': name,
+        if (quantity != null) 'quantity': quantity,
+        if (unit != null) 'unit': unit,
+        if (date != null) 'date': _formatDate(date),
+      };
+
+      final response = await _makeRequest('updateProductionOperation', data);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка обновления производственной операции: $e');
+      return false;
+    }
+  }
+
+  // 🔥 УДАЛЕНИЕ ПРОИЗВОДСТВЕННОЙ ОПЕРАЦИИ
+  Future<bool> deleteProductionOperation(int rowId) async {
+    try {
+      final response =
+          await _makeRequest('deleteProductionOperation', {'rowId': rowId});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления производственной операции: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ОСТАТКОВ НА ПРОИЗВОДСТВЕ
+  Future<Map<String, dynamic>?> getProductionBalances() async {
+    try {
+      final response = await _makeRequest('getProductionBalances', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true) {
+          return {
+            'fillings': result['fillings'] ?? {}, // начинки: {id: остаток}
+            'products':
+                result['products'] ?? {}, // готовая продукция: {id: остаток}
+          };
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения остатков производства: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ПРОИЗВОДСТВЕННОЙ СТАТИСТИКИ
+  Future<Map<String, dynamic>?> getProductionStats({
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    try {
+      final data = {
+        if (fromDate != null) 'fromDate': _formatDate(fromDate),
+        if (toDate != null) 'toDate': _formatDate(toDate),
+      };
+
+      final response = await _makeRequest('getProductionStats', data);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true) {
+          return result;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения статистики производства: $e');
+      return null;
+    }
+  }
+
+  // 🔥 МАССОВОЕ СОЗДАНИЕ ПРОИЗВОДСТВЕННЫХ ОПЕРАЦИЙ
+  Future<bool> createProductionOperationsBatch(
+      List<Map<String, dynamic>> operations) async {
+    try {
+      final response = await _makeRequest(
+          'createProductionOperationsBatch', {'operations': operations});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка массового создания операций: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ПРЕДУПРЕЖДЕНИЙ ПО ПРОИЗВОДСТВУ
+  Future<List<String>?> getProductionAlerts() async {
+    try {
+      final response = await _makeRequest('getProductionAlerts', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['alerts'] != null) {
+          return List<String>.from(result['alerts']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения предупреждений: $e');
+      return null;
+    }
+  }
+
+  // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
+
+  // Форматирование даты для отправки в GAS
+  String _formatDate(DateTime date) {
+    return '${date.day}.${date.month}.${date.year}';
   }
 
   // 🔥 СОЗДАНИЕ КАТЕГОРИИ ТОВАРА

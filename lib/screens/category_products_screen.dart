@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/price_category.dart';
 import '../models/product.dart';
 import '../models/price_item.dart';
-import 'admin_price_item_form_screen.dart';
+import 'admin/admin_price_item_form_screen.dart';
 
 class CategoryProductsScreen extends StatelessWidget {
   final PriceCategory category;

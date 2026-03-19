@@ -5,10 +5,10 @@ import '../models/employee.dart';
 import '../models/client.dart';
 import '../providers/auth_provider.dart';
 import 'auth_phone_screen.dart';
-import 'admin_dashboard_screen.dart';
+import 'admin/admin_dashboard_screen.dart';
 import 'driver_screen.dart';
-import 'manager_screen.dart';
-import 'admin_warehouse_screen.dart';
+import 'manager/manager_screen.dart';
+import 'admin/admin_warehouse_screen.dart';
 import 'role_selection_screen.dart';
 
 class AuthOrHomeRouter extends StatelessWidget {
