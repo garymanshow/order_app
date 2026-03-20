@@ -1,4 +1,4 @@
-// lib/screens/admin_price_item_form_screen.dart
+// lib/screens/admin/admin_price_item_form_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +10,7 @@ import '../../models/product.dart';
 import '../../models/composition.dart';
 import '../../models/nutrition_info.dart';
 import '../../models/ingredient_info.dart';
+import '../../widgets/unit_selector.dart';
 
 class AdminPriceItemFormScreen extends StatefulWidget {
   final PriceItem? item;
@@ -157,8 +158,8 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
               comp.sheetName == 'Состав' && comp.entityId == widget.item!.id)
           .map((comp) => IngredientInfo(
                 name: comp.ingredientName,
-                quantity: double.tryParse(comp.quantity) ?? 0.0,
-                unit: comp.unit,
+                quantity: comp.quantity,
+                unit: comp.unitSymbol,
               ))
           .toList();
 
@@ -359,12 +360,17 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
     for (var ingredient in _ingredients) {
       if (ingredient.name.isNotEmpty) {
+        // 🔥 ГЕНЕРИРУЕМ УНИКАЛЬНЫЙ ID
+        final newId = DateTime.now().millisecondsSinceEpoch.toString() +
+            '_${_ingredients.indexOf(ingredient)}';
+
         authProvider.clientData!.compositions.add(Composition(
+          id: newId,
           sheetName: 'Состав',
           entityId: itemId,
           ingredientName: ingredient.name,
-          quantity: ingredient.quantity.toString(),
-          unit: ingredient.unit,
+          quantity: ingredient.quantity,
+          unitSymbol: ingredient.unit,
         ));
       }
     }
@@ -373,12 +379,17 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   Future<void> _addIngredients(AuthProvider authProvider, String itemId) async {
     for (var ingredient in _ingredients) {
       if (ingredient.name.isNotEmpty) {
+        // 🔥 ГЕНЕРИРУЕМ УНИКАЛЬНЫЙ ID
+        final newId = DateTime.now().millisecondsSinceEpoch.toString() +
+            '_${_ingredients.indexOf(ingredient)}';
+
         authProvider.clientData!.compositions.add(Composition(
+          id: newId,
           sheetName: 'Состав',
           entityId: itemId,
           ingredientName: ingredient.name,
-          quantity: ingredient.quantity.toString(),
-          unit: ingredient.unit,
+          quantity: ingredient.quantity,
+          unitSymbol: ingredient.unit,
         ));
       }
     }
@@ -461,6 +472,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                 key: _formKey,
                 child: ListView(
                   children: [
+                    // Основная информация
                     Card(
                       elevation: 2,
                       shape: RoundedRectangleBorder(
@@ -540,7 +552,10 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
+                    // Категория и характеристики
                     Card(
                       elevation: 2,
                       shape: RoundedRectangleBorder(
@@ -575,18 +590,17 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _unitController,
-                              decoration: InputDecoration(
-                                labelText: 'Единица измерения *',
-                                prefixIcon: const Icon(Icons.straighten),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              validator: (value) => value!.trim().isEmpty
-                                  ? 'Обязательное поле'
-                                  : null,
+                            // 🔥 ЗАМЕНЕНО НА UNITSELECTOR
+                            UnitSelector(
+                              mode: UnitSelectorMode.warehouse,
+                              selectedUnit: _unitController.text,
+                              onUnitSelected: (unit) {
+                                setState(() {
+                                  _unitController.text = unit!;
+                                });
+                              },
+                              labelText: 'Единица измерения *',
+                              isRequired: true,
                             ),
                             const SizedBox(height: 16),
                             Row(
@@ -595,7 +609,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                   child: TextFormField(
                                     controller: _weightController,
                                     decoration: InputDecoration(
-                                      labelText: 'Вес (г)',
+                                      labelText: 'Вес',
                                       prefixIcon:
                                           const Icon(Icons.monitor_weight),
                                       border: OutlineInputBorder(
@@ -631,7 +645,10 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
+                    // Изображение
                     Card(
                       elevation: 2,
                       shape: RoundedRectangleBorder(
@@ -705,7 +722,10 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
+                    // Описание
                     Card(
                       elevation: 2,
                       shape: RoundedRectangleBorder(
@@ -726,7 +746,10 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
+                    // Ингредиенты
                     Card(
                       elevation: 2,
                       shape: RoundedRectangleBorder(
@@ -773,7 +796,10 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
+                    // КБЖУ
                     Card(
                       elevation: 2,
                       shape: RoundedRectangleBorder(
@@ -820,7 +846,10 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
+                    // Дополнительная информация
                     Card(
                       elevation: 2,
                       shape: RoundedRectangleBorder(
@@ -890,7 +919,10 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 24),
+
+                    // Кнопка сохранения
                     ElevatedButton.icon(
                       onPressed: _saveItem,
                       icon: const Icon(Icons.save),
@@ -963,21 +995,31 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
               ),
             ),
             const SizedBox(width: 8),
+            // 🔥 ЗАМЕНЕНО НА ВЫПАДАЮЩИЙ СПИСОК ДЛЯ ЕДИНИЦ
             SizedBox(
               width: 60,
-              child: TextField(
+              child: DropdownButtonFormField<String>(
                 decoration: const InputDecoration(
                   labelText: 'Ед.',
                   border: InputBorder.none,
                 ),
-                controller: TextEditingController(text: ingredient.unit),
+                value: ingredient.unit,
+                items: const [
+                  DropdownMenuItem(value: 'г', child: Text('г')),
+                  DropdownMenuItem(value: 'кг', child: Text('кг')),
+                  DropdownMenuItem(value: 'мл', child: Text('мл')),
+                  DropdownMenuItem(value: 'л', child: Text('л')),
+                  DropdownMenuItem(value: 'tbsp', child: Text('tbsp')),
+                  DropdownMenuItem(value: 'tsp', child: Text('tsp')),
+                  DropdownMenuItem(value: 'cup', child: Text('cup')),
+                ],
                 onChanged: (value) {
                   _updateIngredient(
                     index,
                     IngredientInfo(
                       name: ingredient.name,
                       quantity: ingredient.quantity,
-                      unit: value,
+                      unit: value!,
                     ),
                   );
                 },

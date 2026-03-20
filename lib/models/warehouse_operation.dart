@@ -1,4 +1,5 @@
 // lib/models/warehouse_operation.dart
+import 'unit_of_measure.dart';
 import '../utils/parsing_utils.dart';
 
 class WarehouseOperation {
@@ -28,6 +29,28 @@ class WarehouseOperation {
     this.notes,
   });
 
+  // Фабричный конструктор для создания из состава
+  factory WarehouseOperation.fromComposition({
+    required String id,
+    required String name,
+    required double originalQuantity,
+    required String originalUnit,
+    required DateTime date,
+    String? relatedOrderId,
+    String? notes,
+  }) {
+    return WarehouseOperation(
+      id: id,
+      name: name,
+      operation: 'списание',
+      quantity: originalQuantity,
+      unit: originalUnit,
+      date: date,
+      relatedOrderId: relatedOrderId,
+      notes: notes,
+    );
+  }
+
   // 🔥 ИСПРАВЛЕНО: безопасный fromJson
   factory WarehouseOperation.fromJson(Map<String, dynamic> json) {
     DateTime? parseDate(String? dateStr) {
@@ -51,6 +74,32 @@ class WarehouseOperation {
       supplier: json['supplier']?.toString(),
       relatedOrderId: json['relatedOrderId']?.toString(),
       notes: json['notes']?.toString(),
+    );
+  }
+
+  // 🔥 ИСПРАВЛЕНО: безопасный fromMap
+  factory WarehouseOperation.fromMap(Map<String, dynamic> map) {
+    DateTime? parseDate(String? dateStr) {
+      if (dateStr == null || dateStr.isEmpty) return null;
+      try {
+        return DateTime.parse(dateStr);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    return WarehouseOperation(
+      id: map['ID']?.toString() ?? '',
+      name: map['Наименование']?.toString() ?? '',
+      operation: map['Операция']?.toString() ?? 'приход',
+      quantity: double.tryParse(map['Количество']?.toString() ?? '0') ?? 0.0,
+      unit: map['Ед.изм.']?.toString() ?? 'шт',
+      date: parseDate(map['Дата']?.toString()) ?? DateTime.now(),
+      expiryDate: parseDate(map['Срок годности']?.toString()),
+      price: double.tryParse(map['Цена']?.toString() ?? ''),
+      supplier: map['Поставщик']?.toString(),
+      relatedOrderId: map['Платежный документ']?.toString(),
+      notes: map['Примечания']?.toString(),
     );
   }
 
@@ -88,29 +137,43 @@ class WarehouseOperation {
     };
   }
 
-  // 🔥 ИСПРАВЛЕНО: безопасный fromMap
-  factory WarehouseOperation.fromMap(Map<String, dynamic> map) {
-    DateTime? parseDate(String? dateStr) {
-      if (dateStr == null || dateStr.isEmpty) return null;
-      try {
-        return DateTime.parse(dateStr);
-      } catch (e) {
-        return null;
-      }
+// lib/models/warehouse_operation.dart (дополнение)
+
+  // 🔥 МЕТОД ДЛЯ ПРЕОБРАЗОВАНИЯ В СТРОКУ ДЛЯ GOOGLE SHEETS
+  Map<String, dynamic> toSheetRow() {
+    final row = <String, dynamic>{
+      'ID': id,
+      'Наименование': name,
+      'Операция': operation,
+      'Количество': quantity.toStringAsFixed(3).replaceAll('.', ','),
+      'Ед.изм.': unit,
+      'Дата': _formatDate(date),
+    };
+
+    if (expiryDate != null) {
+      row['Срок годности'] = _formatDate(expiryDate!);
     }
 
-    return WarehouseOperation(
-      id: map['ID']?.toString() ?? '',
-      name: map['Наименование']?.toString() ?? '',
-      operation: map['Операция']?.toString() ?? 'приход',
-      quantity: double.tryParse(map['Количество']?.toString() ?? '0') ?? 0.0,
-      unit: map['Ед.изм.']?.toString() ?? 'шт',
-      date: parseDate(map['Дата']?.toString()) ?? DateTime.now(),
-      expiryDate: parseDate(map['Срок годности']?.toString()),
-      price: double.tryParse(map['Цена']?.toString() ?? ''),
-      supplier: map['Поставщик']?.toString(),
-      relatedOrderId: map['Платежный документ']?.toString(),
-      notes: map['Примечания']?.toString(),
-    );
+    if (price != null) {
+      row['Цена'] = price!.toStringAsFixed(2).replaceAll('.', ',');
+    }
+
+    if (supplier != null && supplier!.isNotEmpty) {
+      row['Поставщик'] = supplier;
+    }
+
+    if (relatedOrderId != null && relatedOrderId!.isNotEmpty) {
+      row['Платежный документ'] = relatedOrderId;
+    }
+
+    if (notes != null && notes!.isNotEmpty) {
+      row['Примечания'] = notes;
+    }
+
+    return row;
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}.${date.month}.${date.year}';
   }
 }

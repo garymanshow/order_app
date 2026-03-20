@@ -259,7 +259,8 @@ class ExportService {
             ...compositions.map((comp) => pw.Padding(
                   padding: const pw.EdgeInsets.only(left: 8),
                   child: pw.Text(
-                    '• ${comp.ingredientName} — ${comp.quantity} ${comp.unit}',
+                    // 🔥 ИСПРАВЛЕНО: unitSymbol вместо unit
+                    '• ${comp.ingredientName} — ${comp.quantity} ${comp.unitSymbol}',
                     style: const pw.TextStyle(fontSize: 12),
                   ),
                 )),

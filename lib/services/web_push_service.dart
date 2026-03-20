@@ -2,9 +2,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:js_interop';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/env_service.dart';
+import '../services/api_service.dart';
 
 @JS('PushManager')
 external JSPushManager? get pushManager;
@@ -19,6 +17,7 @@ extension JSPushManagerExtension on JSPushManager {
   external JSPromise<JSBoolean> subscribe(int userId);
   external JSPromise<JSObject> getSubscriptionData();
   external JSPromise<JSBoolean> unsubscribe();
+  external void setNotificationHandler(JSFunction handler);
 }
 
 @JS('typeofPushManager')
@@ -29,9 +28,12 @@ class WebPushService {
   factory WebPushService() => _instance;
   WebPushService._internal();
 
+  final ApiService _apiService = ApiService();
+
   bool _isInitialized = false;
   bool _isSubscribed = false;
   String? _vapidPublicKey;
+  Function(Map<String, dynamic>)? _onNotificationReceived;
 
   Future<void> initialize(String vapidPublicKey) async {
     if (!kIsWeb) {
@@ -56,6 +58,7 @@ class WebPushService {
         _isInitialized = true;
         print('✅ WebPushService инициализирован');
         await _checkSubscriptionStatus();
+        _setupNotificationHandler();
       }
     } catch (e) {
       print('❌ Ошибка инициализации WebPushService: $e');
@@ -105,6 +108,38 @@ class WebPushService {
     }
   }
 
+  // 🔥 Установка обработчика уведомлений
+  void set onNotificationReceived(Function(Map<String, dynamic>) callback) {
+    _onNotificationReceived = callback;
+  }
+
+  // 🔥 Настройка обработчика из JavaScript
+  void _setupNotificationHandler() {
+    if (pushManager == null) return;
+
+    // Создаем JS функцию-обработчик
+    final handler = (JSAny? data) {
+      if (data != null) {
+        try {
+          // Преобразуем JS объект в Dart Map
+          final Map<String, dynamic> notificationData =
+              data.dartify() as Map<String, dynamic>;
+
+          print('📨 Получено уведомление: $notificationData');
+
+          // Вызываем Dart-коллбек, если он установлен
+          if (_onNotificationReceived != null) {
+            _onNotificationReceived!(notificationData);
+          }
+        } catch (e) {
+          print('❌ Ошибка обработки уведомления: $e');
+        }
+      }
+    }.toJS;
+
+    pushManager!.setNotificationHandler(handler);
+  }
+
   // 🔥 Подписка на уведомления
   Future<bool> subscribe() async {
     if (!kIsWeb || !_isInitialized) return false;
@@ -130,12 +165,15 @@ class WebPushService {
         _isSubscribed = true;
 
         await prefs.setBool('push_subscribed', true);
+        await prefs.setString('push_user_id', phone);
         print('✅ Подписка на уведомления оформлена для $phone');
 
         try {
           final subscriptionResult =
               await pushManager!.getSubscriptionData().toDart;
-          await _sendSubscriptionToServer(phone, subscriptionResult);
+          // 🔥 ИСПРАВЛЕНО: передаём 3 аргумента
+          await _sendSubscriptionToServer(
+              phone, 'Водитель', subscriptionResult);
         } catch (e) {
           print('⚠️ Не удалось получить данные подписки: $e');
         }
@@ -145,6 +183,19 @@ class WebPushService {
     } catch (e) {
       print('❌ Ошибка подписки: $e');
       return false;
+    }
+  }
+
+  // 🔥 Получение данных подписки
+  Future<Map<String, dynamic>?> getSubscriptionData() async {
+    if (!kIsWeb || !_isInitialized || pushManager == null) return null;
+
+    try {
+      final result = await pushManager!.getSubscriptionData().toDart;
+      return result.dartify() as Map<String, dynamic>;
+    } catch (e) {
+      print('❌ Ошибка получения данных подписки: $e');
+      return null;
     }
   }
 
@@ -181,65 +232,57 @@ class WebPushService {
     }
   }
 
-  // 🔥 Отправка подписки на сервер
+  // 🔥 Отправка подписки на сервер через ApiService
+  // 🔥 ИСПРАВЛЕНО: правильные типы параметров
   Future<void> _sendSubscriptionToServer(
-      String phone, JSObject subscriptionData) async {
-    final scriptUrl = EnvService.scriptUrl;
-    if (scriptUrl.isEmpty) {
-      print('⚠️ URL скрипта не указан');
-      return;
-    }
-
+      String phone, String role, JSObject subscriptionData) async {
     try {
+      // Преобразуем JSObject в Map
       final subMap = subscriptionData.dartify() as Map<String, dynamic>;
 
-      final response = await http.post(
-        Uri.parse(scriptUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'action': 'savePushSubscription',
-          'phone': phone,
-          'subscription': {
-            'endpoint': subMap['endpoint'],
-            'keys': subMap['keys'],
-          }
-        }),
+      final success = await _apiService.savePushSubscription(
+        phone: phone,
+        role: role,
+        subscription: {
+          'endpoint': subMap['endpoint'],
+          'keys': subMap['keys'],
+        },
       );
 
-      if (response.statusCode == 200) {
+      if (success) {
         print('✅ Подписка отправлена на сервер для $phone');
       } else {
-        print('❌ Ошибка отправки подписки: ${response.statusCode}');
+        print('❌ Ошибка отправки подписки');
       }
     } catch (e) {
       print('❌ Ошибка отправки подписки на сервер: $e');
     }
   }
 
-  // 🔥 Уведомление сервера об отписке
+  // 🔥 Уведомление сервера об отписке через ApiService
   Future<void> _sendUnsubscribeToServer(String phone) async {
-    final scriptUrl = EnvService.scriptUrl;
-    if (scriptUrl.isEmpty) return;
-
     try {
-      final response = await http.post(
-        Uri.parse(scriptUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'action': 'deletePushSubscription',
-          'phone': phone,
-        }),
-      );
+      final success = await _apiService.deletePushSubscription(phone);
 
-      if (response.statusCode == 200) {
+      if (success) {
         print('✅ Отписка отправлена на сервер для $phone');
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('push_user_id');
       } else {
-        print('⚠️ Ошибка отправки отписки: ${response.statusCode}');
+        print('⚠️ Ошибка отправки отписки');
       }
     } catch (e) {
       print('⚠️ Ошибка отправки отписки: $e');
+    }
+  }
+
+  // 🔥 Получение подписок водителей с сервера через ApiService
+  Future<List<Map<String, dynamic>>> getDriverSubscriptions() async {
+    try {
+      return await _apiService.getDriverSubscriptions();
+    } catch (e) {
+      print('❌ Ошибка получения подписок: $e');
+      return [];
     }
   }
 

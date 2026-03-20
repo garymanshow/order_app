@@ -1,59 +1,68 @@
 // lib/models/composition.dart
-// Состав
+import '../utils/parsing_utils.dart';
+
 class Composition {
-  final String sheetName; // Лист-родитель ("Категории прайса" или "Прайс-лист")
-  final String entityId; // ID сущности в родительском листе
-  final String ingredientName;
-  final String quantity;
-  final String unit;
+  final String id;
+  final String sheetName; // "Начинки" или "Прайс-лист"
+  final String entityId; // ID сущности
+  final String ingredientName; // Название ингредиента
+  final double quantity; // Количество
+  final String unitSymbol; // Единица измерения
 
   Composition({
+    required this.id,
     required this.sheetName,
     required this.entityId,
     required this.ingredientName,
     required this.quantity,
-    required this.unit,
+    required this.unitSymbol,
   });
-
-  factory Composition.fromMap(Map<String, dynamic> map) {
-    return Composition(
-      sheetName: map['Лист']?.toString() ?? '',
-      entityId: map['ID сущности']?.toString() ?? '',
-      ingredientName: map['Ингредиент']?.toString() ?? '',
-      quantity: map['Количество']?.toString() ?? '',
-      unit: map['Ед.изм.']?.toString() ?? '',
-    );
-  }
 
   factory Composition.fromJson(Map<String, dynamic> json) {
     return Composition(
-      sheetName: json['sheetName']?.toString() ?? '',
-      entityId: json['entityId']?.toString() ?? '',
-      ingredientName: json['ingredientName']?.toString() ?? '',
-      quantity: json['quantity']?.toString() ?? '',
-      unit: json['unit']?.toString() ?? '',
+      id: ParsingUtils.safeString(json['id']) ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
+      sheetName: ParsingUtils.safeString(json['sheetName']) ?? '',
+      entityId: ParsingUtils.safeString(json['entityId']) ?? '',
+      ingredientName: ParsingUtils.safeString(json['ingredientName']) ?? '',
+      quantity: ParsingUtils.parseDouble(json['quantity']) ?? 0.0,
+      unitSymbol: ParsingUtils.safeString(json['unitSymbol']) ?? '',
     );
   }
 
-  // 🔥 ИСПРАВЛЕНО: добавляем защиту от null в toJson
   Map<String, dynamic> toJson() {
     return {
-      'sheetName': sheetName ?? '',
-      'entityId': entityId ?? '',
-      'ingredientName': ingredientName ?? '',
-      'quantity': quantity ?? '',
-      'unit': unit ?? '',
+      'id': id,
+      'sheetName': sheetName,
+      'entityId': entityId,
+      'ingredientName': ingredientName,
+      'quantity': quantity,
+      'unitSymbol': unitSymbol,
     };
   }
 
-  // 🔥 ИСПРАВЛЕНО: добавляем защиту от null в toMap
+  // Для Google Sheets
   Map<String, dynamic> toMap() {
     return {
-      'Лист': sheetName ?? '',
-      'ID сущности': entityId ?? '',
-      'Ингредиент': ingredientName ?? '',
-      'Количество': quantity ?? '',
-      'Ед.изм.': unit ?? '',
+      'ID': id,
+      'Лист': sheetName,
+      'ID сущности': entityId,
+      'Ингредиент': ingredientName,
+      'Количество': quantity.toString().replaceAll('.', ','),
+      'Ед.изм.': unitSymbol,
     };
+  }
+
+  factory Composition.fromMap(Map<String, dynamic> map) {
+    return Composition(
+      id: map['ID']?.toString() ?? '',
+      sheetName: map['Лист']?.toString() ?? '',
+      entityId: map['ID сущности']?.toString() ?? '',
+      ingredientName: map['Ингредиент']?.toString() ?? '',
+      quantity: double.tryParse(
+              map['Количество']?.toString().replaceAll(',', '.') ?? '0') ??
+          0.0,
+      unitSymbol: map['Ед.изм.']?.toString() ?? '',
+    );
   }
 }

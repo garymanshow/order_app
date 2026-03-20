@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import '../../models/unit_of_measure.dart';
 import '../../models/warehouse_operation.dart';
 import '../../models/employee.dart';
 import '../../models/product.dart';

@@ -4,7 +4,6 @@ import '../models/extended_product.dart';
 import '../models/client_data.dart';
 import '../models/nutrition_info.dart';
 import '../models/storage_condition.dart';
-// 👈 ДОБАВЛЕНО
 
 class ProductCardService {
   // Собрать расширенную карточку для одного продукта
@@ -15,11 +14,6 @@ class ProductCardService {
     required String packagingName,
     required int declaredWeight,
   }) {
-    // Фильтруем состав для этого продукта (используется в ExtendedProduct.build)
-    final productCompositions = clientData.compositions
-        .where((c) => c.sheetName == 'Состав' && c.entityId == product.id)
-        .toList();
-
     // Ищем КБЖУ для продукта
     final nutrition = clientData.nutritionInfos.firstWhere(
       (n) => n.priceListId == product.id,
@@ -183,8 +177,10 @@ class ProductCardService {
       for (var comp in categoryCompositions) {
         result.add({
           'name': comp.ingredientName,
-          'quantity': comp.quantity,
-          'unit': comp.unit,
+          // 🔥 ИСПРАВЛЕНО: преобразуем double в String
+          'quantity': comp.quantity.toString(),
+          // 🔥 ИСПРАВЛЕНО: используем правильное поле unitSymbol
+          'unit': comp.unitSymbol,
         });
       }
     }
@@ -197,8 +193,10 @@ class ProductCardService {
     for (var comp in productCompositions) {
       result.add({
         'name': comp.ingredientName,
-        'quantity': comp.quantity,
-        'unit': comp.unit,
+        // 🔥 ИСПРАВЛЕНО: преобразуем double в String
+        'quantity': comp.quantity.toString(),
+        // 🔥 ИСПРАВЛЕНО: используем правильное поле unitSymbol
+        'unit': comp.unitSymbol,
       });
     }
 

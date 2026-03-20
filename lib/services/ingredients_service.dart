@@ -25,7 +25,7 @@ class IngredientsService {
     if (category != null) {
       // Найти состав для этого продукта
       final productCompositions = compositions
-          .where((comp) => comp.entityId == order.priceListId)
+          .where((comp) => comp.entityId == order.priceListId.toString())
           .toList();
 
       // Рассчитать коэффициент издержек
@@ -33,11 +33,9 @@ class IngredientsService {
 
       // Списать каждый ингредиент из состава
       for (var composition in productCompositions) {
-        // Безопасное преобразование строк в double
-        final compQuantity = double.tryParse(composition.quantity) ?? 0.0;
-        final orderQty = order.quantity.toDouble();
-
-        final ingredientAmount = compQuantity * orderQty * wasteMultiplier;
+        // 🔥 ИСПРАВЛЕНО: убираем double.tryParse, так как composition.quantity уже double
+        final ingredientAmount =
+            composition.quantity * order.quantity * wasteMultiplier;
 
         // Добавить к существующему количеству или создать новое
         final currentAmount = result[composition.ingredientName] ?? 0.0;

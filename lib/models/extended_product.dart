@@ -49,8 +49,8 @@ class ExtendedProduct {
     required int packagingQuantity,
     required String packagingName,
     required int declaredWeight,
-    List<Composition>? allCompositions, // используем
-    List<Filling>? allFillings, // используем
+    List<Composition>? allCompositions,
+    List<Filling>? allFillings,
     NutritionInfo? nutritionInfo,
     StorageCondition? storageConditions,
   }) {
@@ -74,7 +74,14 @@ class ExtendedProduct {
           // Это полуфабрикат - ищем его состав
           final filling = allFillings.firstWhere(
             (f) => f.name == comp.ingredientName,
-            orElse: () => Filling(sheetName: '', entityId: '', name: ''),
+            orElse: () => Filling(
+              sheetName: '',
+              entityId: '',
+              name: '',
+              quantity: 0,
+              unitSymbol: '',
+              ingredients: [],
+            ),
           );
 
           if (filling.entityId.isNotEmpty) {

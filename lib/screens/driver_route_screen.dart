@@ -10,6 +10,7 @@ import '../services/web_push_service.dart';
 import '../services/env_service.dart';
 import '../models/status_update.dart';
 import '../models/employee.dart';
+import '../models/order_item.dart';
 
 class DriverRouteScreen extends StatefulWidget {
   @override
@@ -21,13 +22,15 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
   final WebPushService _pushService = WebPushService();
 
   List<ClientWithAddress> _clientsForDelivery = [];
-  Map<String, String> _deliveryStatuses = {};
+  Map<String, String> _deliveryStatuses = {}; // clientName -> статус
   bool _isSubmitting = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _initPushService();
+    _loadSavedStatuses();
   }
 
   Future<void> _initPushService() async {
@@ -69,8 +72,36 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
     }
 
     _clientsForDelivery.sort((a, b) => a.name.compareTo(b.name));
-    _deliveryStatuses.clear();
-    setState(() {});
+
+    final currentNames = _clientsForDelivery.map((c) => c.name).toSet();
+    _deliveryStatuses.removeWhere((key, _) => !currentNames.contains(key));
+
+    setState(() => _isLoading = false);
+  }
+
+  Future<void> _saveStatuses() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('driver_statuses', jsonEncode(_deliveryStatuses));
+      print('✅ Статусы сохранены локально');
+    } catch (e) {
+      print('⚠️ Ошибка сохранения статусов: $e');
+    }
+  }
+
+  Future<void> _loadSavedStatuses() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('driver_statuses');
+      if (saved != null) {
+        setState(() {
+          _deliveryStatuses = Map<String, String>.from(jsonDecode(saved));
+        });
+        print('✅ Статусы загружены: $_deliveryStatuses');
+      }
+    } catch (e) {
+      print('⚠️ Ошибка загрузки статусов: $e');
+    }
   }
 
   bool get _canSubmitReport {
@@ -79,13 +110,6 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
             .every((client) => _deliveryStatuses.containsKey(client.name));
   }
 
-  void _setDeliveryStatus(String clientName, String status) {
-    setState(() {
-      _deliveryStatuses[clientName] = status;
-    });
-  }
-
-  // 🔥 Получение сводки по доставкам
   Map<String, dynamic> _getDeliverySummary() {
     int delivered = 0;
     int corrections = 0;
@@ -96,75 +120,64 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
       if (status == 'корректировка') corrections++;
     }
 
+    final total = _clientsForDelivery.length;
+    final marked = delivered + corrections;
+
     return {
       'delivered': delivered,
       'corrections': corrections,
-      'total': _clientsForDelivery.length,
-      'summary': 'Доставлено: $delivered, Корректировка: $corrections'
+      'total': total,
+      'marked': marked,
+      'summary': 'Отмечено: $marked из $total',
+      'progress': total > 0 ? marked / total : 0.0,
     };
   }
 
-  // 🔥 Отправка уведомлений менеджерам через ApiService
-  Future<void> _sendNotificationsToManagers() async {
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final currentUser = authProvider.currentUser;
+  void _setDeliveryStatus(String clientName, String status) {
+    setState(() {
+      _deliveryStatuses[clientName] = status;
+    });
+    _saveStatuses();
+  }
 
-      if (currentUser == null || currentUser.phone == null) {
-        print('⚠️ Пользователь не авторизован');
-        return;
-      }
+  Future<void> _confirmAndSubmit() async {
+    final summary = _getDeliverySummary();
 
-      // Находим всех менеджеров
-      final managers = authProvider.clientData?.clients
-              .whereType<Employee>()
-              .where((e) =>
-                  e.role == 'Менеджер' &&
-                  e.phone != null &&
-                  e.phone!.isNotEmpty)
-              .toList() ??
-          [];
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Подтверждение'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Отправить отчёт о доставке?'),
+            const SizedBox(height: 16),
+            Text('✅ Доставлено: ${summary['delivered']}'),
+            Text('⚠️ Корректировка: ${summary['corrections']}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+            ),
+            child: const Text('Отправить'),
+          ),
+        ],
+      ),
+    );
 
-      if (managers.isEmpty) {
-        print('ℹ️ Нет менеджеров для уведомлений');
-        return;
-      }
-
-      final summary = _getDeliverySummary()['summary'] as String;
-
-      // Отправляем уведомление каждому менеджеру через ApiService
-      int successCount = 0;
-
-      for (var manager in managers) {
-        try {
-          final success = await _apiService.sendNotification(
-            targetPhone: manager.phone!,
-            title: 'Отчет о доставке',
-            body: 'Водитель завершил маршрут. $summary',
-          );
-
-          if (success) {
-            successCount++;
-            print('📨 Уведомление отправлено менеджеру: ${manager.name}');
-          } else {
-            print(
-                '⚠️ Не удалось отправить уведомление менеджеру: ${manager.name}');
-          }
-
-          // Небольшая задержка между отправками
-          await Future.delayed(Duration(milliseconds: 200));
-        } catch (e) {
-          print('❌ Ошибка отправки менеджеру ${manager.name}: $e');
-        }
-      }
-
-      print('📨 Отправлено уведомлений: $successCount из ${managers.length}');
-    } catch (e) {
-      print('⚠️ Ошибка отправки уведомлений: $e');
+    if (confirm == true) {
+      _submitReport();
     }
   }
 
-  // 🔥 Отправка отчета
   Future<void> _submitReport() async {
     setState(() => _isSubmitting = true);
 
@@ -190,14 +203,14 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
         return;
       }
 
-      // Отправляем обновления статусов
       final success = await _apiService.updateOrderStatuses(statusUpdates);
 
       if (success) {
-        // Обновляем локальные данные
         await _updateLocalOrders(statusUpdates);
 
-        // Отправляем уведомления менеджерам (не ждем завершения)
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('driver_statuses');
+
         _sendNotificationsToManagers().catchError((e) {
           print('⚠️ Фоновая отправка уведомлений: $e');
         });
@@ -205,14 +218,14 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Отчет успешно отправлен!'),
+              content: Text('Отчёт успешно отправлен!'),
               backgroundColor: Colors.green,
             ),
           );
           Navigator.pop(context);
         }
       } else {
-        throw Exception('Ошибка отправки отчета');
+        throw Exception('Ошибка отправки отчёта');
       }
     } catch (e) {
       print('❌ Ошибка: $e');
@@ -226,6 +239,62 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
       }
     } finally {
       setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _sendNotificationsToManagers() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUser;
+
+      if (currentUser == null || currentUser.phone == null) {
+        print('⚠️ Пользователь не авторизован');
+        return;
+      }
+
+      final managers = authProvider.clientData?.clients
+              .whereType<Employee>()
+              .where((e) =>
+                  e.role == 'Менеджер' &&
+                  e.phone != null &&
+                  e.phone!.isNotEmpty)
+              .toList() ??
+          [];
+
+      if (managers.isEmpty) {
+        print('ℹ️ Нет менеджеров для уведомлений');
+        return;
+      }
+
+      final summary = _getDeliverySummary();
+      final summaryText = 'Доставлено: ${summary['delivered']}, '
+          'Корректировка: ${summary['corrections']}, '
+          'Всего: ${summary['total']}';
+
+      int successCount = 0;
+
+      for (var manager in managers) {
+        try {
+          final success = await _apiService.sendNotification(
+            targetPhone: manager.phone!,
+            title: 'Отчёт о доставке',
+            body: 'Водитель завершил маршрут. $summaryText',
+          );
+
+          if (success) {
+            successCount++;
+            print('📨 Уведомление отправлено менеджеру: ${manager.name}');
+          }
+
+          await Future.delayed(const Duration(milliseconds: 200));
+        } catch (e) {
+          print('❌ Ошибка отправки менеджеру ${manager.name}: $e');
+        }
+      }
+
+      print('📨 Отправлено уведомлений: $successCount из ${managers.length}');
+    } catch (e) {
+      print('⚠️ Ошибка отправки уведомлений: $e');
     }
   }
 
@@ -265,21 +334,36 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
         backgroundColor: Colors.blue[50],
         bottom: _clientsForDelivery.isNotEmpty
             ? PreferredSize(
-                preferredSize: const Size.fromHeight(40),
+                preferredSize: const Size.fromHeight(60),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    summary['summary'],
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  child: Column(
+                    children: [
+                      Text(
+                        summary['summary'],
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      LinearProgressIndicator(
+                        value: summary['progress'],
+                        backgroundColor: Colors.grey[300],
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          summary['progress'] == 1.0
+                              ? Colors.green
+                              : Colors.blue,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               )
             : null,
       ),
-      body: _isSubmitting
+      body: _isLoading || _isSubmitting
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
@@ -325,7 +409,7 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
                                   children: [
                                     Container(
                                       width: 4,
-                                      height: 40,
+                                      height: 50,
                                       decoration: BoxDecoration(
                                         color: isDelivered
                                             ? Colors.green
@@ -365,23 +449,69 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceEvenly,
                                   children: [
-                                    _buildStatusButton(
-                                      label: 'Доставлен',
-                                      color: Colors.green,
-                                      isSelected: isDelivered,
-                                      onPressed: hasStatus && !isDelivered
-                                          ? null
-                                          : () => _setDeliveryStatus(
-                                              client.name, 'доставлен'),
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 4),
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: isDelivered
+                                                ? Colors.green
+                                                : Colors.grey[300],
+                                            foregroundColor: isDelivered
+                                                ? Colors.white
+                                                : Colors.grey[600],
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 12),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                          ),
+                                          onPressed: hasStatus && !isDelivered
+                                              ? null
+                                              : () => _setDeliveryStatus(
+                                                  client.name, 'доставлен'),
+                                          child: const Text(
+                                            'ДОСТАВЛЕН',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    _buildStatusButton(
-                                      label: 'Корректировка',
-                                      color: Colors.red,
-                                      isSelected: isCorrection,
-                                      onPressed: hasStatus && !isCorrection
-                                          ? null
-                                          : () => _setDeliveryStatus(
-                                              client.name, 'корректировка'),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 4),
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: isCorrection
+                                                ? Colors.red
+                                                : Colors.grey[300],
+                                            foregroundColor: isCorrection
+                                                ? Colors.white
+                                                : Colors.grey[600],
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 12),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                          ),
+                                          onPressed: hasStatus && !isCorrection
+                                              ? null
+                                              : () => _setDeliveryStatus(
+                                                  client.name, 'корректировка'),
+                                          child: const Text(
+                                            'КОРРЕКТИРОВКА',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12),
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -392,59 +522,59 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
                       },
                     ),
                   ),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  child: ElevatedButton(
-                    onPressed: _canSubmitReport ? _submitReport : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          _canSubmitReport ? Colors.blue : Colors.grey,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                    ),
-                    child: const Text(
-                      'Оформить отчет',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                if (_clientsForDelivery.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        if (summary['marked'] == summary['total'])
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle, color: Colors.green),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Все клиенты отмечены. Можно отправить отчёт.',
+                                    style: TextStyle(color: Colors.green[800]),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed:
+                              _canSubmitReport ? _confirmAndSubmit : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                _canSubmitReport ? Colors.blue : Colors.grey,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            minimumSize: const Size(double.infinity, 50),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                          ),
+                          child: const Text(
+                            'ОТПРАВИТЬ ОТЧЁТ',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
               ],
             ),
-    );
-  }
-
-  Widget _buildStatusButton({
-    required String label,
-    required Color color,
-    required bool isSelected,
-    required VoidCallback? onPressed,
-  }) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: isSelected ? color : Colors.grey[300],
-            foregroundColor: isSelected ? Colors.white : Colors.grey[600],
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-          ),
-          onPressed: onPressed,
-          child: Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-      ),
     );
   }
 }

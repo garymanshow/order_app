@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../models/employee.dart';
 import 'admin_clients_screen.dart';
 import 'admin_clients_with_orders_screen.dart';
+import 'admin_orders_screen.dart';
 import 'admin_price_list_screen.dart';
 import 'admin_employees_screen.dart';
 import '../notifications_screen.dart'; // 👈 Импортируем экран уведомлений
@@ -132,6 +133,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   context,
                   MaterialPageRoute(
                       builder: (_) => AdminClientsWithOrdersScreen()),
+                );
+              },
+            ),
+
+            SizedBox(height: 24),
+            _buildAdminButton(
+              context,
+              icon: Icons.shopping_cart,
+              title: 'Все заказы',
+              description: 'Управление всеми заказами клиентов',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AdminOrdersScreen()),
                 );
               },
             ),

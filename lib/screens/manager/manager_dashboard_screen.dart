@@ -1,4 +1,4 @@
-// lib/screens/manager/manager_dashboard_screen.dart
+// lib/screens/manager/manager_dashboard_screen.dart (исправленный)
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
@@ -27,7 +27,6 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
 
   // Данные для отображения
   int _readyOrdersCount = 0;
-  int _productionOrdersCount = 0;
   List<String> _lowStockAlerts = [];
   Map<String, double> _fillingBalances = {};
   Map<String, double> _productBalances = {};
@@ -51,12 +50,10 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
       final warehouseService =
           Provider.of<WarehouseService>(context, listen: false);
 
-      // Загружаем все данные параллельно
       await Future.wait([
         _loadOrdersStats(apiService),
         _loadProductionBalances(productionService),
         _loadWarehouseAlerts(warehouseService),
-        _loadProductionAlerts(productionService),
       ]);
     } catch (e) {
       setState(() => _error = 'Ошибка загрузки данных: $e');
@@ -70,10 +67,9 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
       final orders = await apiService.fetchOrders();
       if (orders != null) {
         setState(() {
-          _readyOrdersCount =
-              orders.where((o) => o['Статус'] == 'готов').length;
-          _productionOrdersCount =
-              orders.where((o) => o['Статус'] == 'производство').length;
+          _readyOrdersCount = orders
+              .where((o) => o['status'] == 'готов' || o['Статус'] == 'готов')
+              .length;
         });
       }
     } catch (e) {
@@ -98,22 +94,10 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
     try {
       final alerts = await warehouseService.getLowStockAlerts();
       setState(() {
-        _lowStockAlerts = alerts.map((a) => a.toString()).toList();
+        _lowStockAlerts = alerts;
       });
     } catch (e) {
       print('Ошибка загрузки уведомлений склада: $e');
-    }
-  }
-
-  Future<void> _loadProductionAlerts(
-      ProductionService productionService) async {
-    try {
-      final alerts = await productionService.getAlerts();
-      setState(() {
-        _lowStockAlerts.addAll(alerts);
-      });
-    } catch (e) {
-      print('Ошибка загрузки уведомлений производства: $e');
     }
   }
 
@@ -176,18 +160,13 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
         padding: const EdgeInsets.all(24.0),
         child: ListView(
           children: [
-            // Статистика для быстрого просмотра
             _buildStatsRow(),
-
             SizedBox(height: 24),
-
-            // 📦 ЗАКАЗЫ - главный раздел менеджера
             _buildManagerButton(
               context,
               icon: Icons.shopping_cart_outlined,
               title: 'Заказы',
-              description:
-                  'Управление заказами (производство, готов, доставлен, корректировка)',
+              description: 'Управление заказами',
               badge: _readyOrdersCount > 0 ? '$_readyOrdersCount готовы' : null,
               badgeColor: Colors.green,
               onPressed: () {
@@ -197,15 +176,12 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                 );
               },
             ),
-
             SizedBox(height: 16),
-
-            // 🏭 ПРОИЗВОДСТВО - аналитика и операции
             _buildManagerButton(
               context,
               icon: Icons.factory_outlined,
               title: 'Производство',
-              description: 'Операции производства, остатки начинок, аналитика',
+              description: 'Операции производства, остатки начинок',
               badge: _getProductionBadge(),
               badgeColor: Colors.blue,
               onPressed: () {
@@ -215,15 +191,12 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                 );
               },
             ),
-
             SizedBox(height: 16),
-
-            // 🥣 НАЧИНКИ - справочник
             _buildManagerButton(
               context,
               icon: Icons.category_outlined,
               title: 'Начинки',
-              description: 'Управление начинками (CRUD)',
+              description: 'Управление начинками',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -231,28 +204,22 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                 );
               },
             ),
-
             SizedBox(height: 16),
-
-            // 📝 СОСТАВ - ингредиенты
             _buildManagerButton(
               context,
               icon: Icons.menu_book_outlined,
               title: 'Состав',
-              description: 'Редактирование состава начинок и продукции',
+              description: 'Редактирование состава',
               onPressed: () {
                 _showCompositionTypeDialog(context);
               },
             ),
-
             SizedBox(height: 16),
-
-            // 📊 СКЛАД - остатки и уведомления
             _buildManagerButton(
               context,
               icon: Icons.inventory_outlined,
               title: 'Склад',
-              description: 'Остатки ингредиентов, контроль запасов',
+              description: 'Остатки ингредиентов',
               badge: _lowStockAlerts.isNotEmpty
                   ? '${_lowStockAlerts.length} мало'
                   : null,
@@ -264,15 +231,12 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                 );
               },
             ),
-
             SizedBox(height: 16),
-
-            // 💰 ПРАЙС-ЛИСТ - вспомогательные таблицы
             _buildManagerButton(
               context,
               icon: Icons.attach_money,
               title: 'Прайс-лист',
-              description: 'Просмотр категорий и позиций',
+              description: 'Управление прайс-листом',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -280,10 +244,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                 );
               },
             ),
-
             SizedBox(height: 24),
-
-            // Предупреждения о недостатке
             if (_lowStockAlerts.isNotEmpty) _buildAlertsCard(),
           ],
         ),
@@ -367,9 +328,9 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
         foregroundColor: Colors.blue[800],
         elevation: 2,
       ).copyWith(
-        overlayColor: MaterialStateProperty.resolveWith<Color?>(
-          (states) => states.contains(MaterialState.pressed)
-              ? Colors.blue.withOpacity(0.1)
+        overlayColor: WidgetStateProperty.resolveWith<Color?>(
+          (states) => states.contains(WidgetState.pressed)
+              ? Colors.blue.withValues(alpha: 0.1)
               : null,
         ),
       ),
@@ -378,7 +339,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
           Container(
             padding: EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: Colors.blue[800], size: 28),
@@ -407,7 +368,8 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                         padding:
                             EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: (badgeColor ?? Colors.blue).withOpacity(0.2),
+                          color: (badgeColor ?? Colors.blue)
+                              .withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: badgeColor ?? Colors.blue,
@@ -491,16 +453,11 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
   }
 
   String _getProductionBadge() {
-    if (_fillingBalances.isEmpty) return null;
+    if (_fillingBalances.isEmpty) return '';
 
     final lowFillings =
         _fillingBalances.entries.where((e) => e.value < 2).length;
-
-    if (lowFillings > 0) {
-      return '$lowFillings мало';
-    }
-
-    return null;
+    return lowFillings > 0 ? '$lowFillings мало' : '';
   }
 
   void _showCompositionTypeDialog(BuildContext context) {
@@ -564,8 +521,10 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
             itemBuilder: (context, index) {
               final filling = fillings[index];
               return ListTile(
-                title: Text(filling['Наименование'] ?? ''),
-                subtitle: Text('ID: ${filling['ID']}'),
+                title: Text(filling['name']?.toString() ??
+                    filling['Наименование']?.toString() ??
+                    ''),
+                subtitle: Text('ID: ${filling['id'] ?? filling['ID'] ?? ''}'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -573,8 +532,11 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                     MaterialPageRoute(
                       builder: (_) => ManagerCompositionScreen(
                         sourceSheet: 'Начинки',
-                        sourceId: filling['ID'] ?? 0,
-                        sourceName: filling['Наименование'] ?? '',
+                        sourceId:
+                            (filling['id'] ?? filling['ID'] ?? '').toString(),
+                        sourceName: filling['name']?.toString() ??
+                            filling['Наименование']?.toString() ??
+                            '',
                       ),
                     ),
                   );
@@ -616,8 +578,10 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
             itemBuilder: (context, index) {
               final product = products[index];
               return ListTile(
-                title: Text(product['Название'] ?? ''),
-                subtitle: Text('ID: ${product['ID']}'),
+                title: Text(product['name']?.toString() ??
+                    product['Название']?.toString() ??
+                    ''),
+                subtitle: Text('ID: ${product['id'] ?? product['ID'] ?? ''}'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -625,8 +589,11 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                     MaterialPageRoute(
                       builder: (_) => ManagerCompositionScreen(
                         sourceSheet: 'Прайс-лист',
-                        sourceId: product['ID'] ?? 0,
-                        sourceName: product['Название'] ?? '',
+                        sourceId:
+                            (product['id'] ?? product['ID'] ?? '').toString(),
+                        sourceName: product['name']?.toString() ??
+                            product['Название']?.toString() ??
+                            '',
                       ),
                     ),
                   );

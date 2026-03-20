@@ -460,7 +460,135 @@ class ApiService {
     }
   }
 
-  // 🏬 СОХРАНЕНИЕ ОПЕРАЦИЙ СКЛАДА
+  // ==================== МЕТОДЫ ДЛЯ СОСТАВОВ ====================
+
+  // Получить состав для продукта
+  Future<List<Map<String, dynamic>>?> getCompositionForProduct(
+      int productId) async {
+    try {
+      final response = await _makeRequest('getCompositionForProduct', {
+        'productId': productId,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['composition'] != null) {
+          return List<Map<String, dynamic>>.from(result['composition']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения состава продукта: $e');
+      return null;
+    }
+  }
+
+  // Получить состав для начинки
+  Future<List<Map<String, dynamic>>?> getCompositionForFilling(
+      int fillingId) async {
+    try {
+      final response = await _makeRequest('getCompositionForFilling', {
+        'fillingId': fillingId,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['composition'] != null) {
+          return List<Map<String, dynamic>>.from(result['composition']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения состава начинки: $e');
+      return null;
+    }
+  }
+
+  // Получить начинку по ID
+  Future<Map<String, dynamic>?> getFilling(int fillingId) async {
+    try {
+      final response = await _makeRequest('getFilling', {
+        'fillingId': fillingId,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['filling'] != null) {
+          return result['filling'] as Map<String, dynamic>;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения начинки: $e');
+      return null;
+    }
+  }
+
+  // Получить начинку по названию
+  Future<Map<String, dynamic>?> getFillingByName(String name) async {
+    try {
+      final response = await _makeRequest('getFillingByName', {
+        'name': name,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['filling'] != null) {
+          return result['filling'] as Map<String, dynamic>;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения начинки по названию: $e');
+      return null;
+    }
+  }
+
+  // ==================== СКЛАД (CRUD) ====================
+
+  // 🔥 ПОЛУЧЕНИЕ ВСЕХ ОПЕРАЦИЙ СКЛАДА
+  Future<Map<String, dynamic>?> fetchWarehouseOperations() async {
+    try {
+      final response = await _makeRequest('fetchWarehouseOperations', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true) {
+          return result;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки операций склада: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ОПЕРАЦИЙ СКЛАДА С ФИЛЬТРАМИ
+  Future<Map<String, dynamic>?> fetchWarehouseOperationsFiltered(
+      Map<String, dynamic> filters) async {
+    try {
+      final data = {
+        'filters': filters,
+      };
+
+      final response =
+          await _makeRequest('fetchWarehouseOperationsFiltered', data);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true) {
+          return result;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки отфильтрованных операций: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ДОБАВЛЕНИЕ ОПЕРАЦИИ СКЛАДА
   Future<bool> addWarehouseOperation({
     required String phone,
     required Map<String, dynamic> operationData,
@@ -479,12 +607,304 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка сохранения операции склада: $e');
+      print('❌ Ошибка добавления операции склада: $e');
       return false;
     }
   }
 
-// Добавить после существующих методов, например после методов для склада
+  // 🔥 ДОБАВЛЕНИЕ НЕСКОЛЬКИХ ОПЕРАЦИЙ
+  Future<bool> addWarehouseOperations(
+      List<Map<String, dynamic>> operations) async {
+    try {
+      final data = {
+        'operations': operations,
+      };
+
+      final response = await _makeRequest('addWarehouseOperations', data);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка добавления операций: $e');
+      return false;
+    }
+  }
+
+  // ==================== РАБОТА С НАЧИНКАМИ (CRUD) ====================
+
+  // 🔥 СОЗДАНИЕ НАЧИНКИ
+  Future<bool> createFilling(Map<String, dynamic> fillingData) async {
+    try {
+      final response = await _makeRequest('createFilling', fillingData);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка создания начинки: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ОБНОВЛЕНИЕ НАЧИНКИ
+  Future<bool> updateFilling(Map<String, dynamic> fillingData) async {
+    try {
+      final response = await _makeRequest('updateFilling', fillingData);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка обновления начинки: $e');
+      return false;
+    }
+  }
+
+  // 🔥 УДАЛЕНИЕ НАЧИНКИ
+  Future<bool> deleteFilling(String fillingId) async {
+    try {
+      final response =
+          await _makeRequest('deleteFilling', {'fillingId': fillingId});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления начинки: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ НАЧИНОК
+  Future<List<Map<String, dynamic>>?> fetchFillings() async {
+    try {
+      final response = await _makeRequest('fetchFillings', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['fillings'] != null) {
+          return List<Map<String, dynamic>>.from(result['fillings']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки начинок: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ОСТАТКОВ ПРОИЗВОДСТВА
+  Future<Map<String, dynamic>?> getProductionBalances() async {
+    try {
+      final response = await _makeRequest('getProductionBalances', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true) {
+          return result;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения остатков производства: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ПРЕДУПРЕЖДЕНИЙ ПРОИЗВОДСТВА
+  Future<List<String>?> getProductionAlerts() async {
+    try {
+      final response = await _makeRequest('getProductionAlerts', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['alerts'] != null) {
+          return List<String>.from(result['alerts']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения предупреждений: $e');
+      return null;
+    }
+  }
+
+  // ==================== РАБОТА С СОСТАВОМ (CRUD) ====================
+
+  // 🔥 ПОЛУЧЕНИЕ СОСТАВА ПО ИСТОЧНИКУ
+  Future<List<Map<String, dynamic>>?> getCompositionForSource(
+    String sourceSheet,
+    String sourceId,
+  ) async {
+    try {
+      final response = await _makeRequest('getCompositionForSource', {
+        'sourceSheet': sourceSheet,
+        'sourceId': sourceId,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['composition'] != null) {
+          return List<Map<String, dynamic>>.from(result['composition']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения состава: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ВСЕХ ИНГРЕДИЕНТОВ
+  Future<List<String>?> getAllIngredients() async {
+    try {
+      final response = await _makeRequest('getAllIngredients', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['ingredients'] != null) {
+          return List<String>.from(result['ingredients']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения ингредиентов: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ДОБАВЛЕНИЕ ЭЛЕМЕНТА СОСТАВА
+  Future<bool> addCompositionItem(Map<String, dynamic> itemData) async {
+    try {
+      final response = await _makeRequest('addCompositionItem', itemData);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка добавления элемента состава: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ОБНОВЛЕНИЕ ЭЛЕМЕНТА СОСТАВА
+  Future<bool> updateCompositionItem(Map<String, dynamic> itemData) async {
+    try {
+      final response = await _makeRequest('updateCompositionItem', itemData);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка обновления элемента состава: $e');
+      return false;
+    }
+  }
+
+  // 🔥 УДАЛЕНИЕ ЭЛЕМЕНТА СОСТАВА
+  Future<bool> deleteCompositionItem(String itemId) async {
+    try {
+      final response =
+          await _makeRequest('deleteCompositionItem', {'id': itemId});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления элемента состава: $e');
+      return false;
+    }
+  }
+
+  // ==================== ЕДИНИЦЫ ИЗМЕРЕНИЯ ====================
+
+  // 🔥 ПОЛУЧЕНИЕ ВСЕХ ЕДИНИЦ ИЗМЕРЕНИЯ
+  Future<Map<String, dynamic>?> fetchUnitsOfMeasure() async {
+    try {
+      final response = await _makeRequest('fetchUnitsOfMeasure', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true) {
+          return result;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки единиц измерения: $e');
+      return null;
+    }
+  }
+
+  // 🔥 ДОБАВЛЕНИЕ НОВОЙ ЕДИНИЦЫ ИЗМЕРЕНИЯ
+  Future<bool> addUnitOfMeasure(Map<String, dynamic> unitData) async {
+    try {
+      final response = await _makeRequest('addUnitOfMeasure', unitData);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка добавления единицы измерения: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ОБНОВЛЕНИЕ ЕДИНИЦЫ ИЗМЕРЕНИЯ
+  Future<bool> updateUnitOfMeasure(
+      String code, Map<String, dynamic> unitData) async {
+    try {
+      final data = {
+        'code': code,
+        ...unitData,
+      };
+
+      final response = await _makeRequest('updateUnitOfMeasure', data);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка обновления единицы измерения: $e');
+      return false;
+    }
+  }
+
+  // 🔥 УДАЛЕНИЕ ЕДИНИЦЫ ИЗМЕРЕНИЯ
+  Future<bool> deleteUnitOfMeasure(String code) async {
+    try {
+      final response =
+          await _makeRequest('deleteUnitOfMeasure', {'code': code});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления единицы измерения: $e');
+      return false;
+    }
+  }
 
   // ==================== ПРОИЗВОДСТВО (CRUD) ====================
 
@@ -622,28 +1042,6 @@ class ApiService {
     }
   }
 
-  // 🔥 ПОЛУЧЕНИЕ ОСТАТКОВ НА ПРОИЗВОДСТВЕ
-  Future<Map<String, dynamic>?> getProductionBalances() async {
-    try {
-      final response = await _makeRequest('getProductionBalances', {});
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> result = jsonDecode(response.body);
-        if (result['success'] == true) {
-          return {
-            'fillings': result['fillings'] ?? {}, // начинки: {id: остаток}
-            'products':
-                result['products'] ?? {}, // готовая продукция: {id: остаток}
-          };
-        }
-      }
-      return null;
-    } catch (e) {
-      print('❌ Ошибка получения остатков производства: $e');
-      return null;
-    }
-  }
-
   // 🔥 ПОЛУЧЕНИЕ ПРОИЗВОДСТВЕННОЙ СТАТИСТИКИ
   Future<Map<String, dynamic>?> getProductionStats({
     DateTime? fromDate,
@@ -685,24 +1083,6 @@ class ApiService {
     } catch (e) {
       print('❌ Ошибка массового создания операций: $e');
       return false;
-    }
-  }
-
-  // 🔥 ПОЛУЧЕНИЕ ПРЕДУПРЕЖДЕНИЙ ПО ПРОИЗВОДСТВУ
-  Future<List<String>?> getProductionAlerts() async {
-    try {
-      final response = await _makeRequest('getProductionAlerts', {});
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> result = jsonDecode(response.body);
-        if (result['success'] == true && result['alerts'] != null) {
-          return List<String>.from(result['alerts']);
-        }
-      }
-      return null;
-    } catch (e) {
-      print('❌ Ошибка получения предупреждений: $e');
-      return null;
     }
   }
 
@@ -1026,6 +1406,125 @@ class ApiService {
       return false;
     } catch (e) {
       print('❌ Ошибка массового обновления заказов: $e');
+      return false;
+    }
+  }
+
+  // ==================== PUSH-УВЕДОМЛЕНИЯ ====================
+
+  // 🔥 СОХРАНЕНИЕ PUSH-ПОДПИСКИ
+  Future<bool> savePushSubscription({
+    required String phone,
+    required String role,
+    required Map<String, dynamic> subscription,
+  }) async {
+    try {
+      final response = await _makeRequest('savePushSubscription', {
+        'phone': phone,
+        'role': role,
+        'subscription': subscription,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка сохранения подписки: $e');
+      return false;
+    }
+  }
+
+  // 🔥 УДАЛЕНИЕ PUSH-ПОДПИСКИ
+  Future<bool> deletePushSubscription(String phone) async {
+    try {
+      final response = await _makeRequest('deletePushSubscription', {
+        'phone': phone,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления подписки: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ПОДПИСОК ВОДИТЕЛЕЙ
+  Future<List<Map<String, dynamic>>> getDriverSubscriptions() async {
+    try {
+      final response = await _makeRequest('getDriverSubscriptions', {});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['subscriptions'] != null) {
+          return List<Map<String, dynamic>>.from(result['subscriptions']);
+        }
+      }
+      return [];
+    } catch (e) {
+      print('❌ Ошибка получения подписок: $e');
+      return [];
+    }
+  }
+
+  // 🔥 Массовая отправка уведомлений
+  Future<Map<String, int>> sendBulkNotifications({
+    required List<String> targetPhones,
+    required String title,
+    required String body,
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      final response = await _makeRequest('sendBulkNotifications', {
+        'targetPhones': targetPhones,
+        'title': title,
+        'body': body,
+        'data': data,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true) {
+          return {
+            'sent': result['sent'] ?? 0,
+            'failed': result['failed'] ?? 0,
+          };
+        }
+      }
+      return {'sent': 0, 'failed': targetPhones.length};
+    } catch (e) {
+      print('❌ Ошибка массовой отправки: $e');
+      return {'sent': 0, 'failed': targetPhones.length};
+    }
+  }
+
+  // 🔥 Отправка уведомления клиенту (с записью в историю)
+  Future<bool> sendClientNotification({
+    required String clientPhone,
+    required String title,
+    required String body,
+    required String orderId,
+  }) async {
+    try {
+      final response = await _makeRequest('sendClientNotification', {
+        'clientPhone': clientPhone,
+        'title': title,
+        'body': body,
+        'orderId': orderId,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка отправки клиенту: $e');
       return false;
     }
   }

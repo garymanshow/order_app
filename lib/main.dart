@@ -14,7 +14,7 @@ import 'screens/client_orders_screen.dart';
 import 'screens/client_selection_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/driver_screen.dart';
-import 'screens/manager/manager_screen.dart';
+import 'screens/manager/manager_dashboard_screen.dart';
 import 'screens/admin/admin_warehouse_screen.dart';
 
 // Services
@@ -148,7 +148,7 @@ class MyAppContent extends StatelessWidget {
           '/notifications': (context) => const NotificationsScreen(),
           '/admin': (context) => AdminDashboardScreen(),
           '/driver': (context) => DriverScreen(),
-          '/manager': (context) => ManagerScreen(),
+          '/manager': (context) => ManagerDashboardScreen(),
           '/warehouse': (context) => AdminWarehouseScreen(),
           '/clientSelection': (context) {
             final args = ModalRoute.of(context)!.settings.arguments
