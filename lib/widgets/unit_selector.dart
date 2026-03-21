@@ -112,7 +112,7 @@ class _UnitSelectorState extends State<UnitSelector> {
     }
 
     return DropdownButtonFormField<String>(
-      value: _selectedValue,
+      initialValue: _selectedValue,
       decoration: InputDecoration(
         labelText: widget.labelText ?? 'Единица измерения',
         border: OutlineInputBorder(

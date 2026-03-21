@@ -1,5 +1,4 @@
 // lib/models/unit_of_measure_sheet.dart
-import 'unit_of_measure.dart';
 import '../utils/parsing_utils.dart';
 
 class UnitOfMeasureSheet {

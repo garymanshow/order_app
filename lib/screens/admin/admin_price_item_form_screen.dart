@@ -1003,7 +1003,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                   labelText: 'Ед.',
                   border: InputBorder.none,
                 ),
-                value: ingredient.unit,
+                initialValue: ingredient.unit,
                 items: const [
                   DropdownMenuItem(value: 'г', child: Text('г')),
                   DropdownMenuItem(value: 'кг', child: Text('кг')),

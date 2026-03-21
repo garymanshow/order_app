@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:collection/collection.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:provider/provider.dart';
 import '../models/client.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
@@ -10,6 +12,7 @@ import '../models/delivery_condition.dart';
 import '../models/price_list_mode.dart';
 import '../services/api_service.dart';
 import '../services/delivery_conditions_service.dart' as delivery;
+import '../services/sync_service.dart';
 
 class CartProvider with ChangeNotifier {
   Client? _currentClient;
@@ -17,6 +20,7 @@ class CartProvider with ChangeNotifier {
   List<Product>? _allProducts;
   DeliveryCondition? _deliveryCondition;
   PriceListMode _priceListMode = PriceListMode.full;
+  final ApiService _apiService = ApiService(); // 👈 ДОБАВЛЕНО
 
   // Геттеры
   PriceListMode get priceListMode => _priceListMode;
@@ -73,7 +77,7 @@ class CartProvider with ChangeNotifier {
       final product = _allProducts!.firstWhere((p) => p.id == productId);
 
       if (existingIndex != -1) {
-        // Обновляем существующий заказ (создаем новый с измененным quantity)
+        // Обновляем существующий заказ
         final oldOrder = _allOrders![existingIndex];
         final updatedOrder = OrderItem(
           status: oldOrder.status,
@@ -110,6 +114,20 @@ class CartProvider with ChangeNotifier {
     // Сохраняем изменения локально
     await _saveOrdersToPreferences();
     notifyListeners();
+  }
+
+  // 🔥 Очистка корзины
+  void clearCart() {
+    if (_currentClient == null || _allOrders == null) return;
+
+    _allOrders!.removeWhere((order) =>
+        order.clientPhone == _currentClient!.phone &&
+        order.clientName == _currentClient!.name &&
+        order.quantity > 0);
+
+    _saveOrdersToPreferences();
+    notifyListeners();
+    print('🗑️ Корзина очищена');
   }
 
   // Установка режима прайс-листа
@@ -154,7 +172,7 @@ class CartProvider with ChangeNotifier {
     _deliveryCondition = null;
   }
 
-  // 🔥 Получение условий доставки с контекстом (используем getConditionForLocation)
+  // 🔥 Получение условий доставки с контекстом
   DeliveryCondition? getDeliveryCondition(BuildContext context) {
     if (_currentClient == null || _currentClient!.city == null) return null;
 
@@ -163,7 +181,7 @@ class CartProvider with ChangeNotifier {
         _currentClient!.city!, context);
   }
 
-  // 🔥 Получение минимальной суммы заказа для города клиента (используем getMinOrderAmount)
+  // 🔥 Получение минимальной суммы заказа для города клиента
   double getMinOrderAmount(BuildContext context) {
     if (_currentClient == null || _currentClient!.city == null) return 0.0;
 
@@ -171,7 +189,7 @@ class CartProvider with ChangeNotifier {
     return deliveryService.getMinOrderAmount(_currentClient!.city!, context);
   }
 
-  // 🔥 Получение наценки для клиента (используем getMarkupForCity)
+  // 🔥 Получение наценки для клиента
   double getMarkupForClient(BuildContext context) {
     if (_currentClient == null || _currentClient!.city == null) return 0.0;
 
@@ -264,7 +282,7 @@ class CartProvider with ChangeNotifier {
           comment: comment,
         );
 
-        if (result == null) {
+        if (!result) {
           throw Exception('Ошибка отправки заказа для ${client.clientName}');
         }
 
@@ -311,6 +329,67 @@ class CartProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final ordersJson = _allOrders!.map((o) => o.toJson()).toList();
     await prefs.setString('all_orders', jsonEncode(ordersJson));
+  }
+
+  /// Создание заказа с поддержкой офлайн-режима
+  Future<bool> submitOrderOffline({
+    required BuildContext context,
+    required String clientId,
+    required String employeeId,
+    required List<Map<String, dynamic>> items,
+    required double totalAmount,
+    String? deliveryCity,
+    String? deliveryAddress,
+    String? comment,
+  }) async {
+    final syncService = Provider.of<SyncService>(context, listen: false);
+
+    // Проверяем интернет
+    final connectivityResult = await Connectivity().checkConnectivity();
+
+    if (connectivityResult == ConnectivityResult.none) {
+      // Нет интернета — сохраняем в очередь
+      await syncService.queueOrderCreation(
+        clientId: clientId,
+        employeeId: employeeId,
+        items: items,
+        totalAmount: totalAmount,
+        deliveryCity: deliveryCity,
+        deliveryAddress: deliveryAddress,
+        comment: comment,
+      );
+
+      // Очищаем корзину
+      clearCart();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                '📱 Заказ сохранён локально и будет отправлен при появлении интернета'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+      return true;
+    } else {
+      // Есть интернет — отправляем сразу
+      final success = await _apiService.createOrder(
+        clientId: clientId,
+        employeeId: employeeId,
+        items: items,
+        totalAmount: totalAmount,
+        deliveryCity: deliveryCity,
+        deliveryAddress: deliveryAddress,
+        comment: comment,
+      );
+
+      if (success) {
+        clearCart();
+      }
+      return success;
+    }
   }
 
   Future<void> _saveModeToSharedPreferences() async {

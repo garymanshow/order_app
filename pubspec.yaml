@@ -30,6 +30,8 @@ dependencies:
   google_sign_in: ^7.2.0
   googleapis: ^15.0.0 # Для работы с Google API
   googleapis_auth: ^2.0.0 # Для аутентификации сервисных аккаунтов в Google
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
   http: ^1.6.0 # Если используется HTTP-клиент
   path_provider: ^2.1.5
   pdf: ^3.11.3
@@ -41,6 +43,7 @@ dependencies:
   telephony: ^0.1.4 # для получения номера телефона (Android)
     
 dev_dependencies:
+  hive_generator: ^2.0.0
   build_runner: ^2.4.0
   flutter_test:
     sdk: flutter

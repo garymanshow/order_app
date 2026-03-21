@@ -9,6 +9,7 @@ import '../models/product.dart';
 import '../models/client.dart';
 import '../models/employee.dart';
 import '../models/delivery_condition.dart';
+import '../models/warehouse_operation.dart';
 import 'env_service.dart';
 
 class ApiService {
@@ -249,11 +250,49 @@ class ApiService {
     }
   }
 
-  // 🔥 СОЗДАНИЕ ЗАКАЗА
-  Future<Map<String, dynamic>?> createOrder({
+  /// Создание заказа
+  /// Возвращает true при успешном создании, false при ошибке
+  Future<bool> createOrder({
     required String clientId,
     required String employeeId,
-    required List<dynamic> items,
+    required List<Map<String, dynamic>>
+        items, // Изменено с List<dynamic> на List<Map<String, dynamic>>
+    required double totalAmount,
+    String? deliveryCity,
+    String? deliveryAddress,
+    String? comment,
+  }) async {
+    try {
+      final data = {
+        'clientId': clientId,
+        'employeeId': employeeId,
+        'items': items,
+        'totalAmount': totalAmount,
+        if (deliveryCity != null) 'deliveryCity': deliveryCity,
+        if (deliveryAddress != null) 'deliveryAddress': deliveryAddress,
+        if (comment != null) 'comment': comment,
+      };
+
+      final response = await _makeRequest('createOrder', data);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      } else {
+        print('❌ Ошибка создания заказа: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Ошибка создания заказа: $e');
+      return false;
+    }
+  }
+
+  /// Альтернативный метод, возвращающий полный ответ (для отладки)
+  Future<Map<String, dynamic>?> createOrderWithDetails({
+    required String clientId,
+    required String employeeId,
+    required List<Map<String, dynamic>> items,
     required double totalAmount,
     String? deliveryCity,
     String? deliveryAddress,
@@ -275,11 +314,12 @@ class ApiService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       } else {
-        throw Exception('Ошибка создания заказа: ${response.statusCode}');
+        print('❌ Ошибка создания заказа: ${response.statusCode}');
+        return null;
       }
     } catch (e) {
       print('❌ Ошибка создания заказа: $e');
-      rethrow;
+      return null;
     }
   }
 
@@ -630,6 +670,62 @@ class ApiService {
     } catch (e) {
       print('❌ Ошибка добавления операций: $e');
       return false;
+    }
+  }
+
+  /// Удаление складской операции
+  Future<bool> deleteWarehouseOperation(String operationId) async {
+    try {
+      final response = await _makeRequest('deleteWarehouseOperation', {
+        'id': operationId,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления складской операции: $e');
+      return false;
+    }
+  }
+
+  /// Обновление складской операции
+  Future<bool> updateWarehouseOperation(WarehouseOperation operation) async {
+    try {
+      final response = await _makeRequest('updateWarehouseOperation', {
+        'operation': operation.toMap(),
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка обновления складской операции: $e');
+      return false;
+    }
+  }
+
+  /// Получение одной складской операции по ID
+  Future<WarehouseOperation?> getWarehouseOperation(String operationId) async {
+    try {
+      final response = await _makeRequest('getWarehouseOperation', {
+        'id': operationId,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['operation'] != null) {
+          return WarehouseOperation.fromJson(result['operation']);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка получения складской операции: $e');
+      return null;
     }
   }
 

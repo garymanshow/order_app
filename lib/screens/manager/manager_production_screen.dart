@@ -90,7 +90,7 @@ class _ManagerProductionScreenState extends State<ManagerProductionScreen> {
                     DropdownButtonFormField<int>(
                       decoration: const InputDecoration(
                           labelText: 'Выберите начинку *'),
-                      value: selectedFillingId,
+                      initialValue: selectedFillingId,
                       items: fillings.map<DropdownMenuItem<int>>((f) {
                         final id = f['id'] ?? f['ID'];
                         return DropdownMenuItem<int>(
@@ -108,7 +108,7 @@ class _ManagerProductionScreenState extends State<ManagerProductionScreen> {
                     DropdownButtonFormField<int>(
                       decoration: const InputDecoration(
                           labelText: 'Выберите продукт *'),
-                      value: selectedProductId,
+                      initialValue: selectedProductId,
                       items: products.map<DropdownMenuItem<int>>((p) {
                         final id = p['id'] ?? p['ID'];
                         return DropdownMenuItem<int>(

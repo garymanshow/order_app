@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/filling.dart';
-import '../../models/composition.dart';
 import '../../services/api_service.dart';
 import '../../widgets/unit_selector.dart';
 import 'manager_composition_screen.dart';

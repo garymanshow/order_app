@@ -1,14 +1,15 @@
 // lib/screens/admin_dashboard_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
-import '../../models/employee.dart';
 import 'admin_clients_screen.dart';
 import 'admin_clients_with_orders_screen.dart';
 import 'admin_orders_screen.dart';
 import 'admin_price_list_screen.dart';
 import 'admin_employees_screen.dart';
-import '../notifications_screen.dart'; // 👈 Импортируем экран уведомлений
+import '../../models/employee.dart';
+import '../../providers/auth_provider.dart';
+import '../notifications_screen.dart';
+import '../shared/production_planning_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   @override
@@ -189,6 +190,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => AdminEmployeesScreen()),
+                );
+              },
+            ),
+
+            SizedBox(height: 24),
+            _buildAdminButton(
+              context,
+              icon: Icons.analytics,
+              title: 'Аналитика производства',
+              description: 'Просмотр потребности в ингредиентах',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ProductionPlanningScreen(
+                      title: 'Аналитика производства',
+                    ),
+                  ),
                 );
               },
             ),

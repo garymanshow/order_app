@@ -1,5 +1,4 @@
 // lib/models/warehouse_operation.dart
-import 'unit_of_measure.dart';
 import '../utils/parsing_utils.dart';
 
 class WarehouseOperation {

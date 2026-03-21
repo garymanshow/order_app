@@ -1,9 +1,11 @@
-// lib/main.dart
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:ui' as ui; // 👈 ДОБАВЛЯЕМ ИМПОРТ ДЛЯ ui
 
 // Screens
 import 'screens/admin/admin_dashboard_screen.dart';
@@ -20,7 +22,10 @@ import 'screens/admin/admin_warehouse_screen.dart';
 // Services
 import 'services/image_preloader.dart';
 import 'services/api_service.dart';
-import 'services/env_service.dart'; // 👈 ЕДИНСТВЕННЫЙ СЕРВИС ДЛЯ ENV
+import 'services/env_service.dart';
+import 'services/cache_service.dart';
+import 'services/sync_service.dart';
+import 'services/unit_service.dart';
 
 // Providers
 import 'providers/auth_provider.dart';
@@ -32,11 +37,34 @@ import 'widgets/network_indicator.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+// Глобальные переменные для сервисов
+late CacheService cacheService;
+late SyncService syncService;
+late UnitService unitService;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 🔥 ИНИЦИАЛИЗАЦИЯ EnvService (вся логика загрузки внутри)
   await EnvService.init();
+
+  // 🔥 ИНИЦИАЛИЗАЦИЯ HIVE (кросс-платформенное хранилище)
+  await Hive.initFlutter();
+  print('✅ Hive инициализирован');
+
+  // 🔥 ИНИЦИАЛИЗАЦИЯ КЭША
+  cacheService = await CacheService.getInstance();
+  print('✅ CacheService инициализирован');
+
+  // 🔥 ИНИЦИАЛИЗАЦИЯ СЕРВИСА ЕДИНИЦ ИЗМЕРЕНИЯ
+  unitService = UnitService(ApiService());
+  await unitService.loadUnits();
+  print('✅ UnitService инициализирован');
+
+  // 🔥 ИНИЦИАЛИЗАЦИЯ СЕРВИСА СИНХРОНИЗАЦИИ
+  syncService = SyncService();
+  await syncService.initialize();
+  print('✅ SyncService инициализирован');
 
   // Проверяем соединение с API
   await _testApiConnection();
@@ -52,13 +80,16 @@ void main() async {
   await initializeDateFormatting('ru_RU', null);
   print('✅ Локализация дат инициализирована');
 
-  // Firebase только для мобильных платформ (если нужно)
-  if (!kIsWeb) {
-    if (defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS) {
-      // await Firebase.initializeApp();
+  // Запускаем автосинхронизацию
+  syncService.startPeriodicSync();
+
+  // Подписываемся на изменения подключения
+  Connectivity().onConnectivityChanged.listen((result) {
+    if (result != ConnectivityResult.none) {
+      print('🌐 Интернет появился, запускаем синхронизацию');
+      syncService.sync();
     }
-  }
+  });
 
   runApp(MyApp());
 }
@@ -77,7 +108,7 @@ Future<void> _testApiConnection() async {
       print('❌ API не отвечает. Проверьте:');
       print('   1. Правильность APP_SCRIPT_URL в .env');
       print('   2. Доступность скрипта (опубликован ли он)');
-      print('   3. Правильность APP_SCRIPT_SECRET');
+      print('   3. Интернет-соединение');
     }
   } catch (e) {
     print('❌ Ошибка при проверке API: $e');
@@ -95,13 +126,26 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (context) {
             print('🟢 Создание AuthProvider');
-            final provider = AuthProvider(navigatorKey: navigatorKey);
+            final provider = AuthProvider(
+              navigatorKey: navigatorKey,
+            );
             print('🟢 Вызов AuthProvider.init()');
             provider.init();
             return provider;
           },
         ),
         ChangeNotifierProvider(create: (context) => CartProvider()),
+        Provider<UnitService>.value(value: unitService),
+        Provider<CacheService>.value(value: cacheService),
+        Provider<SyncService>.value(value: syncService),
+        StreamProvider<ConnectivityResult>(
+          create: (_) => Connectivity().onConnectivityChanged.map(
+                (List<ConnectivityResult> results) => results.isNotEmpty
+                    ? results.first
+                    : ConnectivityResult.none,
+              ),
+          initialData: ConnectivityResult.none,
+        ),
       ],
       child: MyAppContent(),
     );
@@ -113,11 +157,13 @@ class MyAppContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final connectivityResult = Provider.of<ConnectivityResult>(context);
 
     print(
         '🟢 MyAppContent: authProvider.isLoading = ${authProvider.isLoading}');
     print(
         '🟢 MyAppContent: authProvider.isAuthenticated = ${authProvider.isAuthenticated}');
+    print('🟢 MyAppContent: connectivity = $connectivityResult');
 
     return NetworkIndicator(
       child: MaterialApp(
@@ -161,5 +207,29 @@ class MyAppContent extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+// 🔥 Выход из приложения с очисткой
+Future<void> appExit() async {
+  print('🔄 Завершение работы приложения...');
+
+  // Останавливаем синхронизацию
+  syncService.stopPeriodicSync();
+
+  // Закрываем Hive боксы
+  await Hive.close();
+
+  print('✅ Приложение завершено');
+
+  // Выход из приложения
+  if (kIsWeb) {
+    // Для Web просто закрываем
+    // ignore: undefined_prefixed_name
+    ui.webViewAssetManager?.clear();
+  } else {
+    // Для мобильных платформ
+    // ignore: dead_code
+    // SystemNavigator.pop();
   }
 }

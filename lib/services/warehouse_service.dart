@@ -1,16 +1,33 @@
 // lib/services/warehouse_service.dart
-import 'dart:convert';
-import '../models/unit_of_measure.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/warehouse_operation.dart';
-// Убираем несуществующие импорты
-// import '../models/unit_of_measure.dart';
-// import '../services/unit_converter_service.dart';
+import '../models/employee.dart';
+import '../providers/auth_provider.dart';
 import 'api_service.dart';
 
 class WarehouseService {
   final ApiService _apiService;
 
   WarehouseService(this._apiService);
+
+  // 🔥 ВСПОМОГАТЕЛЬНЫЙ МЕТОД ДЛЯ ПОЛУЧЕНИЯ ТЕЛЕФОНА ИЗ КОНТЕКСТА
+  Future<String?> _getCurrentUserPhone(BuildContext? context) async {
+    if (context == null) return null;
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final user = authProvider.currentUser;
+
+      if (user is Employee && user.phone != null) {
+        return user.phone;
+      }
+    } catch (e) {
+      print('⚠️ Ошибка получения телефона пользователя: $e');
+    }
+
+    return null;
+  }
 
   // 🔥 ПОЛУЧЕНИЕ ВСЕХ ОПЕРАЦИЙ СО СКЛАДА
   Future<List<WarehouseOperation>> getOperations() async {
@@ -63,14 +80,25 @@ class WarehouseService {
     }
   }
 
-  // 🔥 ДОБАВЛЕНИЕ ОПЕРАЦИИ
-  Future<bool> addOperation(WarehouseOperation operation) async {
+  // 🔥 ДОБАВЛЕНИЕ ОПЕРАЦИИ (с контекстом)
+  Future<bool> addOperation(
+    WarehouseOperation operation, {
+    BuildContext? context,
+  }) async {
     try {
-      // Метод toSheetRow должен быть определен в модели WarehouseOperation
+      // Получаем телефон из контекста
+      String? phone;
+      if (context != null) {
+        phone = await _getCurrentUserPhone(context);
+      }
+
+      // Если не удалось получить телефон, используем заглушку
+      phone ??= 'unknown';
+
       final operationData = operation.toSheetRow();
 
       final response = await _apiService.addWarehouseOperation(
-        phone: '', // TODO: получить из контекста
+        phone: phone,
         operationData: operationData,
       );
 
@@ -81,9 +109,20 @@ class WarehouseService {
     }
   }
 
-  // 🔥 ДОБАВЛЕНИЕ НЕСКОЛЬКИХ ОПЕРАЦИЙ
-  Future<bool> addOperations(List<WarehouseOperation> operations) async {
+  // 🔥 ДОБАВЛЕНИЕ НЕСКОЛЬКИХ ОПЕРАЦИЙ (с контекстом)
+  Future<bool> addOperations(
+    List<WarehouseOperation> operations, {
+    BuildContext? context,
+  }) async {
     try {
+      // Получаем телефон из контекста
+      String? phone;
+      if (context != null) {
+        phone = await _getCurrentUserPhone(context);
+      }
+
+      phone ??= 'unknown';
+
       final operationsData = operations.map((op) => op.toSheetRow()).toList();
 
       final response = await _apiService.addWarehouseOperations(operationsData);
@@ -166,6 +205,23 @@ class WarehouseService {
       print('❌ Ошибка получения списка ингредиентов: $e');
       return [];
     }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ОСТАТКОВ ПО ВСЕМ ИНГРЕДИЕНТАМ
+  Future<Map<String, double>> getAllBalances() async {
+    final operations = await getOperations();
+    final balances = <String, double>{};
+
+    for (var op in operations) {
+      final key = '${op.name}_${op.unit}';
+      if (op.operation.toLowerCase() == 'приход') {
+        balances[key] = (balances[key] ?? 0) + op.quantity;
+      } else if (op.operation.toLowerCase() == 'списание') {
+        balances[key] = (balances[key] ?? 0) - op.quantity;
+      }
+    }
+
+    return balances;
   }
 
   // Форматирование даты

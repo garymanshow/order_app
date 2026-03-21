@@ -1,10 +1,11 @@
-// lib/screens/admin_warehouse_screen.dart
+// lib/screens/admin/admin_warehouse_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
-import '../../models/unit_of_measure.dart';
+import '../../services/cache_service.dart';
+import '../../services/sync_service.dart';
 import '../../models/warehouse_operation.dart';
 import '../../models/employee.dart';
 import '../../models/product.dart';
@@ -16,6 +17,8 @@ class AdminWarehouseScreen extends StatefulWidget {
 
 class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
   final ApiService _apiService = ApiService();
+  late CacheService _cacheService;
+  late SyncService _syncService;
 
   List<WarehouseOperation> _operations = [];
   List<Product> _products = [];
@@ -45,7 +48,13 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
   void initState() {
     super.initState();
     _initializeControllers();
+    _initServices();
     _loadData();
+  }
+
+  Future<void> _initServices() async {
+    _cacheService = await CacheService.getInstance();
+    _syncService = SyncService();
   }
 
   void _initializeControllers() {
@@ -78,9 +87,13 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
       _products = authProvider.clientData?.products ?? [];
       _productNames = _products.map((p) => p.name).toList();
 
-      // TODO: загрузить реальные операции склада из ClientData
-      // Пока используем тестовые данные
-      _operations = _generateMockOperations();
+      // 🔥 ЗАГРУЖАЕМ РЕАЛЬНЫЕ ОПЕРАЦИИ СКЛАДА ИЗ КЭША
+      _operations = _cacheService.getWarehouseOperations();
+
+      // Если кэш пуст, пробуем загрузить с сервера
+      if (_operations.isEmpty) {
+        await _loadFromServer();
+      }
     } catch (e) {
       print('❌ Ошибка загрузки данных склада: $e');
     } finally {
@@ -88,43 +101,23 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
     }
   }
 
-  // Временные тестовые данные
-  List<WarehouseOperation> _generateMockOperations() {
-    return [
-      WarehouseOperation(
-        id: '1',
-        name: 'Мука пшеничная',
-        operation: 'приход',
-        quantity: 50.0,
-        unit: 'кг',
-        date: DateTime.now().subtract(const Duration(days: 2)),
-        expiryDate: DateTime.now().add(const Duration(days: 180)),
-        price: 1200.0,
-        supplier: 'ООО "Мельница"',
-        notes: 'Сорт высший',
-      ),
-      WarehouseOperation(
-        id: '2',
-        name: 'Сахар',
-        operation: 'приход',
-        quantity: 30.0,
-        unit: 'кг',
-        date: DateTime.now().subtract(const Duration(days: 5)),
-        expiryDate: DateTime.now().add(const Duration(days: 365)),
-        price: 1800.0,
-        supplier: 'ООО "Сладкая жизнь"',
-      ),
-      WarehouseOperation(
-        id: '3',
-        name: 'Мука пшеничная',
-        operation: 'списание',
-        quantity: 5.0,
-        unit: 'кг',
-        date: DateTime.now().subtract(const Duration(hours: 6)),
-        relatedOrderId: 'ORD-001',
-        notes: 'Производство торта "Наполеон"',
-      ),
-    ];
+  Future<void> _loadFromServer() async {
+    try {
+      final result = await _apiService.fetchWarehouseOperations();
+      if (result != null && result['success'] == true) {
+        final operationsData = result['operations'] as List?;
+        if (operationsData != null) {
+          _operations = operationsData
+              .map((json) => WarehouseOperation.fromJson(json))
+              .toList();
+
+          // Сохраняем в кэш
+          await _cacheService.saveWarehouseOperations(_operations);
+        }
+      }
+    } catch (e) {
+      print('⚠️ Ошибка загрузки с сервера: $e');
+    }
   }
 
   // 👇 РАСЧЕТ ОСТАТКОВ
@@ -225,8 +218,33 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
       _operations.removeWhere((op) => op.id == operation.id);
     });
 
-    // TODO: удаление через API
-    _showSnackBar('Операция удалена', Colors.green);
+    // 🔥 УДАЛЕНИЕ ЧЕРЕЗ API
+    try {
+      final result = await _apiService.deleteWarehouseOperation(operation.id);
+      if (result) {
+        // Обновляем кэш
+        await _cacheService.saveWarehouseOperations(_operations);
+        _showSnackBar('Операция удалена', Colors.green);
+      } else {
+        // Если API не отвечает, добавляем в очередь
+        await _cacheService.addPendingOperation(
+          type: 'delete',
+          entity: 'warehouse_operation',
+          data: {'id': operation.id},
+        );
+        _showSnackBar(
+            'Операция добавлена в очередь на удаление', Colors.orange);
+      }
+    } catch (e) {
+      // Офлайн-режим: добавляем в очередь
+      await _cacheService.addPendingOperation(
+        type: 'delete',
+        entity: 'warehouse_operation',
+        data: {'id': operation.id},
+      );
+      _showSnackBar(
+          'Операция добавлена в очередь (офлайн-режим)', Colors.orange);
+    }
   }
 
   Future<void> _saveOperation() async {
@@ -263,26 +281,70 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
       );
 
       if (_isEditing) {
-        // Обновление
+        // 🔥 ОБНОВЛЕНИЕ ЧЕРЕЗ API
         final index = _operations.indexWhere((op) => op.id == _editingId);
         if (index != -1) {
           setState(() {
             _operations[index] = operation;
           });
-        }
-        // TODO: обновление через API
-        _showSnackBar('Операция обновлена', Colors.green);
-      } else {
-        // Создание
-        await _apiService.addWarehouseOperation(
-          phone: user.phone!,
-          operationData: operation.toMap(),
-        );
 
+          try {
+            final result =
+                await _apiService.updateWarehouseOperation(operation);
+            if (result) {
+              await _cacheService.saveWarehouseOperations(_operations);
+              _showSnackBar('Операция обновлена', Colors.green);
+            } else {
+              await _cacheService.addPendingOperation(
+                type: 'update',
+                entity: 'warehouse_operation',
+                data: operation.toJson(),
+              );
+              _showSnackBar('Операция добавлена в очередь', Colors.orange);
+            }
+          } catch (e) {
+            await _cacheService.addPendingOperation(
+              type: 'update',
+              entity: 'warehouse_operation',
+              data: operation.toJson(),
+            );
+            _showSnackBar(
+                'Операция добавлена в очередь (офлайн-режим)', Colors.orange);
+          }
+        }
+      } else {
+        // 🔥 СОЗДАНИЕ НОВОЙ ОПЕРАЦИИ
         setState(() {
           _operations.insert(0, operation);
         });
-        _showSnackBar('Операция сохранена', Colors.green);
+
+        try {
+          final result = await _apiService.addWarehouseOperation(
+            phone: user.phone!,
+            operationData: operation.toMap(),
+          );
+
+          if (result) {
+            await _cacheService.saveWarehouseOperations(_operations);
+            _showSnackBar('Операция сохранена', Colors.green);
+          } else {
+            await _cacheService.addPendingOperation(
+              type: 'create',
+              entity: 'warehouse_operation',
+              data: operation.toJson(),
+            );
+            _showSnackBar('Операция добавлена в очередь', Colors.orange);
+          }
+        } catch (e) {
+          // Офлайн-режим: сохраняем в очередь
+          await _cacheService.addPendingOperation(
+            type: 'create',
+            entity: 'warehouse_operation',
+            data: operation.toJson(),
+          );
+          _showSnackBar(
+              'Операция добавлена в очередь (офлайн-режим)', Colors.orange);
+        }
       }
 
       setState(() {
@@ -363,6 +425,14 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.sync),
+            onPressed: () async {
+              await _syncService.sync();
+              await _loadData();
+            },
+            tooltip: 'Синхронизировать',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
@@ -554,7 +624,7 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
         label: const Text('Операция'),
       ),
 
-      // Форма добавления/редактирования
+      // Форма добавления/редактирования (остаётся без изменений)
       bottomSheet: _showAddForm
           ? Container(
               height: MediaQuery.of(context).size.height * 0.8,
