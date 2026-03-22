@@ -97,12 +97,10 @@ class ProductionPlanningService {
           orElse: () => null as Filling,
         );
 
-        if (filling != null) {
-          // Это начинка
-          final neededKg = (comp.quantity * quantity) / 1000; // переводим в кг
-          fillingsNeeded[filling.name] =
-              (fillingsNeeded[filling.name] ?? 0) + neededKg;
-        }
+        // Это начинка
+        final neededKg = (comp.quantity * quantity) / 1000; // переводим в кг
+        fillingsNeeded[filling.name] =
+            (fillingsNeeded[filling.name] ?? 0) + neededKg;
       }
     }
 

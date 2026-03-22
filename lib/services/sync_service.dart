@@ -5,11 +5,7 @@ import 'cache_service.dart';
 import 'api_service.dart';
 import '../models/order_item.dart';
 import '../models/filling.dart';
-import '../models/composition.dart';
 import '../models/product.dart';
-import '../models/price_category.dart';
-import '../models/sheet_metadata.dart';
-import '../models/client.dart';
 
 class SyncService {
   final Connectivity _connectivity = Connectivity();

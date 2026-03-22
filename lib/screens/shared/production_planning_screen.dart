@@ -66,7 +66,7 @@ class _ProductionPlanningScreenState extends State<ProductionPlanningScreen> {
       final productionService =
           Provider.of<ProductionService>(context, listen: false);
       final balances = await productionService.getProductionBalances();
-      final fillingsBalances = balances['fillings'] as Map<String, double>?;
+      final fillingsBalances = balances['fillings'];
       if (fillingsBalances != null) {
         for (var entry in fillingsBalances.entries) {
           currentStock['🥣 ${entry.key}'] = entry.value;
