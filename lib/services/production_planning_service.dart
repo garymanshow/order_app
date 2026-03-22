@@ -5,7 +5,6 @@ import '../models/composition.dart';
 import '../models/filling.dart';
 import '../models/price_category.dart';
 import '../models/production_plan.dart';
-import '../services/unit_converter_service.dart';
 
 class ProductionPlanningService {
   final List<OrderItem> orders;

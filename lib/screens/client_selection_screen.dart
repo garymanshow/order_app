@@ -46,8 +46,6 @@ class ClientSelectionScreen extends StatelessWidget {
     return total >= minAmount;
   }
 
-  // 🔥 УДАЛЕНО: _hasUnsavedOrders (не используется)
-
   // Метод выхода с проверкой несохраненных изменений
   Future<void> _logoutAndReturnToAuth(BuildContext context) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -133,7 +131,7 @@ class ClientSelectionScreen extends StatelessWidget {
     }
   }
 
-  // 🔥 ИСПРАВЛЕНО: Отправка всех заказов с правильным вызовом submitAllOrders
+  // Отправка всех заказов
   Future<void> _submitAllOrders(
       BuildContext context, AuthProvider authProvider) async {
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
@@ -205,7 +203,6 @@ class ClientSelectionScreen extends StatelessWidget {
 
     if (confirm != true) return;
 
-    // 🔥 ИСПРАВЛЕНО: передаем context и apiService
     final success = await cartProvider.submitAllOrders(
       context,
       apiService,
@@ -236,6 +233,29 @@ class ClientSelectionScreen extends StatelessWidget {
                 children: [
                   const Text('Загрузка данных...'),
                   const CircularProgressIndicator(),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // 🔥 ПРОВЕРКА НА НАЛИЧИЕ КЛИЕНТОВ
+        if (clients.isEmpty) {
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('Нет клиентов для телефона $phone'),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      authProvider.logout();
+                      Navigator.pushNamedAndRemoveUntil(
+                          context, '/', (route) => false);
+                    },
+                    child: Text('Выйти'),
+                  ),
                 ],
               ),
             ),
@@ -274,6 +294,11 @@ class ClientSelectionScreen extends StatelessWidget {
               softWrap: true,
             ),
             toolbarHeight: totalAllClients > 0 ? 80.0 : kToolbarHeight,
+            leading: IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Выйти из аккаунта',
+              onPressed: () => _logoutAndReturnToAuth(context),
+            ),
             actions: [
               if (totalAllClients > 0)
                 IconButton(
@@ -293,31 +318,6 @@ class ClientSelectionScreen extends StatelessWidget {
                   tooltip: 'Сбросить настройки (отладка)',
                   onPressed: () => _resetAppSettings(context),
                 ),
-              // Кнопка выхода с предупреждением
-              Stack(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.logout),
-                    tooltip: 'Выйти',
-                    onPressed: () => _logoutAndReturnToAuth(context),
-                  ),
-                  if (hasUnsavedOrders)
-                    const Positioned(
-                      right: 8,
-                      top: 8,
-                      child: SizedBox(
-                        width: 10,
-                        height: 10,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
             ],
           ),
           body: ListView.builder(
@@ -343,9 +343,21 @@ class ClientSelectionScreen extends StatelessWidget {
                           fontSize: 12,
                         ),
                       ),
+                trailing: hasItems
+                    ? Chip(
+                        label: Text('${item.total.toStringAsFixed(0)} ₽'),
+                        backgroundColor: Colors.green.shade100,
+                        avatar: const Icon(Icons.shopping_cart, size: 16),
+                      )
+                    : null,
                 onTap: () {
-                  authProvider.setClient(item.client);
-                  Navigator.pushNamed(context, '/price');
+                  print('🔍 Выбран клиент: ${item.client.name}');
+
+                  // Устанавливаем клиента
+                  authProvider.selectClient(item.client);
+
+                  // Переход на прайс-лист
+                  Navigator.pushReplacementNamed(context, '/price');
                 },
               );
             },

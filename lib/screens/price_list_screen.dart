@@ -1,4 +1,7 @@
 // lib/screens/price_list_screen.dart
+import 'dart:io' show File;
+import 'dart:typed_data';
+import 'dart:html' as html if (dart.library.html) 'dart:html';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -28,12 +31,9 @@ class PriceListScreen extends StatefulWidget {
 }
 
 class _PriceListScreenState extends State<PriceListScreen> {
-  bool _isInitialized = false;
-  bool _preloaded = false;
   bool _showNotificationDot = false;
   final ExportService _exportService = ExportService();
 
-  // Состояние для выбора полей при экспорте
   final Map<String, bool> _exportFields = {
     'basic': true,
     'composition': true,
@@ -48,7 +48,6 @@ class _PriceListScreenState extends State<PriceListScreen> {
     _checkNotificationStatus();
   }
 
-  // 🔔 Проверяем, подписан ли клиент
   Future<void> _checkNotificationStatus() async {
     if (!kIsWeb) return;
 
@@ -67,51 +66,9 @@ class _PriceListScreenState extends State<PriceListScreen> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-
-    if (!_isInitialized) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _initializeCartProvider();
-      });
-    }
-  }
-
-  void _initializeCartProvider() {
-    if (_isInitialized) return;
-
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final cartProvider = Provider.of<CartProvider>(context, listen: false);
-
-    if (authProvider.clientData != null && authProvider.currentUser is Client) {
-      _isInitialized = true;
-
-      cartProvider.setClient(
-        authProvider.currentUser as Client,
-        authProvider.clientData!.orders,
-        authProvider.clientData!.products,
-      );
-
-      cartProvider.loadPriceListMode();
-
-      // Предзагрузка изображений товаров (первые 10)
-      if (!_preloaded) {
-        _preloaded = true;
-        ImagePreloader().preloadProducts(
-          authProvider.clientData!.products,
-          limit: 10,
-        );
-      }
-
-      print('✅ CartProvider инициализирован');
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Consumer2<AuthProvider, CartProvider>(
       builder: (context, authProvider, cartProvider, child) {
-        // Проверка состояния авторизации
         if (!authProvider.isAuthenticated || authProvider.isLoading) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -148,11 +105,27 @@ class _PriceListScreenState extends State<PriceListScreen> {
           );
         }
 
+        // Инициализация CartProvider если нужно
+        if (!cartProvider.isInitialized) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            cartProvider.setClient(
+              currentClient,
+              clientData.orders,
+              clientData.products,
+            );
+            cartProvider.loadPriceListMode();
+
+            ImagePreloader().preloadProducts(
+              clientData.products,
+              limit: 10,
+            );
+          });
+        }
+
         final allProducts = clientData.products;
         final clientName = currentClient.name ?? '';
         final currentMode = cartProvider.priceListMode;
 
-        // Фильтруем продукты по режиму
         final filteredProducts = _filterProducts(
           allProducts: allProducts,
           mode: currentMode,
@@ -160,7 +133,6 @@ class _PriceListScreenState extends State<PriceListScreen> {
           clientData: clientData,
         );
 
-        // Считаем общую сумму из заказов клиента
         final clientOrders = clientData.orders
             .where((o) =>
                 o.clientPhone == currentClient.phone &&
@@ -191,23 +163,29 @@ class _PriceListScreenState extends State<PriceListScreen> {
             toolbarHeight: total > 0 ? 80.0 : kToolbarHeight,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                
+                // 🔥 СБРАСЫВАЕМ ВЫБОР КЛИЕНТА
+                authProvider.resetClientSelection();
+                
+                // Используем pushReplacementNamed для возврата
+                Navigator.pushReplacementNamed(context, '/');
+              },
             ),
             actions: [
-              // 🔔 КНОПКА УВЕДОМЛЕНИЙ ДЛЯ КЛИЕНТА
               Stack(
                 clipBehavior: Clip.none,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.notifications_outlined),
                     onPressed: () async {
-                      final result = await Navigator.push(
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const NotificationsScreen(),
                         ),
                       );
-                      // После возврата с экрана уведомлений обновляем статус
                       _checkNotificationStatus();
                     },
                     tooltip: 'Уведомления о заказах',
@@ -326,122 +304,207 @@ class _PriceListScreenState extends State<PriceListScreen> {
     }
   }
 
-  // 🔥 ДИАЛОГ ЭКСПОРТА
   void _showExportDialog(BuildContext context, List<Product> products) {
-    String selectedFormat = 'pdf';
+  String selectedFormat = 'pdf';
 
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('Экспорт прайс-листа'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  RadioListTile<String>(
-                    title: const Text('PDF — полная информация о продукции'),
-                    subtitle: const Text('Для каталогов, презентаций, печати'),
-                    value: 'pdf',
-                    groupValue: selectedFormat,
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          selectedFormat = value;
-                        });
-                      }
-                    },
-                  ),
-                  RadioListTile<String>(
-                    title: const Text('CSV — для этикеток и систем учета'),
-                    subtitle: const Text('Только структурированные данные'),
-                    value: 'csv',
-                    groupValue: selectedFormat,
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          selectedFormat = value;
-                        });
-                      }
-                    },
-                  ),
-                  if (selectedFormat == 'pdf')
-                    ExpansionTile(
-                      title: const Text('Что включить в PDF'),
-                      initiallyExpanded: true,
+  showDialog(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        return AlertDialog(
+          title: const Text('Экспорт прайс-листа'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // PDF option
+                InkWell(
+                  onTap: () => setState(() => selectedFormat = 'pdf'),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: selectedFormat == 'pdf'
+                            ? Colors.blue
+                            : Colors.grey.shade300,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      color: selectedFormat == 'pdf'
+                          ? Colors.blue.withValues(alpha: 0.1)
+                          : null,
+                    ),
+                    child: Row(
                       children: [
-                        CheckboxListTile(
-                          title: const Text('Основные поля'),
-                          value: _exportFields['basic'] ?? true,
-                          onChanged: (value) {
-                            setState(() {
-                              _exportFields['basic'] = value ?? true;
-                            });
-                          },
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: Radio<String>(
+                            value: 'pdf',
+                            groupValue: selectedFormat,
+                            onChanged: (value) =>
+                                setState(() => selectedFormat = value!),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
                         ),
-                        CheckboxListTile(
-                          title: const Text('Состав'),
-                          value: _exportFields['composition'] ?? true,
-                          onChanged: (value) {
-                            setState(() {
-                              _exportFields['composition'] = value ?? true;
-                            });
-                          },
-                        ),
-                        CheckboxListTile(
-                          title: const Text('КБЖУ'),
-                          value: _exportFields['nutrition'] ?? true,
-                          onChanged: (value) {
-                            setState(() {
-                              _exportFields['nutrition'] = value ?? true;
-                            });
-                          },
-                        ),
-                        CheckboxListTile(
-                          title: const Text('Условия хранения'),
-                          value: _exportFields['storage'] ?? true,
-                          onChanged: (value) {
-                            setState(() {
-                              _exportFields['storage'] = value ?? true;
-                            });
-                          },
-                        ),
-                        CheckboxListTile(
-                          title: const Text('Фотографии'),
-                          value: _exportFields['photos'] ?? false,
-                          onChanged: (value) {
-                            setState(() {
-                              _exportFields['photos'] = value ?? false;
-                            });
-                          },
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'PDF — полная информация о продукции',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Для каталогов, презентаций, печати',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // CSV option
+                InkWell(
+                  onTap: () => setState(() => selectedFormat = 'csv'),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: selectedFormat == 'csv'
+                            ? Colors.blue
+                            : Colors.grey.shade300,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      color: selectedFormat == 'csv'
+                          ? Colors.blue.withValues(alpha: 0.1)
+                          : null,
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: Radio<String>(
+                            value: 'csv',
+                            groupValue: selectedFormat,
+                            onChanged: (value) =>
+                                setState(() => selectedFormat = value!),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'CSV — для этикеток и систем учета',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Только структурированные данные',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (selectedFormat == 'pdf') ...[
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  ExpansionTile(
+                    title: const Text('Что включить в PDF'),
+                    initiallyExpanded: true,
+                    children: [
+                      CheckboxListTile(
+                        title: const Text('Основные поля'),
+                        value: _exportFields['basic'] ?? true,
+                        onChanged: (value) {
+                          setState(() {
+                            _exportFields['basic'] = value ?? true;
+                          });
+                        },
+                      ),
+                      CheckboxListTile(
+                        title: const Text('Состав'),
+                        value: _exportFields['composition'] ?? true,
+                        onChanged: (value) {
+                          setState(() {
+                            _exportFields['composition'] = value ?? true;
+                          });
+                        },
+                      ),
+                      CheckboxListTile(
+                        title: const Text('КБЖУ'),
+                        value: _exportFields['nutrition'] ?? true,
+                        onChanged: (value) {
+                          setState(() {
+                            _exportFields['nutrition'] = value ?? true;
+                          });
+                        },
+                      ),
+                      CheckboxListTile(
+                        title: const Text('Условия хранения'),
+                        value: _exportFields['storage'] ?? true,
+                        onChanged: (value) {
+                          setState(() {
+                            _exportFields['storage'] = value ?? true;
+                          });
+                        },
+                      ),
+                      CheckboxListTile(
+                        title: const Text('Фотографии'),
+                        value: _exportFields['photos'] ?? false,
+                        onChanged: (value) {
+                          setState(() {
+                            _exportFields['photos'] = value ?? false;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
                 ],
-              ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: Navigator.of(context).pop,
-                child: const Text('Отмена'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _exportPriceList(context, products, format: selectedFormat);
-                },
-                child: const Text('Экспортировать'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
+          ),
+          actions: [
+            TextButton(
+              onPressed: Navigator.of(context).pop,
+              child: const Text('Отмена'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _exportPriceList(context, products, format: selectedFormat);
+              },
+              child: const Text('Экспортировать'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
 
-  // 🔥 РЕАЛИЗАЦИЯ ЭКСПОРТА
   Future<void> _exportPriceList(
     BuildContext context,
     List<Product> products, {
@@ -452,7 +515,6 @@ class _PriceListScreenState extends State<PriceListScreen> {
       final client = authProvider.currentUser as Client;
       final clientData = authProvider.clientData!;
 
-      // Подготавливаем данные для экспорта
       final compositionsByProduct = <String, List<Composition>>{};
       final nutritionByProduct = <String, NutritionInfo>{};
       final storageByProduct = <String, StorageCondition>{};
@@ -465,20 +527,15 @@ class _PriceListScreenState extends State<PriceListScreen> {
         try {
           nutritionByProduct[product.id] = clientData.nutritionInfos
               .firstWhere((n) => n.priceListId == product.id);
-        } catch (e) {
-          // нет КБЖУ - пропускаем
-        }
+        } catch (e) {}
 
         try {
           storageByProduct[product.id] = clientData.storageConditions
               .firstWhere((s) =>
                   s.sheetName == 'Прайс-лист' && s.entityId == product.id);
-        } catch (e) {
-          // нет условий хранения - пропускаем
-        }
+        } catch (e) {}
       }
 
-      // Настраиваем ExportService
       _exportService.format = format;
       _exportService.includeBasic = _exportFields['basic'] ?? true;
       _exportService.includeComposition = _exportFields['composition'] ?? true;
@@ -486,7 +543,6 @@ class _PriceListScreenState extends State<PriceListScreen> {
       _exportService.includeStorage = _exportFields['storage'] ?? true;
       _exportService.includePhotos = _exportFields['photos'] ?? false;
 
-      // Показываем индикатор загрузки
       if (!mounted) return;
 
       showDialog(
@@ -504,7 +560,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
         ),
       );
 
-      final file = await _exportService.generatePriceList(
+      final result = await _exportService.generatePriceList(
         products: products,
         clientName: client.name ?? 'Клиент',
         clientPhone: client.phone ?? '',
@@ -513,27 +569,53 @@ class _PriceListScreenState extends State<PriceListScreen> {
         storageByProduct: storageByProduct,
       );
 
-      // Закрываем диалог загрузки
       if (mounted) Navigator.of(context).pop();
 
-      if (file != null && mounted) {
-        // Делимся файлом
-        await Share.shareXFiles(
-          [XFile(file.path)],
-          text: 'Прайс-лист ${client.name}',
-        );
+      if (result != null && mounted) {
+        if (kIsWeb) {
+          // 🔥 ДЛЯ WEB — скачиваем файл
+          final bytes = result as Uint8List;
+          final fileName = 'price_list_${DateTime.now().millisecondsSinceEpoch}.${format == 'pdf' ? 'pdf' : 'csv'}';
+          
+          // Создаём blob и ссылку для скачивания
+          final blob = html.Blob([bytes]);
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          
+          final anchor = html.document.createElement('a') as html.AnchorElement
+            ..href = url
+            ..style.display = 'none'
+            ..download = fileName;
+          
+          html.document.body?.children.add(anchor);
+          anchor.click();
+          html.document.body?.children.remove(anchor);
+          html.Url.revokeObjectUrl(url);
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Файл успешно создан и скачан'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          // 🔥 ДЛЯ МОБИЛЬНЫХ/ДЕСКТОП — делимся файлом
+          final file = result as File;
+          await Share.shareXFiles(
+            [XFile(file.path)],
+            text: 'Прайс-лист ${client.name}',
+          );
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Файл успешно создан: ${file.path.split('/').last}'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Файл успешно создан: ${file.path.split('/').last}'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       } else {
         throw Exception('Не удалось создать файл');
       }
     } catch (e) {
-      // Закрываем диалог загрузки если он еще открыт
       if (mounted) {
         try {
           Navigator.of(context).pop();

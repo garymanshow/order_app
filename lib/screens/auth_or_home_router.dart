@@ -10,17 +10,19 @@ import 'driver_screen.dart';
 import 'manager/manager_dashboard_screen.dart';
 import 'admin/admin_warehouse_screen.dart';
 import 'role_selection_screen.dart';
+import 'price_list_screen.dart';
+import 'client_selection_screen.dart';
 
 class AuthOrHomeRouter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
 
-    // 🔥 ДОБАВЛЯЕМ ОТЛАДКУ
     print('🔄 AuthOrHomeRouter build:');
     print('   - isLoading: ${authProvider.isLoading}');
     print('   - isAuthenticated: ${authProvider.isAuthenticated}');
     print('   - currentUser: ${authProvider.currentUser?.phone}');
+    print('   - clientSelected: ${authProvider.clientSelected}');
 
     if (authProvider.isLoading) {
       return Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -30,12 +32,12 @@ class AuthOrHomeRouter extends StatelessWidget {
       return AuthPhoneScreen();
     }
 
-    // 🔥 НОВАЯ ЛОГИКА: ПРОВЕРКА МНОЖЕСТВЕННЫХ РОЛЕЙ
+    // Проверка множественных ролей
     if (authProvider.hasMultipleRoles) {
       return RoleSelectionScreen(roles: authProvider.availableRoles!);
     }
 
-    // 🔥 СОХРАНЯЕМ ВСЮ ЛОГИКУ РОЛЕЙ ДЛЯ СОТРУДНИКОВ
+    // Для сотрудников
     if (authProvider.isEmployee) {
       final employee = authProvider.currentUser as Employee;
       switch (employee.role) {
@@ -52,8 +54,8 @@ class AuthOrHomeRouter extends StatelessWidget {
       }
     }
 
-    // 🔥 ДЛЯ КЛИЕНТОВ — ИСПОЛЬЗУЕМ УЖЕ ЗАГРУЖЕННЫЕ ДАННЫЕ
-    return ClientAddressOrPriceListScreen();
+    // Для клиентов
+    return ClientRouterScreen();
   }
 }
 
@@ -85,19 +87,45 @@ class _GenericEmployeeScreen extends StatelessWidget {
 }
 
 // Экран-посредник для клиентов
-class ClientAddressOrPriceListScreen extends StatefulWidget {
+class ClientRouterScreen extends StatefulWidget {
   @override
-  _ClientAddressOrPriceListScreenState createState() =>
-      _ClientAddressOrPriceListScreenState();
+  _ClientRouterScreenState createState() => _ClientRouterScreenState();
 }
 
-class _ClientAddressOrPriceListScreenState
-    extends State<ClientAddressOrPriceListScreen> {
+class _ClientRouterScreenState extends State<ClientRouterScreen> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _checkAndNavigate();
+  }
+
+  void _checkAndNavigate() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    if (authProvider.currentUser == null || authProvider.isEmployee) {
+      return;
+    }
+
+    final client = authProvider.currentUser as Client;
+    final phone = client.phone;
+
+    if (phone == null) return;
+
+    final allClients = authProvider.clientData?.clients ?? [];
+    final clientsWithPhone = allClients.where((c) => c.phone == phone).toList();
+
+    // 🔥 ПРОВЕРЯЕМ, НУЖНО ЛИ ПЕРЕХОДИТЬ
+    // Если клиент уже выбран, показываем прайс-лист
+    if (authProvider.clientSelected && clientsWithPhone.isNotEmpty) {
+      // Не делаем переход здесь, чтобы не было рекурсии
+      return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    // Проверяем, что пользователь действительно клиент
     if (authProvider.currentUser == null || authProvider.isEmployee) {
       return Scaffold(body: Center(child: Text('Ошибка авторизации')));
     }
@@ -127,16 +155,16 @@ class _ClientAddressOrPriceListScreenState
       );
     }
 
-    // 🔥 ПОЛУЧАЕМ КЛИЕНТОВ ИЗ УЖЕ ЗАГРУЖЕННЫХ ДАННЫХ
     final allClients = authProvider.clientData?.clients ?? [];
-
-    print('📞 Всего клиентов в данных: ${allClients.length}');
-    print('📞 Ищем клиентов с телефоном: $phone');
-
-    // Фильтруем клиентов по телефону
     final clientsWithPhone = allClients.where((c) => c.phone == phone).toList();
 
-    print('📞 Найдено клиентов с этим телефоном: ${clientsWithPhone.length}');
+    print('📞 Всего клиентов: ${allClients.length}');
+    print('📞 Клиентов с телефоном $phone: ${clientsWithPhone.length}');
+
+    // 🔥 ЕСЛИ КЛИЕНТ УЖЕ ВЫБРАН — ПОКАЗЫВАЕМ ПРАЙС-ЛИСТ
+    if (authProvider.clientSelected && clientsWithPhone.isNotEmpty) {
+      return PriceListScreen();
+    }
 
     if (clientsWithPhone.isEmpty) {
       return Scaffold(
@@ -144,7 +172,7 @@ class _ClientAddressOrPriceListScreenState
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('Клиент не найден в загруженных данных'),
+              Text('Клиент не найден'),
               SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () {
@@ -152,7 +180,7 @@ class _ClientAddressOrPriceListScreenState
                   Navigator.pushNamedAndRemoveUntil(
                       context, '/', (route) => false);
                 },
-                child: Text('Вернуться к авторизации'),
+                child: Text('Выйти'),
               ),
             ],
           ),
@@ -160,39 +188,10 @@ class _ClientAddressOrPriceListScreenState
       );
     }
 
-    // 🔥 КЛЮЧЕВАЯ ЛОГИКА:
-    // Если найден только один клиент → прямой переход
-    // Если найдено несколько клиентов → показываем выбор
-    if (clientsWithPhone.length == 1) {
-      // Обновляем текущего клиента в AuthProvider
-      authProvider.setClient(clientsWithPhone.first);
-
-      // Используем WidgetsBinding для отложенного перехода
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        print('🔄 Переход на /price');
-        Navigator.pushReplacementNamed(context, '/price');
-      });
-
-      // Возвращаем пустой контейнер, пока происходит переход
-      return Container();
-    } else {
-      // Несколько клиентов с одним телефоном → выбор
-      // Используем WidgetsBinding для отложенного перехода
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        print(
-            '🔄 Переход на /clientSelection с ${clientsWithPhone.length} клиентами');
-        Navigator.pushReplacementNamed(
-          context,
-          '/clientSelection',
-          arguments: {
-            'phone': phone,
-            'clients': clientsWithPhone,
-          },
-        );
-      });
-
-      // Возвращаем пустой контейнер, пока происходит переход
-      return Container();
-    }
+    // 🔥 ПОКАЗЫВАЕМ СПИСОК КЛИЕНТОВ
+    return ClientSelectionScreen(
+      phone: phone,
+      clients: clientsWithPhone,
+    );
   }
 }

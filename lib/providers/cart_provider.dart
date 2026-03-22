@@ -20,11 +20,13 @@ class CartProvider with ChangeNotifier {
   List<Product>? _allProducts;
   DeliveryCondition? _deliveryCondition;
   PriceListMode _priceListMode = PriceListMode.full;
-  final ApiService _apiService = ApiService(); // 👈 ДОБАВЛЕНО
+  final ApiService _apiService = ApiService();
+  bool _isInitialized = false;
 
   // Геттеры
   PriceListMode get priceListMode => _priceListMode;
   DeliveryCondition? get deliveryCondition => _deliveryCondition;
+  bool get isInitialized => _isInitialized;
 
   // 🔥 Корзина - это просто заказы текущего клиента с quantity > 0
   List<OrderItem> get cartItems {
@@ -152,10 +154,18 @@ class CartProvider with ChangeNotifier {
     _currentClient = client;
     _allOrders = allOrders;
     _allProducts = allProducts;
-
-    // Обновляем условия доставки
+    _isInitialized = true; // 👈 ДОБАВЛЯЕМ
     _updateDeliveryCondition();
+    notifyListeners();
+  }
 
+  // Очистка при выходе
+  void reset() {
+    _currentClient = null;
+    _allOrders = null;
+    _allProducts = null;
+    _deliveryCondition = null;
+    _isInitialized = false;
     notifyListeners();
   }
 
@@ -395,13 +405,5 @@ class CartProvider with ChangeNotifier {
   Future<void> _saveModeToSharedPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('price_list_mode', _priceListMode.name);
-  }
-
-  // Очистка при выходе
-  void reset() {
-    _currentClient = null;
-    _allOrders = null;
-    _allProducts = null;
-    _deliveryCondition = null;
   }
 }

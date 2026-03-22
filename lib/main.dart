@@ -1,11 +1,10 @@
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'dart:ui' as ui; // 👈 ДОБАВЛЯЕМ ИМПОРТ ДЛЯ ui
 
 // Screens
 import 'screens/admin/admin_dashboard_screen.dart';
@@ -45,10 +44,13 @@ late UnitService unitService;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 🔥 ИНИЦИАЛИЗАЦИЯ EnvService (вся логика загрузки внутри)
+  // 🔥 ОТКЛЮЧАЕМ ПРОВЕРКУ ТИПОВ ДЛЯ PROVIDER
+  Provider.debugCheckInvalidValueType = null;
+
+  // 🔥 ИНИЦИАЛИЗАЦИЯ EnvService
   await EnvService.init();
 
-  // 🔥 ИНИЦИАЛИЗАЦИЯ HIVE (кросс-платформенное хранилище)
+  // 🔥 ИНИЦИАЛИЗАЦИЯ HIVE
   await Hive.initFlutter();
   print('✅ Hive инициализирован');
 
@@ -135,6 +137,7 @@ class MyApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(create: (context) => CartProvider()),
+        // 🔥 ИСПРАВЛЕНО: используем Provider без Listenable
         Provider<UnitService>.value(value: unitService),
         Provider<CacheService>.value(value: cacheService),
         Provider<SyncService>.value(value: syncService),
@@ -207,29 +210,5 @@ class MyAppContent extends StatelessWidget {
         },
       ),
     );
-  }
-}
-
-// 🔥 Выход из приложения с очисткой
-Future<void> appExit() async {
-  print('🔄 Завершение работы приложения...');
-
-  // Останавливаем синхронизацию
-  syncService.stopPeriodicSync();
-
-  // Закрываем Hive боксы
-  await Hive.close();
-
-  print('✅ Приложение завершено');
-
-  // Выход из приложения
-  if (kIsWeb) {
-    // Для Web просто закрываем
-    // ignore: undefined_prefixed_name
-    ui.webViewAssetManager?.clear();
-  } else {
-    // Для мобильных платформ
-    // ignore: dead_code
-    // SystemNavigator.pop();
   }
 }

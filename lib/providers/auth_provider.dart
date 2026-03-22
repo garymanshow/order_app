@@ -35,6 +35,10 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   bool _isOffline = false;
 
+  bool _clientSelected = false;
+
+  bool get clientSelected => _clientSelected;
+
   // 👇 ДЛЯ PUSH (только Web Push, без FCM)
   bool _pushSubscriptionAttempted = false;
   Timer? _pushReminderTimer;
@@ -632,10 +636,25 @@ class AuthProvider with ChangeNotifier {
 
   void setClient(Client client) {
     _currentUser = client;
+    _clientSelected = true;
+    notifyListeners();
+  }
+
+  // 🔥 СБРОС ВЫБРАННОГО КЛИЕНТА (при возврате к списку)
+  void resetClientSelection() {
+    _clientSelected = false;
+    notifyListeners();
+  }
+
+  // 🔥 ВЫБОР КЛИЕНТА (при входе в прайс-лист)
+  void selectClient(Client client) {
+    _currentUser = client;
+    _clientSelected = true;
     notifyListeners();
   }
 
   Future<void> logout() async {
+    _clientSelected = false;
     _pushSubscriptionAttempted = false;
     _pushReminderTimer?.cancel();
     _pushReminderTimer = null;

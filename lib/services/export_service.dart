@@ -1,6 +1,8 @@
 // lib/services/export_service.dart
 import 'dart:io';
+import 'dart:typed_data'; // 👈 ДОБАВЛЯЕМ ДЛЯ Uint8List
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -8,6 +10,11 @@ import '../models/product.dart';
 import '../models/nutrition_info.dart';
 import '../models/storage_condition.dart';
 import '../models/composition.dart';
+
+// 🔥 УСЛОВНЫЙ ИМПОРТ ДЛЯ WEB (только в браузере)
+// В Dart 3+ используем условную компиляцию
+// ignore: undefined_prefixed_name
+import 'dart:html' as html if (dart.library.html) 'dart:html';
 
 class ExportService {
   String format = 'pdf'; // 'pdf' или 'csv'
@@ -17,7 +24,7 @@ class ExportService {
   bool includeStorage = true;
   bool includePhotos = false;
 
-  Future<File?> generatePriceList({
+  Future<dynamic> generatePriceList({
     required List<Product> products,
     required String clientName,
     required String clientPhone,
@@ -26,22 +33,41 @@ class ExportService {
     Map<String, StorageCondition>? storageByProduct,
   }) async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-
-      if (format == 'csv') {
-        return await _generateCsv(products, directory, timestamp);
+      if (kIsWeb) {
+        // 🔥 ДЛЯ WEB — возвращаем Uint8List для скачивания
+        if (format == 'csv') {
+          final csvContent = await _generateCsvContent(products);
+          return utf8.encode(csvContent);
+        } else {
+          final pdfBytes = await _generatePdfBytes(
+            products,
+            clientName,
+            clientPhone,
+            compositionsByProduct,
+            nutritionByProduct,
+            storageByProduct,
+          );
+          return pdfBytes;
+        }
       } else {
-        return await _generatePdf(
-          products,
-          clientName,
-          clientPhone,
-          directory,
-          timestamp,
-          compositionsByProduct,
-          nutritionByProduct,
-          storageByProduct,
-        );
+        // 🔥 ДЛЯ МОБИЛЬНЫХ/ДЕСКТОП — сохраняем в файл
+        final directory = await getApplicationDocumentsDirectory();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+        if (format == 'csv') {
+          return await _generateCsvFile(products, directory, timestamp);
+        } else {
+          return await _generatePdfFile(
+            products,
+            clientName,
+            clientPhone,
+            directory,
+            timestamp,
+            compositionsByProduct,
+            nutritionByProduct,
+            storageByProduct,
+          );
+        }
       }
     } catch (e) {
       print('❌ Ошибка генерации прайс-листа: $e');
@@ -49,16 +75,12 @@ class ExportService {
     }
   }
 
-  // 📊 Генерация CSV
-  Future<File> _generateCsv(
-      List<Product> products, Directory directory, int timestamp) async {
-    final filePath = '${directory.path}/price_list_$timestamp.csv';
-    final file = File(filePath);
-
-    final headers = <String>[];
+  // 🔥 ДЛЯ WEB — генерация CSV как строка
+  Future<String> _generateCsvContent(List<Product> products) async {
     final rows = <List<String>>[];
 
     // Заголовки
+    final headers = <String>[];
     if (includeBasic) {
       headers.addAll(['ID', 'Наименование', 'Цена', 'Категория']);
     }
@@ -71,13 +93,11 @@ class ExportService {
     if (includeStorage) {
       headers.add('Условия хранения');
     }
-
     rows.add(headers);
 
     // Данные
     for (var product in products) {
       final row = <String>[];
-
       if (includeBasic) {
         row.addAll([
           product.id,
@@ -95,37 +115,29 @@ class ExportService {
       if (includeStorage) {
         row.add(_escapeCsv(product.storage));
       }
-
       rows.add(row);
     }
 
-    // Собираем CSV
-    final csvContent = rows.map((row) => row.join(';')).join('\r\n');
-    await file.writeAsString(csvContent, encoding: utf8);
-
-    return file;
+    return rows.map((row) => row.join(';')).join('\r\n');
   }
 
-  // 📄 Генерация PDF
-  Future<File> _generatePdf(
+  // 🔥 ДЛЯ WEB — генерация PDF как Uint8List
+  Future<Uint8List> _generatePdfBytes(
     List<Product> products,
     String clientName,
     String clientPhone,
-    Directory directory,
-    int timestamp, [
     Map<String, List<Composition>>? compositionsByProduct,
     Map<String, NutritionInfo>? nutritionByProduct,
     Map<String, StorageCondition>? storageByProduct,
-  ]) async {
+  ) async {
     final pdf = pw.Document();
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         build: (pw.Context context) => [
-          _buildHeader(context, clientName, clientPhone),
+          _buildHeader(clientName, clientPhone),
           ...products.map((product) => _buildProductCard(
-                context,
                 product,
                 compositionsByProduct?[product.id] ?? [],
                 nutritionByProduct?[product.id],
@@ -135,16 +147,48 @@ class ExportService {
       ),
     );
 
+    return await pdf.save();
+  }
+
+  // 🔥 ДЛЯ МОБИЛЬНЫХ — сохранение CSV в файл
+  Future<File> _generateCsvFile(
+      List<Product> products, Directory directory, int timestamp) async {
+    final filePath = '${directory.path}/price_list_$timestamp.csv';
+    final file = File(filePath);
+    final csvContent = await _generateCsvContent(products);
+    await file.writeAsString(csvContent, encoding: utf8);
+    return file;
+  }
+
+  // 🔥 ДЛЯ МОБИЛЬНЫХ — сохранение PDF в файл
+  Future<File> _generatePdfFile(
+    List<Product> products,
+    String clientName,
+    String clientPhone,
+    Directory directory,
+    int timestamp, [
+    Map<String, List<Composition>>? compositionsByProduct,
+    Map<String, NutritionInfo>? nutritionByProduct,
+    Map<String, StorageCondition>? storageByProduct,
+  ]) async {
+    final pdfBytes = await _generatePdfBytes(
+      products,
+      clientName,
+      clientPhone,
+      compositionsByProduct,
+      nutritionByProduct,
+      storageByProduct,
+    );
+
     final filePath = '${directory.path}/price_list_$timestamp.pdf';
     final file = File(filePath);
-    await file.writeAsBytes(await pdf.save());
+    await file.writeAsBytes(pdfBytes);
 
     return file;
   }
 
-  // Заголовок PDF
-  pw.Widget _buildHeader(
-      pw.Context context, String clientName, String clientPhone) {
+  // Заголовок PDF (без контекста)
+  pw.Widget _buildHeader(String clientName, String clientPhone) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -184,8 +228,7 @@ class ExportService {
                   padding: const pw.EdgeInsets.all(8),
                   decoration: pw.BoxDecoration(
                     color: PdfColors.grey200,
-                    borderRadius:
-                        const pw.BorderRadius.all(pw.Radius.circular(4)),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
                   ),
                   child: pw.Text(
                     'Пароль: ${_generateRandomPassword()}',
@@ -209,7 +252,6 @@ class ExportService {
 
   // Карточка товара в PDF
   pw.Widget _buildProductCard(
-    pw.Context context,
     Product product,
     List<Composition> compositions,
     NutritionInfo? nutrition,
@@ -225,7 +267,6 @@ class ExportService {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          // Заголовок
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -249,7 +290,6 @@ class ExportService {
           ),
           pw.SizedBox(height: 8),
 
-          // Состав
           if (includeComposition && compositions.isNotEmpty) ...[
             pw.Text(
               'Состав:',
@@ -259,7 +299,6 @@ class ExportService {
             ...compositions.map((comp) => pw.Padding(
                   padding: const pw.EdgeInsets.only(left: 8),
                   child: pw.Text(
-                    // 🔥 ИСПРАВЛЕНО: unitSymbol вместо unit
                     '• ${comp.ingredientName} — ${comp.quantity} ${comp.unitSymbol}',
                     style: const pw.TextStyle(fontSize: 12),
                   ),
@@ -267,7 +306,6 @@ class ExportService {
             pw.SizedBox(height: 8),
           ],
 
-          // КБЖУ
           if (includeNutrition && nutrition != null) ...[
             pw.Text(
               'КБЖУ:',
@@ -298,7 +336,6 @@ class ExportService {
             pw.SizedBox(height: 8),
           ],
 
-          // Условия хранения
           if (includeStorage && storage != null) ...[
             pw.Text(
               'Условия хранения:',
