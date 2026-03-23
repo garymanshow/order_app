@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../generated/auth_assets.dart';
 import '../providers/auth_provider.dart';
+import '../services/cache_service.dart';
 import '../utils/phone_validator.dart';
 import '../widgets/app_image.dart';
 
@@ -58,7 +59,6 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
   }
 
   Future<void> _handleLogin() async {
-    // Нормализуем телефон перед отправкой
     final rawPhone = _phoneController.text.trim();
     final phone = PhoneValidator.normalizePhone(rawPhone);
 
@@ -73,11 +73,17 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      // 🔥 ИСПРАВЛЕНО: передаем context в метод login
-      await authProvider.login(
-        phone,
-        context: context, // 👈 ДОБАВЛЯЕМ context
-      );
+      final cacheService = Provider.of<CacheService>(context, listen: false);
+
+      await authProvider.login(phone, context: context);
+
+      // 🔥 СОХРАНЯЕМ, что устройство использовано + последний телефон
+      await cacheService.markAsUsed();
+      await cacheService.saveLastPhone(phone);
+
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -4,40 +4,51 @@ import 'package:provider/provider.dart';
 import '../models/employee.dart';
 import '../models/client.dart';
 import '../providers/auth_provider.dart';
-import 'auth_phone_screen.dart';
+import '../services/cache_service.dart';
 import 'admin/admin_dashboard_screen.dart';
+import 'admin/admin_warehouse_screen.dart';
+import 'site/landing_screen.dart';
+import 'auth_phone_screen.dart';
+import 'client_selection_screen.dart';
 import 'driver_screen.dart';
 import 'manager/manager_dashboard_screen.dart';
-import 'admin/admin_warehouse_screen.dart';
 import 'role_selection_screen.dart';
 import 'price_list_screen.dart';
-import 'client_selection_screen.dart';
 
 class AuthOrHomeRouter extends StatelessWidget {
+  const AuthOrHomeRouter({super.key});
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final cacheService = Provider.of<CacheService>(context, listen: false);
 
     print('🔄 AuthOrHomeRouter build:');
     print('   - isLoading: ${authProvider.isLoading}');
     print('   - isAuthenticated: ${authProvider.isAuthenticated}');
-    print('   - currentUser: ${authProvider.currentUser?.phone}');
-    print('   - clientSelected: ${authProvider.clientSelected}');
 
+    // 🔥 ЗАГРУЗКА
     if (authProvider.isLoading) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
-    if (!authProvider.isAuthenticated) {
-      return AuthPhoneScreen();
+    // 🔥 АВТОРИЗОВАН → сразу к прайсу/дашборду
+    if (authProvider.isAuthenticated) {
+      return _buildAuthenticatedRoute(authProvider);
     }
 
-    // Проверка множественных ролей
+    // 🔥 НЕ АВТОРИЗОВАН → проверяем, новое ли устройство
+    return _buildUnauthenticatedRoute(cacheService);
+  }
+
+  // 🔥 МАРШРУТ ДЛЯ АВТОРИЗОВАННОГО
+  Widget _buildAuthenticatedRoute(AuthProvider authProvider) {
     if (authProvider.hasMultipleRoles) {
       return RoleSelectionScreen(roles: authProvider.availableRoles!);
     }
 
-    // Для сотрудников
     if (authProvider.isEmployee) {
       final employee = authProvider.currentUser as Employee;
       switch (employee.role) {
@@ -54,8 +65,32 @@ class AuthOrHomeRouter extends StatelessWidget {
       }
     }
 
-    // Для клиентов
     return ClientRouterScreen();
+  }
+
+  // 🔥 МАРШРУТ ДЛЯ НЕАВТОРИЗОВАННОГО (НОВАЯ ЛОГИКА!)
+  Widget _buildUnauthenticatedRoute(CacheService cacheService) {
+    return FutureBuilder<bool>(
+      future: cacheService.hasBeenUsed(),
+      builder: (context, snapshot) {
+        // Пока проверяем кэш — показываем загрузку
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        // 🔥 НОВОЕ УСТРОЙСТВО → показываем лендинг
+        if (snapshot.data == false || snapshot.hasError) {
+          print('🎯 Новое устройство → LandingScreen');
+          return LandingScreen();
+        }
+
+        // 🔥 ВОЗВРАЩАЮЩИЙСЯ ПОЛЬЗОВАТЕЛЬ → сразу вход
+        print('🎯 Возвращающийся пользователь → AuthPhoneScreen');
+        return AuthPhoneScreen();
+      },
+    );
   }
 }
 

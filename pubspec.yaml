@@ -63,4 +63,5 @@ flutter:
     - assets/fonts/Lora-Regular.ttf
     - assets/fonts/Lora-Bold.ttf
     - assets/images/auth/
+    - assets/images/web/
     - assets/images/products/

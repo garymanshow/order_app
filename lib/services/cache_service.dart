@@ -22,6 +22,9 @@ class CacheService {
   static const String _unitsBox = 'units';
   static const String _pendingOperationsBox = 'pending_operations';
   static const String _metadataBox = 'metadata';
+  // 🔥 КЛЮЧИ ДЛЯ ХРАНЕНИЯ ФЛАГОВ
+  static const String _keyHasBeenUsed = 'app_has_been_used';
+  static const String _keyLastPhone = 'last_login_phone';
 
   static CacheService? _instance;
   late Box<OrderItem> _orders;
@@ -395,6 +398,56 @@ class CacheService {
     await _orders.clear();
     await _pendingOperations.clear();
     print('🗑️ Пользовательские данные очищены');
+  }
+
+  // 🔥 ПРОВЕРКА: было ли устройство использовано ранее?
+  Future<bool> hasBeenUsed() async {
+    try {
+      final box = await _getBox('settings');
+      return box.get(_keyHasBeenUsed, defaultValue: false) as bool;
+    } catch (e) {
+      print('⚠️ Ошибка проверки hasBeenUsed: $e');
+      return false;
+    }
+  }
+
+  // 🔥 ОТМЕТКА: устройство использовано
+  Future<void> markAsUsed() async {
+    try {
+      final box = await _getBox('settings');
+      await box.put(_keyHasBeenUsed, true);
+    } catch (e) {
+      print('⚠️ Ошибка markAsUsed: $e');
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ последнего телефона
+  Future<String?> getLastPhone() async {
+    try {
+      final box = await _getBox('settings');
+      return box.get(_keyLastPhone) as String?;
+    } catch (e) {
+      print('⚠️ Ошибка getLastPhone: $e');
+      return null;
+    }
+  }
+
+  // 🔥 СОХРАНЕНИЕ телефона
+  Future<void> saveLastPhone(String phone) async {
+    try {
+      final box = await _getBox('settings');
+      await box.put(_keyLastPhone, phone);
+    } catch (e) {
+      print('⚠️ Ошибка saveLastPhone: $e');
+    }
+  }
+
+  // 🔥 ВСПОМОГАТЕЛЬНЫЙ МЕТОД для получения бокса
+  Future<Box> _getBox(String name) async {
+    if (Hive.isBoxOpen(name)) {
+      return Hive.box(name);
+    }
+    return await Hive.openBox(name);
   }
 
   // ==================== СТАТУС ====================

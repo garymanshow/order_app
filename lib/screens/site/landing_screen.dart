@@ -1,10 +1,10 @@
 // lib/screens/site/landing_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
-import '../../providers/auth_provider.dart';
+import '../../services/cache_service.dart';
 import '../../models/product.dart';
-import '../../models/price_category.dart';
 import '../auth_phone_screen.dart';
 import '../price_list_screen.dart';
 
@@ -17,9 +17,21 @@ class LandingScreen extends StatefulWidget {
 
 class _LandingScreenState extends State<LandingScreen> {
   final ApiService _apiService = ApiService();
+  final GlobalKey _productsSectionKey = GlobalKey();
+
+  // 🔥 АНИМИРОВАННЫЕ ПОДЗАГОЛОВКИ
+  final List<String> _heroSubtitles = [
+    'Готовый формат для увеличения чека вашей торговой точки',
+    'Премиум десерты в инновационной упаковке с кольцом',
+    'Срок реализации до 7 суток — минимальные списания',
+    'Маржинальность 40-60% для вашего бизнеса',
+    'Доставка по всей Сибири точно в срок',
+  ];
+
+  int _currentSubtitleIndex = 0;
+  Timer? _subtitleTimer;
 
   List<Product> _products = [];
-  List<PriceCategory> _categories = [];
   bool _isLoading = true;
   String? _error;
 
@@ -27,9 +39,43 @@ class _LandingScreenState extends State<LandingScreen> {
   void initState() {
     super.initState();
     _loadPublicData();
+    _startSubtitleRotation();
   }
 
-  // 🔥 ЗАГРУЗКА ПУБЛИЧНЫХ ДАННЫХ (без авторизации)
+  @override
+  void dispose() {
+    _subtitleTimer?.cancel();
+    super.dispose();
+  }
+
+  // 🔥 РОТАЦИЯ ТЕКСТА
+  void _startSubtitleRotation() {
+    _subtitleTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (mounted) {
+        setState(() {
+          _currentSubtitleIndex =
+              (_currentSubtitleIndex + 1) % _heroSubtitles.length;
+        });
+      }
+    });
+  }
+
+  // 🔥 ПРОКРУТКА К ТОВАРАМ
+  void _scrollToProducts() {
+    Future.delayed(const Duration(milliseconds: 200), () {
+      final context = _productsSectionKey.currentContext;
+      if (context != null) {
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+          alignment: 0.1,
+        );
+      }
+    });
+  }
+
+  // 🔥 ЗАГРУЗКА ТОВАРОВ
   Future<void> _loadPublicData() async {
     setState(() {
       _isLoading = true;
@@ -37,13 +83,7 @@ class _LandingScreenState extends State<LandingScreen> {
     });
 
     try {
-      // Загружаем категории и товары
-      final categories = await _apiService.fetchPriceCategories();
       final productsData = await _apiService.fetchProducts();
-
-      if (categories != null) {
-        setState(() => _categories = categories);
-      }
 
       if (productsData != null) {
         setState(() {
@@ -62,123 +102,206 @@ class _LandingScreenState extends State<LandingScreen> {
         _error = 'Ошибка подключения: $e';
         _isLoading = false;
       });
-      print('❌ Ошибка загрузки публичных данных: $e');
+      print('❌ Ошибка загрузки: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // App Bar
-          SliverAppBar(
-            expandedHeight: 120,
-            floating: false,
-            pinned: true,
-            backgroundColor: const Color(0xFF5D4037),
-            flexibleSpace: FlexibleSpaceBar(
-              title: const Text(
-                'Вкусные моменты',
-                style: TextStyle(
-                  fontFamily: 'PlayfairDisplay',
-                  fontWeight: FontWeight.bold,
-                  fontSize: 24,
-                ),
+      // 🔥 ПРОСТОЙ СКРОЛЛ ВМЕСТО CustomScrollView
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // 🔥 APP BAR (как обычный виджет, не Sliver)
+            _buildAppBar(),
+
+            // 🔥 HERO СЕКЦИЯ
+            _buildHeroSection(),
+
+            // 🔥 ВИТРИНА ТОВАРОВ
+            _buildProductsShowcase(),
+
+            // 🔥 О НАС
+            _buildAboutSection(),
+
+            // 🔥 ПРЕИМУЩЕСТВА
+            _buildFeaturesSection(),
+
+            // 🔥 КОНТАКТЫ
+            _buildContactSection(),
+
+            // 🔥 FOOTER
+            _buildFooter(),
+          ],
+        ),
+      ),
+
+      // 🔥 ПЛАВАЮЩИЕ КНОПКИ (FAB)
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 16.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const SizedBox(width: 16), // Отступ слева для баланса
+            FloatingActionButton.extended(
+              onPressed: () => _navigateToLogin(),
+              backgroundColor: const Color(0xFF5D4037),
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              label: const Text(
+                'Стать партнёром',
+                style: TextStyle(color: Colors.white),
               ),
-              background: Container(color: const Color(0xFF5D4037)),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => _navigateToLogin(),
-                child: const Text(
-                  'Войти для опта',
-                  style: TextStyle(color: Colors.white, fontSize: 14),
+            FloatingActionButton.extended(
+              onPressed: () => _navigateToLogin(),
+              backgroundColor: const Color(0xFF5D4037),
+              icon: const Icon(Icons.login, color: Colors.white),
+              label: const Text(
+                'Войти для опта',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+            const SizedBox(width: 16), // Отступ справа для баланса
+          ],
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+    );
+  }
+
+  // 🔥 APP BAR КАК ОБЫЧНЫЙ ВИДЖЕТ
+  Widget _buildAppBar() {
+    return Container(
+      height: 120,
+      color: const Color(0xFF5D4037).withValues(alpha: 0.95),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Вкусные моменты',
+            style: TextStyle(
+              fontFamily: 'PlayfairDisplay',
+              fontWeight: FontWeight.bold,
+              fontSize: 24,
+              color: Colors.white,
+            ),
+          ),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                '+7 (391) 200-12-34',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(width: 16),
+              const Text(
+                'Пн-Пт: 9:00 - 18:00',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                ),
+              ),
             ],
           ),
-
-          // Hero секция
-          SliverToBoxAdapter(child: _buildHeroSection()),
-
-          // Витрина товаров
-          if (!_isLoading && _error == null)
-            SliverToBoxAdapter(child: _buildProductsShowcase())
-          else if (_isLoading)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            )
-          else
-            SliverToBoxAdapter(child: _buildErrorSection()),
-
-          // О нас
-          SliverToBoxAdapter(child: _buildAboutSection()),
-
-          // Преимущества
-          SliverToBoxAdapter(child: _buildFeaturesSection()),
-
-          // Контакты
-          SliverToBoxAdapter(child: _buildContactSection()),
-
-          // Footer
-          SliverToBoxAdapter(child: _buildFooter()),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _navigateToLogin(),
-        backgroundColor: const Color(0xFF5D4037),
-        icon: const Icon(Icons.shopping_bag, color: Colors.white),
-        label: const Text(
-          'Стать партнёром',
-          style: TextStyle(color: Colors.white),
-        ),
       ),
     );
   }
 
-  // 🔥 HERO СЕКЦИЯ
+  // 🔥 HERO СЕКЦИЯ (без изображений, градиентный фон)
   Widget _buildHeroSection() {
     return Container(
-      height: 500,
+      height: 600,
+      width: double.infinity,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFF5F5DC), Color(0xFFFFF8E1)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFF5F5DC),
+            Color(0xFFFFF8E1),
+            Color(0xFF5D4037),
+          ],
+          stops: [0.0, 0.6, 1.0],
         ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 40),
+
+          // Заголовок
           const Text(
             'Премиум кондитерские изделия\nдля вашего бизнеса',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'PlayfairDisplay',
-              fontSize: 36,
+              fontSize: 42,
               fontWeight: FontWeight.bold,
               color: Color(0xFF5D4037),
               height: 1.2,
             ),
           ),
+
           const SizedBox(height: 20),
-          const Text(
-            'Готовый формат для увеличения чека\nвашей торговой точки',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: 'Lora',
-              fontSize: 18,
-              color: Color(0xFF757575),
-              height: 1.5,
+
+          // 🔥 АНИМИРОВАННЫЙ ПОДЗАГОЛОВОК
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 500),
+            transitionBuilder: (child, animation) {
+              return SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.3),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                ),
+                child: FadeTransition(opacity: animation, child: child),
+              );
+            },
+            child: Text(
+              _heroSubtitles[_currentSubtitleIndex],
+              key: ValueKey<int>(_currentSubtitleIndex),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Lora',
+                fontSize: 20,
+                color: Color(0xFF757575),
+                height: 1.5,
+              ),
             ),
           ),
+
+          // 🔥 ИНДИКАТОР ТЕКСТА
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              _heroSubtitles.length,
+              (index) => AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                width: _currentSubtitleIndex == index ? 20 : 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _currentSubtitleIndex == index
+                      ? const Color(0xFF5D4037)
+                      : const Color(0xFF5D4037).withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
+
           const SizedBox(height: 40),
+
+          // Кнопки действий
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -193,6 +316,7 @@ class _LandingScreenState extends State<LandingScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(25),
                   ),
+                  elevation: 4,
                 ),
                 child: const Text(
                   'Войти для опта',
@@ -200,18 +324,13 @@ class _LandingScreenState extends State<LandingScreen> {
                     fontFamily: 'PlayfairDisplay',
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
+                    color: Colors.white,
                   ),
                 ),
               ),
               const SizedBox(width: 16),
               OutlinedButton(
-                onPressed: () {
-                  // Прокрутка к товарам
-                  Scrollable.ensureVisible(
-                    context.findRenderObject() ?? RenderObject(),
-                    duration: const Duration(milliseconds: 500),
-                  );
-                },
+                onPressed: _scrollToProducts,
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Color(0xFF5D4037), width: 2),
                   padding: const EdgeInsets.symmetric(
@@ -234,7 +353,22 @@ class _LandingScreenState extends State<LandingScreen> {
               ),
             ],
           ),
+
           const SizedBox(height: 40),
+
+          // 🔥 СТРЕЛКА — КЛИКАБЕЛЬНАЯ
+          GestureDetector(
+            onTap: _scrollToProducts,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 1500),
+              curve: Curves.easeInOut,
+              child: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 40,
+                color: const Color(0xFF5D4037).withValues(alpha: 0.6),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -242,48 +376,79 @@ class _LandingScreenState extends State<LandingScreen> {
 
   // 🔥 ВИТРИНА ТОВАРОВ
   Widget _buildProductsShowcase() {
-    final showcaseProducts = _products.take(6).toList();
-
     return Container(
+      key: _productsSectionKey,
       padding: const EdgeInsets.all(24),
       color: Colors.white,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start, // 👈 Оставляем для сетки товаров
         children: [
-          const Text(
-            'Наш ассортимент',
-            style: TextStyle(
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF5D4037),
+          // 🔥 ЦЕНТРИРУЕМ ЗАГОЛОВКИ
+          Center(
+            child: Column(
+              children: [
+                const Text(
+                  'Наш ассортимент',
+                  style: TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF5D4037),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Премиум десерты в удобной упаковке',
+                  style: TextStyle(
+                    fontFamily: 'Lora',
+                    fontSize: 16,
+                    color: Color(0xFF757575),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Премиум десерты в удобной упаковке',
-            style: TextStyle(
-              fontFamily: 'Lora',
-              fontSize: 16,
-              color: Color(0xFF757575),
-            ),
-          ),
+
           const SizedBox(height: 32),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.75,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
+
+          // Сетка товаров (остаётся слева)
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator())
+          else if (_error != null)
+            Center(
+              child: Column(
+                children: [
+                  Text('❌ $_error', style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadPublicData,
+                    child: const Text('Попробовать снова'),
+                  ),
+                ],
+              ),
+            )
+          else if (_products.isEmpty)
+            const Center(child: Text('Товары не найдены'))
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 0.75,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+              ),
+              itemCount: _products.take(6).length,
+              itemBuilder: (context, index) {
+                return _buildProductCard(_products[index]);
+              },
             ),
-            itemCount: showcaseProducts.length,
-            itemBuilder: (context, index) {
-              return _buildProductCard(showcaseProducts[index]);
-            },
-          ),
+
           const SizedBox(height: 24),
+
+          // Кнопка "Смотреть весь прайс-лист" — тоже центрируем
           Center(
             child: TextButton(
               onPressed: () => _navigateToLogin(),
@@ -303,7 +468,6 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 КАРТОЧКА ТОВАРА
   Widget _buildProductCard(Product product) {
     return Container(
       decoration: BoxDecoration(
@@ -311,7 +475,7 @@ class _LandingScreenState extends State<LandingScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -330,22 +494,16 @@ class _LandingScreenState extends State<LandingScreen> {
                 ),
               ),
               child: Center(
-                child: product.photoUrl != null && product.photoUrl!.isNotEmpty
+                child: product.imageUrl != null && product.imageUrl!.isNotEmpty
                     ? Image.network(
-                        product.photoUrl!,
+                        product.imageUrl!,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
-                          Icons.cake,
-                          size: 64,
-                          color: Color(0xFF5D4037),
-                        ),
+                            const Icon(Icons.cake,
+                                size: 64, color: Color(0xFF5D4037)),
                       )
-                    : const Icon(
-                        Icons.cake,
-                        size: 64,
-                        color: Color(0xFF5D4037),
-                      ),
+                    : const Icon(Icons.cake,
+                        size: 64, color: Color(0xFF5D4037)),
               ),
             ),
           ),
@@ -384,7 +542,7 @@ class _LandingScreenState extends State<LandingScreen> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF5D4037).withOpacity(0.1),
+                        color: const Color(0xFF5D4037).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -406,7 +564,7 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 О НАС
+  // 🔥 ОСТАЛЬНЫЕ СЕКЦИИ (без изменений, просто скопируйте из вашего кода)
   Widget _buildAboutSection() {
     return Container(
       padding: const EdgeInsets.all(32),
@@ -486,7 +644,6 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 ПРЕИМУЩЕСТВА
   Widget _buildFeaturesSection() {
     final features = [
       {
@@ -581,7 +738,6 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 КОНТАКТЫ
   Widget _buildContactSection() {
     return Container(
       padding: const EdgeInsets.all(32),
@@ -660,7 +816,6 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 FOOTER
   Widget _buildFooter() {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -689,7 +844,6 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 ОШИБКА
   Widget _buildErrorSection() {
     return Container(
       padding: const EdgeInsets.all(32),
@@ -709,19 +863,20 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 НАВИГАЦИЯ К ВХОДУ
-  void _navigateToLogin() {
-    Navigator.push(
+  void _navigateToLogin() async {
+    final cacheService = Provider.of<CacheService>(context, listen: false);
+
+    final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const AuthPhoneScreen()),
-    ).then((result) {
-      // Если успешно вошли - переходим к прайс-листу
-      if (result == true && mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const PriceListScreen()),
-        );
-      }
-    });
+      MaterialPageRoute(builder: (_) => AuthPhoneScreen()),
+    );
+
+    if (result == true && mounted) {
+      await cacheService.markAsUsed();
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const PriceListScreen()),
+      );
+    }
   }
 }
