@@ -14,7 +14,7 @@ dependencies:
   collection: ^1.19.1
   connectivity_plus: ^7.0.0
   contacts_service: ^0.6.3
-  cryptography: ^2.9.0  # для шифрования Web Push
+  cryptography: ^2.9.0 # для шифрования Web Push
   dio: ^5.7.0
   flutter:
     sdk: flutter
@@ -41,7 +41,7 @@ dependencies:
   shared_preferences: ^2.5.4
   table_calendar: ^3.2.0
   telephony: ^0.1.4 # для получения номера телефона (Android)
-    
+
 dev_dependencies:
   hive_generator: ^2.0.0
   build_runner: ^2.4.0
@@ -49,9 +49,18 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
+  fonts:
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-VariableFont_wght.ttf
+        - asset: assets/fonts/PlayfairDisplay-Italic-VariableFont_wght.ttf
   uses-material-design: true
   assets:
     - .env
     - assets/.env
+    - assets/fonts/PlayfairDisplay-Regular.ttf
+    - assets/fonts/PlayfairDisplay-Bold.ttf
+    - assets/fonts/Lora-Regular.ttf
+    - assets/fonts/Lora-Bold.ttf
     - assets/images/auth/
     - assets/images/products/

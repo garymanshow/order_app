@@ -172,9 +172,12 @@ class MyAppContent extends StatelessWidget {
       child: MaterialApp(
         navigatorKey: navigatorKey,
         title: 'Вкусные моменты',
-        theme: ThemeData.light(),
-        darkTheme: ThemeData.dark(),
+
+        // 🔥 НАСТРОЙКА ТЕМ СО ШРИФТОМ ПО УМОЛЧАНИЮ
+        theme: _buildThemeData(Brightness.light),
+        darkTheme: _buildThemeData(Brightness.dark),
         themeMode: themeProvider.themeMode,
+
         home: AuthOrHomeRouter(),
         debugShowCheckedModeBanner: false,
 
@@ -208,6 +211,135 @@ class MyAppContent extends StatelessWidget {
             );
           },
         },
+      ),
+    );
+  }
+
+  // 🔥 ВСПОМОГАТЕЛЬНЫЙ МЕТОД: сборка ThemeData с кастомным шрифтом
+  ThemeData _buildThemeData(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+
+    // Цвета для светлой/тёмной темы
+    final scaffoldColor = isDark ? const Color(0xFF121212) : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.grey[900]!;
+    final secondaryColor = isDark ? Colors.grey[400]! : Colors.grey[600]!;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
+    // Акцентный цвет — шоколадный для кондитерской 🍫
+    final seedColor = const Color(0xFF5D4037);
+
+    return ThemeData(
+      // 🔥 ШРИФТ ПО УМОЛЧАНИЮ — задаём прямо в конструкторе
+      fontFamily: 'PlayfairDisplay',
+
+      brightness: brightness,
+      scaffoldBackgroundColor: scaffoldColor,
+      cardColor: cardColor,
+
+      // Цветовая схема
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: seedColor,
+        brightness: brightness,
+      ),
+
+      // Настройка типографики
+      textTheme: _buildCustomTextTheme(brightness),
+
+      // Компоненты
+      useMaterial3: true,
+
+      // AppBar
+      appBarTheme: AppBarTheme(
+        backgroundColor: seedColor,
+        foregroundColor: Colors.white,
+        titleTextStyle: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+      ),
+
+      // Кнопки
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: seedColor,
+          foregroundColor: Colors.white,
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
+        ),
+      ),
+
+      // Текстовые поля
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        labelStyle: TextStyle(color: secondaryColor),
+      ),
+    );
+  }
+
+  // 🔥 КАСТОМНАЯ ТИПОГРАФИКА для Playfair Display
+  TextTheme _buildCustomTextTheme(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.grey[900]!;
+    final secondaryColor = isDark ? Colors.grey[400]! : Colors.grey[600]!;
+
+    return TextTheme(
+      // Заголовки экранов
+      headlineLarge: TextStyle(
+        fontSize: 32,
+        fontWeight: FontWeight.w700,
+        color: textColor,
+        height: 1.2,
+      ),
+      headlineMedium: TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+        color: textColor,
+        height: 1.3,
+      ),
+
+      // Подзаголовки
+      titleLarge: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        color: textColor,
+      ),
+      titleMedium: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: textColor,
+      ),
+
+      // Основной текст
+      bodyLarge: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w400,
+        color: textColor,
+        height: 1.5,
+      ),
+      bodyMedium: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        color: secondaryColor,
+        height: 1.4,
+      ),
+
+      // Второстепенный текст
+      bodySmall: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        color: secondaryColor,
+      ),
+
+      // Кнопки
+      labelLarge: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: Colors.white,
       ),
     );
   }
