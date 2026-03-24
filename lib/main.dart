@@ -43,60 +43,68 @@ late UnitService unitService;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 🔥 ОТКЛЮЧАЕМ ПРОВЕРКУ ТИПОВ ДЛЯ PROVIDER
   Provider.debugCheckInvalidValueType = null;
 
-  // 🔥 ИНИЦИАЛИЗАЦИЯ EnvService
+  // 🔥 КРИТИЧНАЯ ИНИЦИАЛИЗАЦИЯ (до показа UI)
   await EnvService.init();
+  print('✅ EnvService инициализирован');
 
-  // 🔥 ИНИЦИАЛИЗАЦИЯ HIVE
   await Hive.initFlutter();
   print('✅ Hive инициализирован');
 
-  // 🔥 ИНИЦИАЛИЗАЦИЯ КЭША
   cacheService = await CacheService.getInstance();
   print('✅ CacheService инициализирован');
 
-  // 🔥 ИНИЦИАЛИЗАЦИЯ СЕРВИСА ЕДИНИЦ ИЗМЕРЕНИЯ
   unitService = UnitService(ApiService());
-  await unitService.loadUnits();
+  await unitService.loadUnits(); // 🔥 Это может быть медленно, но нужно для UI
   print('✅ UnitService инициализирован');
 
-  // 🔥 ИНИЦИАЛИЗАЦИЯ СЕРВИСА СИНХРОНИЗАЦИИ
-  syncService = SyncService();
-  await syncService.initialize();
-  print('✅ SyncService инициализирован');
+  // 🔥 СРАЗУ ПОКАЗЫВАЕМ ПРИЛОЖЕНИЕ
+  runApp(MyApp());
 
-  // Проверяем соединение с API
-  await _testApiConnection();
+  // 🔥 НЕ КРИТИЧНОЕ — В ФОНЕ
+  Future.microtask(() async {
+    print('🔄 Фоновая инициализация...');
 
-  // Инициализация кэша предзагрузки
-  final preloader = ImagePreloader();
-  await preloader.initCache();
+    try {
+      // SyncService
+      syncService = SyncService();
+      await syncService.initialize();
+      print('✅ SyncService инициализирован');
 
-  // Предзагрузка фонов авторизации
-  await preloader.preloadAuthBackgrounds();
+      // Предзагрузка изображений
+      final preloader = ImagePreloader();
+      await preloader.initCache();
+      await preloader.preloadAuthBackgrounds();
+      print('✅ Изображения предзагружены');
 
-  // Инициализация локализации дат для русского языка
-  await initializeDateFormatting('ru_RU', null);
-  print('✅ Локализация дат инициализирована');
+      // Локализация
+      await initializeDateFormatting('ru_RU', null);
+      print('✅ Локализация инициализирована');
 
-  // Запускаем автосинхронизацию
-  syncService.startPeriodicSync();
+      // Запуск синхронизации
+      syncService.startPeriodicSync();
+      print('✅ Синхронизация запущена');
 
-  // Подписываемся на изменения подключения
-  Connectivity().onConnectivityChanged.listen((result) {
-    if (result != ConnectivityResult.none) {
-      print('🌐 Интернет появился, запускаем синхронизацию');
-      syncService.sync();
+      // Подписка на интернет
+      Connectivity().onConnectivityChanged.listen((result) {
+        if (result != ConnectivityResult.none) {
+          syncService.sync();
+        }
+      });
+
+      // Тест API в фоне
+      await _testApiConnection();
+
+      print('✅ Фоновая инициализация завершена!');
+    } catch (e, stack) {
+      print('❌ Ошибка фона: $e');
+      print('Stack: $stack');
     }
   });
-
-  runApp(MyApp());
 }
 
-// 🔥 Тестирование соединения с API
+// 🔥 Тестирование соединения с API (теперь в фоне)
 Future<void> _testApiConnection() async {
   print('\n🔧 ===== ПРОВЕРКА СОЕДИНЕНИЯ С API =====');
 
@@ -178,7 +186,7 @@ class MyAppContent extends StatelessWidget {
         darkTheme: _buildThemeData(Brightness.dark),
         themeMode: themeProvider.themeMode,
 
-        home: AuthOrHomeRouter(),
+        home: const AuthOrHomeRouter(), // 🔥 const для оптимизации
         debugShowCheckedModeBanner: false,
 
         // Локализация Material-компонентов

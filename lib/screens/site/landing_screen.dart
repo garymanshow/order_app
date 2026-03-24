@@ -32,14 +32,27 @@ class _LandingScreenState extends State<LandingScreen> {
   Timer? _subtitleTimer;
 
   List<Product> _products = [];
-  bool _isLoading = true;
+  bool _isLoading = true; // 🔥 Показываем скелетоны сразу
   String? _error;
+
+  // 🔥 КОНТАКТЫ АДМИНА (динамические)
+  Map<String, String>? _adminContact;
 
   @override
   void initState() {
     super.initState();
-    _loadPublicData();
+
+    // 🔥 ПОКАЗЫВАЕМ UI СРАЗУ (скелетоны)
+    setState(() => _isLoading = true);
+
+    // 🔥 ЗАПУСКАЕМ РОТАЦИЮ ТЕКСТА СРАЗУ
     _startSubtitleRotation();
+
+    // 🔥 ГРУЗИМ ДАННЫЕ В ФОНЕ (не блокирует UI)
+    Future.microtask(() async {
+      await _loadPublicData();
+      await _loadAdminContact();
+    });
   }
 
   @override
@@ -75,75 +88,75 @@ class _LandingScreenState extends State<LandingScreen> {
     });
   }
 
-  // 🔥 ЗАГРУЗКА ТОВАРОВ
+  // 🔥 ЗАГРУЗКА ТОВАРОВ (ФОН)
   Future<void> _loadPublicData() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
     try {
+      print('🔍 Загрузка товаров (фон)...');
       final productsData = await _apiService.fetchProducts();
 
-      if (productsData != null) {
+      if (mounted) {
+        if (productsData != null) {
+          setState(() {
+            _products =
+                productsData.map((item) => Product.fromJson(item)).toList();
+            _isLoading = false;
+          });
+          print('✅ Товары загружены: ${_products.length}');
+        } else {
+          setState(() {
+            _error = 'Не удалось загрузить товары';
+            _isLoading = false;
+          });
+          print('❌ Товары не загружены');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         setState(() {
-          _products =
-              productsData.map((item) => Product.fromJson(item)).toList();
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _error = 'Не удалось загрузить товары';
+          _error = 'Ошибка подключения: $e';
           _isLoading = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _error = 'Ошибка подключения: $e';
-        _isLoading = false;
-      });
       print('❌ Ошибка загрузки: $e');
+    }
+  }
+
+  // 🔥 ЗАГРУЗКА КОНТАКТОВ АДМИНА (ФОН)
+  Future<void> _loadAdminContact() async {
+    try {
+      print('🔍 Загрузка контактов админа (фон)...');
+      final contact = await _apiService.fetchAdminContact();
+      if (mounted && contact != null) {
+        setState(() => _adminContact = contact);
+        print('✅ Контакты загружены');
+      }
+    } catch (e) {
+      print('⚠️ Контакты не загружены (используем запасные): $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 🔥 ПРОСТОЙ СКРОЛЛ ВМЕСТО CustomScrollView
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // 🔥 APP BAR (как обычный виджет, не Sliver)
             _buildAppBar(),
-
-            // 🔥 HERO СЕКЦИЯ
             _buildHeroSection(),
-
-            // 🔥 ВИТРИНА ТОВАРОВ
             _buildProductsShowcase(),
-
-            // 🔥 О НАС
             _buildAboutSection(),
-
-            // 🔥 ПРЕИМУЩЕСТВА
             _buildFeaturesSection(),
-
-            // 🔥 КОНТАКТЫ
             _buildContactSection(),
-
-            // 🔥 FOOTER
             _buildFooter(),
           ],
         ),
       ),
-
-      // 🔥 ПЛАВАЮЩИЕ КНОПКИ (FAB)
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 16.0),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const SizedBox(width: 16), // Отступ слева для баланса
+            const SizedBox(width: 16),
             FloatingActionButton.extended(
               onPressed: () => _navigateToLogin(),
               backgroundColor: const Color(0xFF5D4037),
@@ -162,7 +175,7 @@ class _LandingScreenState extends State<LandingScreen> {
                 style: TextStyle(color: Colors.white),
               ),
             ),
-            const SizedBox(width: 16), // Отступ справа для баланса
+            const SizedBox(width: 16),
           ],
         ),
       ),
@@ -170,7 +183,7 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 APP BAR КАК ОБЫЧНЫЙ ВИДЖЕТ
+  // 🔥 APP BAR (с динамическими контактами)
   Widget _buildAppBar() {
     return Container(
       height: 120,
@@ -192,17 +205,17 @@ class _LandingScreenState extends State<LandingScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text(
-                '+7 (391) 200-12-34',
-                style: TextStyle(
+              Text(
+                _adminContact?['phone'] ?? '+7 (391) 200-12-34',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const Text(
-                'Пн-Пт: 9:00 - 18:00',
-                style: TextStyle(
+              Text(
+                _adminContact?['schedule'] ?? 'Пн-Пт: 9:00 - 18:00',
+                style: const TextStyle(
                   color: Colors.white70,
                   fontSize: 11,
                 ),
@@ -214,7 +227,7 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 HERO СЕКЦИЯ (без изображений, градиентный фон)
+  // 🔥 HERO СЕКЦИЯ (градиент, без фото)
   Widget _buildHeroSection() {
     return Container(
       height: 600,
@@ -235,8 +248,6 @@ class _LandingScreenState extends State<LandingScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 40),
-
-          // Заголовок
           const Text(
             'Премиум кондитерские изделия\nдля вашего бизнеса',
             textAlign: TextAlign.center,
@@ -248,10 +259,7 @@ class _LandingScreenState extends State<LandingScreen> {
               height: 1.2,
             ),
           ),
-
           const SizedBox(height: 20),
-
-          // 🔥 АНИМИРОВАННЫЙ ПОДЗАГОЛОВОК
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 500),
             transitionBuilder: (child, animation) {
@@ -277,8 +285,6 @@ class _LandingScreenState extends State<LandingScreen> {
               ),
             ),
           ),
-
-          // 🔥 ИНДИКАТОР ТЕКСТА
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -298,10 +304,7 @@ class _LandingScreenState extends State<LandingScreen> {
               ),
             ),
           ),
-
           const SizedBox(height: 40),
-
-          // Кнопки действий
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -353,10 +356,7 @@ class _LandingScreenState extends State<LandingScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 40),
-
-          // 🔥 СТРЕЛКА — КЛИКАБЕЛЬНАЯ
           GestureDetector(
             onTap: _scrollToProducts,
             child: AnimatedContainer(
@@ -374,17 +374,15 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 ВИТРИНА ТОВАРОВ
+  // 🔥 ВИТРИНА ТОВАРОВ (со скелетонами)
   Widget _buildProductsShowcase() {
     return Container(
       key: _productsSectionKey,
       padding: const EdgeInsets.all(24),
       color: Colors.white,
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start, // 👈 Оставляем для сетки товаров
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🔥 ЦЕНТРИРУЕМ ЗАГОЛОВКИ
           Center(
             child: Column(
               children: [
@@ -409,12 +407,11 @@ class _LandingScreenState extends State<LandingScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 32),
 
-          // Сетка товаров (остаётся слева)
+          // 🔥 СКЕЛЕТОНЫ ИЛИ ТОВАРЫ
           if (_isLoading)
-            const Center(child: CircularProgressIndicator())
+            _buildSkeletonGrid()
           else if (_error != null)
             Center(
               child: Column(
@@ -447,8 +444,6 @@ class _LandingScreenState extends State<LandingScreen> {
             ),
 
           const SizedBox(height: 24),
-
-          // Кнопка "Смотреть весь прайс-лист" — тоже центрируем
           Center(
             child: TextButton(
               onPressed: () => _navigateToLogin(),
@@ -465,6 +460,72 @@ class _LandingScreenState extends State<LandingScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // 🔥 СКЕЛЕТОНЫ ДЛЯ ТОВАРОВ (пока грузятся)
+  Widget _buildSkeletonGrid() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.75,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: 6,
+      itemBuilder: (context, index) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[200],
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300], // ← теперь можно
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 16,
+                      width: double.infinity,
+                      color: Colors.grey[300],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          height: 20,
+                          width: 60,
+                          color: Colors.grey[300],
+                        ),
+                        Container(
+                          height: 16,
+                          width: 40,
+                          color: Colors.grey[300],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -564,7 +625,7 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 ОСТАЛЬНЫЕ СЕКЦИИ (без изменений, просто скопируйте из вашего кода)
+  // 🔥 ОСТАЛЬНЫЕ СЕКЦИИ (без изменений, сокращено для краткости)
   Widget _buildAboutSection() {
     return Container(
       padding: const EdgeInsets.all(32),
@@ -838,25 +899,6 @@ class _LandingScreenState extends State<LandingScreen> {
               fontSize: 12,
               color: Colors.white54,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorSection() {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        children: [
-          const Icon(Icons.error_outline, size: 64, color: Colors.red),
-          const SizedBox(height: 16),
-          Text(_error ?? 'Ошибка загрузки',
-              style: const TextStyle(fontSize: 16)),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _loadPublicData,
-            child: const Text('Попробовать снова'),
           ),
         ],
       ),

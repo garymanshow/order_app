@@ -1624,4 +1624,81 @@ class ApiService {
       return false;
     }
   }
+
+  // Отправка обратной связи
+  Future<bool> sendFeedback({
+    required String name,
+    required String email,
+    required String phone,
+    required String message,
+  }) async {
+    try {
+      final response = await _makeRequest('sendFeedback', {
+        'name': name,
+        'email': email,
+        'phone': phone,
+        'message': message,
+      });
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка отправки обратной связи: $e');
+      return false;
+    }
+  }
+
+  // Массовая отправка push-уведомлений по роли
+  Future<Map<String, dynamic>> sendPushToRole({
+    required String role,
+    required String title,
+    required String body,
+  }) async {
+    try {
+      final response = await _makeRequest('sendPushToRole', {
+        'role': role,
+        'title': title,
+        'body': body,
+      });
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'success': false, 'message': 'Ошибка отправки'};
+    } catch (e) {
+      print('❌ Ошибка массовой отправки: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ КОНТАКТОВ АДМИНА
+  Future<Map<String, String>?> fetchAdminContact() async {
+    try {
+      final response = await _makeRequest('fetchEmployees', {
+        'filters': {'role': 'Администратор'},
+      });
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true && result['employees'] != null) {
+          final admins = List.from(result['employees']);
+          if (admins.isNotEmpty) {
+            return {
+              'name': admins[0]['name']?.toString() ?? '',
+              'phone': admins[0]['phone']?.toString() ?? '',
+              'email': admins[0]['email']?.toString() ?? '',
+              'schedule':
+                  admins[0]['schedule']?.toString() ?? 'Пн-Пт: 9:00 - 18:00',
+            };
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка загрузки контактов админа: $e');
+      return null;
+    }
+  }
 }

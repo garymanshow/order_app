@@ -1,5 +1,4 @@
 // lib/services/env_service.dart
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:js' as js;
 
@@ -10,79 +9,105 @@ class EnvService {
 
   static bool _isInitialized = false;
 
-  /// Инициализация EnvService (вызывается в main.dart)
+  // 🔥 КЭШ ПЕРЕМЕННЫХ (независимо от dotenv)
+  static final Map<String, String> _envCache = {};
+
+  /// Инициализация (только для Web/PWA)
   static Future<void> init() async {
     if (_isInitialized) return;
 
-    print('\n📁 ===== ИНИЦИАЛИЗАЦИЯ EnvService =====');
+    print('\n📁 ===== ИНИЦИАЛИЗАЦИЯ EnvService (Web) =====');
 
-    if (kIsWeb) {
-      // Для веба: пробуем загрузить из assets/.env или window.ENV
-      try {
-        await dotenv.load(fileName: "assets/.env");
-        print('✅ .env файл загружен из assets/.env');
-      } catch (e) {
-        print('⚠️ assets/.env не найден, пробуем window.ENV...');
+    // 🔥 ПОПЫТКА 1: Загрузить из assets/.env
+    try {
+      await dotenv.load(fileName: "assets/.env");
+      print('✅ .env загружен из assets/.env');
+      // Кэшируем значения из dotenv
+      _cacheFromDotenv();
+    } catch (e) {
+      print('⚠️ assets/.env не найден: $e');
+    }
 
-        // Если файла нет, пытаемся получить из window.ENV
-        final jsEnv = js.context['ENV'];
-        if (jsEnv != null) {
-          // Загружаем в dotenv для единого интерфейса
-          final envMap = <String, String>{};
-          final keys = [
-            'APP_SCRIPT_URL',
-            'APP_SCRIPT_SECRET',
-            'VAPID_PUBLIC_KEY',
-            'GOOGLE_DRIVE_IMAGES_FOLDER_ID'
-          ];
+    // 🔥 ПОПЫТКА 2: Загрузить из window.ENV (для продакшена)
+    try {
+      final jsEnv = js.context['ENV'];
+      if (jsEnv != null) {
+        final keys = [
+          'APP_SCRIPT_URL',
+          'APP_SCRIPT_SECRET',
+          'VAPID_PUBLIC_KEY',
+          'GOOGLE_DRIVE_IMAGES_FOLDER_ID'
+        ];
 
-          for (var key in keys) {
-            final value = jsEnv[key]?.toString();
-            if (value != null && value.isNotEmpty) {
-              envMap[key] = value;
-            }
-          }
-
-          if (envMap.isNotEmpty) {
-            dotenv..load(mergeWith: envMap);
-            print('✅ Переменные загружены из window.ENV');
-          } else {
-            print('⚠️ window.ENV не содержит переменных');
+        for (var key in keys) {
+          final value = jsEnv[key]?.toString();
+          if (value != null && value.isNotEmpty) {
+            _envCache[key] = value; // 🔥 ПРЯМОЕ СОХРАНЕНИЕ В КЭШ!
+            print('📌 $key: загружен из window.ENV');
           }
         }
       }
-    } else {
-      // Для мобильных/десктопа
-      await dotenv.load(fileName: ".env");
-      print('✅ .env файл успешно загружен');
+    } catch (e) {
+      print('⚠️ window.ENV недоступен: $e');
     }
 
-    // Проверяем наличие ключей
-    final scriptUrl = dotenv.env['APP_SCRIPT_URL'];
-    final secret = dotenv.env['APP_SCRIPT_SECRET'];
-    final vapidKey = dotenv.env['VAPID_PUBLIC_KEY'];
-    final googleDriveImagesFolderID =
-        dotenv.env['GOOGLE_DRIVE_IMAGES_FOLDER_ID'];
+    // 🔥 ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПЕРЕМЕННЫХ (из кэша!)
+    final scriptUrl = get('APP_SCRIPT_URL');
+    if (scriptUrl == null || scriptUrl.isEmpty) {
+      print('❌ Доступные переменные в кэше: ${_envCache.keys.toList()}');
+      throw Exception(
+          '❌ APP_SCRIPT_URL не найден! Проверьте .env или window.ENV');
+    }
 
-    print('📌 APP_SCRIPT_URL: ${scriptUrl ?? '❌ НЕ НАЙДЕН'}');
+    print('\n📋 ЗАГРУЖЕННЫЕ ПЕРЕМЕННЫЕ:');
+    print('   APP_SCRIPT_URL: ${_maskUrl(scriptUrl)}');
     print(
-        '📌 APP_SCRIPT_SECRET: ${secret != null ? '✓ найден' : '❌ НЕ НАЙДЕН'}');
+        '   APP_SCRIPT_SECRET: ${get('APP_SCRIPT_SECRET') != null ? '✓' : '✗'}');
     print(
-        '📌 VAPID_PUBLIC_KEY: ${vapidKey != null ? '✓ найден' : '❌ НЕ НАЙДЕН'}');
+        '   VAPID_PUBLIC_KEY: ${get('VAPID_PUBLIC_KEY') != null ? '✓' : '✗'}');
     print(
-        '📌 GOOGLE_DRIVE_IMAGES_FOLDER_ID: ${googleDriveImagesFolderID != null ? '✓ найден' : '❌ НЕ НАЙДЕН'}');
+        '   GOOGLE_DRIVE_IMAGES_FOLDER_ID: ${get('GOOGLE_DRIVE_IMAGES_FOLDER_ID') != null ? '✓' : '✗'}');
 
     _isInitialized = true;
-    print('📁 ===== КОНЕЦ ИНИЦИАЛИЗАЦИИ EnvService =====\n');
+    print('📁 ===== ИНИЦИАЛИЗАЦИЯ ЗАВЕРШЕНА =====\n');
   }
 
-  static String get(String key) {
-    return dotenv.env[key] ?? '';
+  // 🔥 КЭШИРОВАНИЕ ИЗ DOTENV
+  static void _cacheFromDotenv() {
+    final keys = [
+      'APP_SCRIPT_URL',
+      'APP_SCRIPT_SECRET',
+      'VAPID_PUBLIC_KEY',
+      'GOOGLE_DRIVE_IMAGES_FOLDER_ID'
+    ];
+    for (var key in keys) {
+      final value = dotenv.env[key];
+      if (value != null && value.isNotEmpty) {
+        _envCache[key] = value;
+      }
+    }
   }
 
-  static String get scriptUrl => get('APP_SCRIPT_URL');
-  static String get scriptSecret => get('APP_SCRIPT_SECRET');
-  static String get vapidPublicKey => get('VAPID_PUBLIC_KEY');
+  // 🔥 ПУБЛИЧНЫЙ ГЕТТЕР (с приоритетом кэша)
+  static String? get(String key) {
+    // Сначала ищем в нашем кэше
+    if (_envCache.containsKey(key)) {
+      return _envCache[key];
+    }
+    // Фоллбэк на dotenv
+    return dotenv.env[key];
+  }
+
+  // 🔥 УДОБНЫЕ ГЕТТЕРЫ
+  static String get scriptUrl => get('APP_SCRIPT_URL') ?? '';
+  static String get scriptSecret => get('APP_SCRIPT_SECRET') ?? '';
+  static String get vapidPublicKey => get('VAPID_PUBLIC_KEY') ?? '';
   static String get googleDriveImagesFolderID =>
-      get('GOOGLE_DRIVE_IMAGES_FOLDER_ID');
+      get('GOOGLE_DRIVE_IMAGES_FOLDER_ID') ?? '';
+
+  // 🔥 ВСПОМОГАТЕЛЬНЫЙ МЕТОД: маскировка URL для логов
+  static String _maskUrl(String url) {
+    if (url.length < 50) return url;
+    return '${url.substring(0, 50)}...';
+  }
 }
