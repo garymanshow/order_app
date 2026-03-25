@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import '../../services/cache_service.dart';
 import '../../models/product.dart';
@@ -16,43 +17,38 @@ class LandingScreen extends StatefulWidget {
 }
 
 class _LandingScreenState extends State<LandingScreen> {
+// Добавляем константу для названия компании
+  final String _companyName = 'Вкусные моменты';
   final ApiService _apiService = ApiService();
   final GlobalKey _productsSectionKey = GlobalKey();
 
   // 🔥 АНИМИРОВАННЫЕ ПОДЗАГОЛОВКИ
   final List<String> _heroSubtitles = [
-    'Готовый формат для увеличения чека вашей торговой точки',
+    'Готовый формат для увеличения чека Вашей торговой точки',
+    'Только натуральные ингредиенты, ручная работа',
     'Премиум десерты в инновационной упаковке с кольцом',
-    'Срок реализации до 7 суток — минимальные списания',
-    'Маржинальность 40-60% для вашего бизнеса',
-    'Доставка по всей Сибири точно в срок',
+    'Срок реализации до 90 суток — минимальные списания',
+    'Высокая маржинальность для Вашего бизнеса',
+    'Доставка по Сибири в короткие сроки',
   ];
 
   int _currentSubtitleIndex = 0;
   Timer? _subtitleTimer;
 
   List<Product> _products = [];
-  bool _isLoading = true; // 🔥 Показываем скелетоны сразу
+  bool _isLoading = true;
   String? _error;
 
-  // 🔥 КОНТАКТЫ АДМИНА (динамические)
+  // 🔥 КОНТАКТЫ АДМИНА (из GAS)
   Map<String, String>? _adminContact;
+  bool _isLoadingContacts = true;
 
   @override
   void initState() {
     super.initState();
-
-    // 🔥 ПОКАЗЫВАЕМ UI СРАЗУ (скелетоны)
-    setState(() => _isLoading = true);
-
-    // 🔥 ЗАПУСКАЕМ РОТАЦИЮ ТЕКСТА СРАЗУ
     _startSubtitleRotation();
-
-    // 🔥 ГРУЗИМ ДАННЫЕ В ФОНЕ (не блокирует UI)
-    Future.microtask(() async {
-      await _loadPublicData();
-      await _loadAdminContact();
-    });
+    _loadPublicData();
+    _loadAdminContact();
   }
 
   @override
@@ -61,7 +57,6 @@ class _LandingScreenState extends State<LandingScreen> {
     super.dispose();
   }
 
-  // 🔥 РОТАЦИЯ ТЕКСТА
   void _startSubtitleRotation() {
     _subtitleTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (mounted) {
@@ -73,7 +68,6 @@ class _LandingScreenState extends State<LandingScreen> {
     });
   }
 
-  // 🔥 ПРОКРУТКА К ТОВАРАМ
   void _scrollToProducts() {
     Future.delayed(const Duration(milliseconds: 200), () {
       final context = _productsSectionKey.currentContext;
@@ -88,10 +82,10 @@ class _LandingScreenState extends State<LandingScreen> {
     });
   }
 
-  // 🔥 ЗАГРУЗКА ТОВАРОВ (ФОН)
+  // 🔥 ЗАГРУЗКА ТОВАРОВ
   Future<void> _loadPublicData() async {
     try {
-      print('🔍 Загрузка товаров (фон)...');
+      print('🔍 Загрузка товаров...');
       final productsData = await _apiService.fetchProducts();
 
       if (mounted) {
@@ -107,7 +101,6 @@ class _LandingScreenState extends State<LandingScreen> {
             _error = 'Не удалось загрузить товары';
             _isLoading = false;
           });
-          print('❌ Товары не загружены');
         }
       }
     } catch (e) {
@@ -121,17 +114,81 @@ class _LandingScreenState extends State<LandingScreen> {
     }
   }
 
-  // 🔥 ЗАГРУЗКА КОНТАКТОВ АДМИНА (ФОН)
+  // 🔥 ЗАГРУЗКА КОНТАКТОВ АДМИНА (используем существующий метод)
   Future<void> _loadAdminContact() async {
     try {
-      print('🔍 Загрузка контактов админа (фон)...');
+      print('🔍 Загрузка контактов администратора...');
       final contact = await _apiService.fetchAdminContact();
-      if (mounted && contact != null) {
-        setState(() => _adminContact = contact);
-        print('✅ Контакты загружены');
+
+      if (mounted) {
+        setState(() {
+          _adminContact = contact;
+          _isLoadingContacts = false;
+        });
+
+        if (contact != null) {
+          print('✅ Контакты загружены: ${contact['name']}');
+        } else {
+          print('⚠️ Контакты не загружены, используем запасные');
+        }
       }
     } catch (e) {
-      print('⚠️ Контакты не загружены (используем запасные): $e');
+      setState(() {
+        _isLoadingContacts = false;
+      });
+      print('⚠️ Ошибка загрузки контактов: $e');
+    }
+  }
+
+  // 🔥 ФОРМАТИРОВАНИЕ ТЕЛЕФОНА
+  String _formatPhone(String? phone) {
+    if (phone == null || phone.isEmpty) return '+7 (391) 200-12-34';
+
+    String cleaned = phone;
+    if (cleaned.startsWith("'")) {
+      cleaned = cleaned.substring(1);
+    }
+    if (cleaned.startsWith("+")) {
+      cleaned = cleaned.substring(1);
+    }
+
+    if (cleaned.length == 11 && cleaned.startsWith("7")) {
+      return '+7 (${cleaned.substring(1, 4)}) ${cleaned.substring(4, 7)}-${cleaned.substring(7, 9)}-${cleaned.substring(9, 11)}';
+    }
+    return phone;
+  }
+
+  // 🔥 ЗВОНОК
+  Future<void> _makePhoneCall(String? phone) async {
+    if (phone == null || phone.isEmpty) return;
+
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: phone.replaceAll(RegExp(r'[^0-9+]'), ''),
+    );
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось совершить звонок')),
+      );
+    }
+  }
+
+  // 🔥 EMAIL
+  Future<void> _sendEmail(String? email) async {
+    if (email == null || email.isEmpty) return;
+
+    final Uri launchUri = Uri(
+      scheme: 'mailto',
+      path: email,
+    );
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось отправить письмо')),
+      );
     }
   }
 
@@ -151,83 +208,118 @@ class _LandingScreenState extends State<LandingScreen> {
           ],
         ),
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const SizedBox(width: 16),
-            FloatingActionButton.extended(
-              onPressed: () => _navigateToLogin(),
-              backgroundColor: const Color(0xFF5D4037),
-              icon: const Icon(Icons.person_add, color: Colors.white),
-              label: const Text(
-                'Стать партнёром',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-            FloatingActionButton.extended(
-              onPressed: () => _navigateToLogin(),
-              backgroundColor: const Color(0xFF5D4037),
-              icon: const Icon(Icons.login, color: Colors.white),
-              label: const Text(
-                'Войти для опта',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-            const SizedBox(width: 16),
-          ],
-        ),
-      ),
+      floatingActionButton: _buildFloatingButtons(),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 
   // 🔥 APP BAR (с динамическими контактами)
+// lib/screens/site/landing_screen.dart
+
+// 🔥 ИСПРАВЛЕННЫЙ APP BAR (центрированное название)
   Widget _buildAppBar() {
     return Container(
-      height: 120,
-      color: const Color(0xFF5D4037).withValues(alpha: 0.95),
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            'Вкусные моменты',
-            style: TextStyle(
-              fontFamily: 'PlayfairDisplay',
-              fontWeight: FontWeight.bold,
-              fontSize: 24,
-              color: Colors.white,
-            ),
+      height: 100,
+      decoration: BoxDecoration(
+        color: const Color(0xFF5D4037).withValues(alpha: 0.95),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 4),
           ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                _adminContact?['phone'] ?? '+7 (391) 200-12-34',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                _adminContact?['schedule'] ?? 'Пн-Пт: 9:00 - 18:00',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          _companyName,
+          style: const TextStyle(
+            fontFamily: 'PlayfairDisplay',
+            fontWeight: FontWeight.bold,
+            fontSize: 28,
+            color: Colors.white,
+            letterSpacing: 2,
+            shadows: [
+              Shadow(
+                blurRadius: 10,
+                color: Colors.black26,
+                offset: Offset(0, 2),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+// 🔥 ИСПРАВЛЕННЫЙ FOOTER (с динамическим годом и названием компании)
+  Widget _buildFooter() {
+    final currentYear = DateTime.now().year;
+    final startYear = 2018;
+    final yearText = startYear == currentYear
+        ? startYear.toString()
+        : '$startYear-$currentYear';
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      color: const Color(0xFF3E2723),
+      child: Column(
+        children: [
+          Text(
+            '© $yearText «$_companyName»',
+            style: const TextStyle(
+              fontFamily: 'Lora',
+              fontSize: 14,
+              color: Colors.white70,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Производство премиум десертов',
+            style: TextStyle(
+              fontFamily: 'Lora',
+              fontSize: 12,
+              color: Colors.white54,
+            ),
           ),
         ],
       ),
     );
   }
 
-  // 🔥 HERO СЕКЦИЯ (градиент, без фото)
+// 🔥 ИСПРАВЛЕННЫЙ FLOATING ACTION BUTTONS (с отступами от краёв)
+  Widget _buildFloatingButtons() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          FloatingActionButton.extended(
+            onPressed: () => _navigateToLogin(),
+            backgroundColor: const Color(0xFF5D4037),
+            heroTag: 'partner',
+            icon: const Icon(Icons.person_add, color: Colors.white),
+            label: const Text(
+              'Стать партнёром',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+          FloatingActionButton.extended(
+            onPressed: () => _navigateToLogin(),
+            backgroundColor: const Color(0xFF5D4037),
+            heroTag: 'login',
+            icon: const Icon(Icons.login, color: Colors.white),
+            label: const Text(
+              'Войти для опта',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🔥 HERO СЕКЦИЯ
   Widget _buildHeroSection() {
     return Container(
       height: 600,
@@ -249,7 +341,7 @@ class _LandingScreenState extends State<LandingScreen> {
         children: [
           const SizedBox(height: 40),
           const Text(
-            'Премиум кондитерские изделия\nдля вашего бизнеса',
+            'Премиум кондитерские изделия\nручной работы\nдля Вашего бизнеса',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'PlayfairDisplay',
@@ -374,7 +466,7 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 ВИТРИНА ТОВАРОВ (со скелетонами)
+  // 🔥 ВИТРИНА ТОВАРОВ
   Widget _buildProductsShowcase() {
     return Container(
       key: _productsSectionKey,
@@ -408,8 +500,6 @@ class _LandingScreenState extends State<LandingScreen> {
             ),
           ),
           const SizedBox(height: 32),
-
-          // 🔥 СКЕЛЕТОНЫ ИЛИ ТОВАРЫ
           if (_isLoading)
             _buildSkeletonGrid()
           else if (_error != null)
@@ -442,7 +532,6 @@ class _LandingScreenState extends State<LandingScreen> {
                 return _buildProductCard(_products[index]);
               },
             ),
-
           const SizedBox(height: 24),
           Center(
             child: TextButton(
@@ -463,7 +552,6 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 СКЕЛЕТОНЫ ДЛЯ ТОВАРОВ (пока грузятся)
   Widget _buildSkeletonGrid() {
     return GridView.builder(
       shrinkWrap: true,
@@ -486,7 +574,7 @@ class _LandingScreenState extends State<LandingScreen> {
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.grey[300], // ← теперь можно
+                    color: Colors.grey[300],
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(16),
                     ),
@@ -625,16 +713,15 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 ОСТАЛЬНЫЕ СЕКЦИИ (без изменений, сокращено для краткости)
   Widget _buildAboutSection() {
     return Container(
       padding: const EdgeInsets.all(32),
       color: const Color(0xFFFFF8E1),
       child: Column(
         children: [
-          const Text(
+          Text(
             'О нас',
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: 'PlayfairDisplay',
               fontSize: 32,
               fontWeight: FontWeight.bold,
@@ -642,9 +729,9 @@ class _LandingScreenState extends State<LandingScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            'Ручная работа с 2018 года',
-            style: TextStyle(
+          Text(
+            '$_companyName — ручная работа с 2018 года',
+            style: const TextStyle(
               fontFamily: 'PlayfairDisplay',
               fontSize: 20,
               fontWeight: FontWeight.w600,
@@ -799,7 +886,12 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
+  // 🔥 СЕКЦИЯ КОНТАКТОВ (с динамическими данными)
   Widget _buildContactSection() {
+    final name = _adminContact?['name'] ?? 'Администратор';
+    final phone = _adminContact?['phone'];
+    final email = _adminContact?['email'];
+
     return Container(
       padding: const EdgeInsets.all(32),
       color: const Color(0xFF5D4037),
@@ -815,12 +907,58 @@ class _LandingScreenState extends State<LandingScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          _buildContactItem(Icons.phone, '+7 (391) 200-12-34', 'Позвоните нам'),
+          if (_isLoadingContacts)
+            const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            )
+          else ...[
+            // Имя администратора
+            Text(
+              name,
+              style: const TextStyle(
+                fontFamily: 'PlayfairDisplay',
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Телефон
+            if (phone != null && phone.isNotEmpty)
+              _buildContactItem(
+                Icons.phone,
+                _formatPhone(phone),
+                'Позвоните нам',
+                onTap: () => _makePhoneCall(phone),
+              ),
+
+            // Email
+            if (email != null && email.isNotEmpty)
+              _buildContactItem(
+                Icons.email,
+                email,
+                'Напишите нам',
+                onTap: () => _sendEmail(email),
+              ),
+
+            // Если нет контактов
+            if ((phone == null || phone.isEmpty) &&
+                (email == null || email.isEmpty)) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Контакты временно недоступны',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
+          ],
           const SizedBox(height: 16),
           _buildContactItem(
-              Icons.email, 'info@vkusnyemomenty.ru', 'Напишите нам'),
-          const SizedBox(height: 16),
-          _buildContactItem(Icons.location_on, 'г. Красноярск', 'Наш адрес'),
+            Icons.location_on,
+            'г. Красноярск',
+            'пр. Металлургов, 41, б',
+            onTap: null,
+          ),
           const SizedBox(height: 32),
           ElevatedButton(
             onPressed: () => _navigateToLogin(),
@@ -845,62 +983,41 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  Widget _buildContactItem(IconData icon, String text, String label) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, color: Colors.white70),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildContactItem(IconData icon, String text, String label,
+      {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              text,
-              style: const TextStyle(
-                fontFamily: 'PlayfairDisplay',
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Lora',
-                fontSize: 12,
-                color: Colors.white70,
-              ),
+            Icon(icon, color: Colors.white70),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text,
+                  style: const TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontFamily: 'Lora',
+                    fontSize: 12,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-      ],
-    );
-  }
-
-  Widget _buildFooter() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      color: const Color(0xFF3E2723),
-      child: const Column(
-        children: [
-          Text(
-            '© 2018-2024 «Вкусные моменты»',
-            style: TextStyle(
-              fontFamily: 'Lora',
-              fontSize: 14,
-              color: Colors.white70,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Производство премиум десертов',
-            style: TextStyle(
-              fontFamily: 'Lora',
-              fontSize: 12,
-              color: Colors.white54,
-            ),
-          ),
-        ],
       ),
     );
   }

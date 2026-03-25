@@ -305,216 +305,248 @@ class _PriceListScreenState extends State<PriceListScreen> {
   }
 
   void _showExportDialog(BuildContext context, List<Product> products) {
-  String selectedFormat = 'pdf';
+    // 🔥 ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ ДИАЛОГА
+    String selectedFormat = 'pdf';
+    bool includeBasic = true;
+    bool includeComposition = true;
+    bool includeNutrition = true;
+    bool includeStorage = true;
+    bool includePhotos = false; // 🔥 Фото выключены по умолчанию
 
-  showDialog(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) {
-        return AlertDialog(
-          title: const Text('Экспорт прайс-листа'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // PDF option
-                InkWell(
-                  onTap: () => setState(() => selectedFormat = 'pdf'),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: selectedFormat == 'pdf'
-                            ? Colors.blue
-                            : Colors.grey.shade300,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                      color: selectedFormat == 'pdf'
-                          ? Colors.blue.withValues(alpha: 0.1)
-                          : null,
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('📄 Экспорт прайс-листа'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 🔥 ВЫБОР ФОРМАТА
+                    _buildFormatOption(
+                      setState,
+                      selectedFormat,
+                      'pdf',
+                      'PDF — полная информация о продукции',
+                      'Для каталогов, презентаций, печати',
                     ),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: Radio<String>(
-                            value: 'pdf',
-                            groupValue: selectedFormat,
-                            onChanged: (value) =>
-                                setState(() => selectedFormat = value!),
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
+                    const SizedBox(height: 8),
+                    _buildFormatOption(
+                      setState,
+                      selectedFormat,
+                      'csv',
+                      'CSV — для этикеток и систем учёта',
+                      'Только структурированные данные',
+                    ),
+
+                    // 🔥 НАСТРОЙКИ ДЛЯ PDF
+                    if (selectedFormat == 'pdf') ...[
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      ExpansionTile(
+                        title: const Text('Что включить в PDF'),
+                        initiallyExpanded: true,
+                        children: [
+                          _buildCheckbox(
+                            setState,
+                            'Основные поля',
+                            includeBasic,
+                            (v) => includeBasic = v ?? true,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          _buildCheckbox(
+                            setState,
+                            'Состав',
+                            includeComposition,
+                            (v) => includeComposition = v ?? true,
+                          ),
+                          _buildCheckbox(
+                            setState,
+                            'КБЖУ',
+                            includeNutrition,
+                            (v) => includeNutrition = v ?? true,
+                          ),
+                          _buildCheckbox(
+                            setState,
+                            'Условия хранения',
+                            includeStorage,
+                            (v) => includeStorage = v ?? true,
+                          ),
+                          
+                          // 🔥 ФОТОГРАФИИ С ПРЕДУПРЕЖДЕНИЕМ
+                          Column(
                             children: [
-                              const Text(
-                                'PDF — полная информация о продукции',
-                                style: TextStyle(fontWeight: FontWeight.bold),
+                              _buildCheckbox(
+                                setState,
+                                '📷 Фотографии товаров',
+                                includePhotos,
+                                (v) {
+                                  includePhotos = v ?? false;
+                                  // 🔥 Показать предупреждение при включении
+                                  if (includePhotos && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          '⏱️ Фото увеличивают время генерации и размер файла',
+                                        ),
+                                        duration: Duration(seconds: 3),
+                                        backgroundColor: Color(0xFF5D4037),
+                                      ),
+                                    );
+                                  }
+                                },
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Для каталогов, презентаций, печати',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
+                              if (includePhotos)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 48, bottom: 8),
+                                  child: Text(
+                                    '• Загрузка фото: +10-30 сек',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey[600],
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // CSV option
-                InkWell(
-                  onTap: () => setState(() => selectedFormat = 'csv'),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: selectedFormat == 'csv'
-                            ? Colors.blue
-                            : Colors.grey.shade300,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                      color: selectedFormat == 'csv'
-                          ? Colors.blue.withValues(alpha: 0.1)
-                          : null,
-                    ),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: Radio<String>(
-                            value: 'csv',
-                            groupValue: selectedFormat,
-                            onChanged: (value) =>
-                                setState(() => selectedFormat = value!),
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'CSV — для этикеток и систем учета',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Только структурированные данные',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (selectedFormat == 'pdf') ...[
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 8),
-                  ExpansionTile(
-                    title: const Text('Что включить в PDF'),
-                    initiallyExpanded: true,
-                    children: [
-                      CheckboxListTile(
-                        title: const Text('Основные поля'),
-                        value: _exportFields['basic'] ?? true,
-                        onChanged: (value) {
-                          setState(() {
-                            _exportFields['basic'] = value ?? true;
-                          });
-                        },
-                      ),
-                      CheckboxListTile(
-                        title: const Text('Состав'),
-                        value: _exportFields['composition'] ?? true,
-                        onChanged: (value) {
-                          setState(() {
-                            _exportFields['composition'] = value ?? true;
-                          });
-                        },
-                      ),
-                      CheckboxListTile(
-                        title: const Text('КБЖУ'),
-                        value: _exportFields['nutrition'] ?? true,
-                        onChanged: (value) {
-                          setState(() {
-                            _exportFields['nutrition'] = value ?? true;
-                          });
-                        },
-                      ),
-                      CheckboxListTile(
-                        title: const Text('Условия хранения'),
-                        value: _exportFields['storage'] ?? true,
-                        onChanged: (value) {
-                          setState(() {
-                            _exportFields['storage'] = value ?? true;
-                          });
-                        },
-                      ),
-                      CheckboxListTile(
-                        title: const Text('Фотографии'),
-                        value: _exportFields['photos'] ?? false,
-                        onChanged: (value) {
-                          setState(() {
-                            _exportFields['photos'] = value ?? false;
-                          });
-                        },
+                        ],
                       ),
                     ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Отмена'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  // 🔥 Передаём настройки напрямую
+                  _exportPriceList(
+                    context,
+                    products,
+                    format: selectedFormat,
+                    includeBasic: includeBasic,
+                    includeComposition: includeComposition,
+                    includeNutrition: includeNutrition,
+                    includeStorage: includeStorage,
+                    includePhotos: includePhotos,
+                  );
+                },
+                icon: const Icon(Icons.file_download),
+                label: const Text('Экспортировать'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // 🔥 ВСПОМОГАТЕЛЬНЫЙ ВИДЖЕТ: опция формата
+  Widget _buildFormatOption(
+    StateSetter setState,
+    String selectedFormat,
+    String value,
+    String title,
+    String subtitle,
+  ) {
+    return InkWell(
+      onTap: () => setState(() => selectedFormat = value),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: selectedFormat == value
+                ? const Color(0xFF5D4037)
+                : Colors.grey.shade300,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: selectedFormat == value
+              ? const Color(0xFF5D4037).withValues(alpha: 0.1)
+              : null,
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: Radio<String>(
+                value: value,
+                groupValue: selectedFormat,
+                onChanged: (v) => setState(() => selectedFormat = v!),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                activeColor: const Color(0xFF5D4037),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF5D4037),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
                   ),
                 ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: Navigator.of(context).pop,
-              child: const Text('Отмена'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _exportPriceList(context, products, format: selectedFormat);
-              },
-              child: const Text('Экспортировать'),
+              ),
             ),
           ],
-        );
-      },
-    ),
-  );
-}
+        ),
+      ),
+    );
+  }
+
+  // 🔥 ВСПОМОГАТЕЛЬНЫЙ ВИДЖЕТ: чекбокс
+  Widget _buildCheckbox(
+    StateSetter setState,
+    String title,
+    bool value,
+    ValueChanged<bool?> onChanged,
+  ) {
+    return CheckboxListTile(
+      title: Text(title),
+      value: value,
+      onChanged: onChanged,
+      activeColor: const Color(0xFF5D4037),
+      contentPadding: EdgeInsets.zero,
+    );
+  }
 
   Future<void> _exportPriceList(
     BuildContext context,
     List<Product> products, {
     required String format,
+    required bool includeBasic,
+    required bool includeComposition,
+    required bool includeNutrition,
+    required bool includeStorage,
+    required bool includePhotos,
   }) async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final client = authProvider.currentUser as Client;
       final clientData = authProvider.clientData!;
 
+      // 🔥 Подготавливаем дополнительные данные
       final compositionsByProduct = <String, List<Composition>>{};
       final nutritionByProduct = <String, NutritionInfo>{};
       final storageByProduct = <String, StorageCondition>{};
@@ -527,39 +559,57 @@ class _PriceListScreenState extends State<PriceListScreen> {
         try {
           nutritionByProduct[product.id] = clientData.nutritionInfos
               .firstWhere((n) => n.priceListId == product.id);
-        } catch (e) {}
+        } catch (_) {}
 
         try {
           storageByProduct[product.id] = clientData.storageConditions
               .firstWhere((s) =>
                   s.sheetName == 'Прайс-лист' && s.entityId == product.id);
-        } catch (e) {}
+        } catch (_) {}
       }
 
+      // 🔥 Настраиваем сервис
       _exportService.format = format;
-      _exportService.includeBasic = _exportFields['basic'] ?? true;
-      _exportService.includeComposition = _exportFields['composition'] ?? true;
-      _exportService.includeNutrition = _exportFields['nutrition'] ?? true;
-      _exportService.includeStorage = _exportFields['storage'] ?? true;
-      _exportService.includePhotos = _exportFields['photos'] ?? false;
+      _exportService.includeBasic = includeBasic;
+      _exportService.includeComposition = includeComposition;
+      _exportService.includeNutrition = includeNutrition;
+      _exportService.includeStorage = includeStorage;
+      _exportService.includePhotos = includePhotos;
 
-      if (!mounted) return;
+      if (!context.mounted) return;
 
+      // 🔥 Показываем прогресс с сообщением о фото
+      final photoMessage = includePhotos ? '\n📷 Загрузка фото...' : '';
+      
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
+        builder: (context) => Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Генерация файла...'),
+              const CircularProgressIndicator(
+                color: Color(0xFF5D4037),
+              ),
+              const SizedBox(height: 16),
+              const Text('Генерация файла...'),
+              if (includePhotos) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Это может занять до 1 минуты',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       );
 
+      // 🔥 Генерируем файл
       final result = await _exportService.generatePriceList(
         products: products,
         clientName: client.name ?? 'Клиент',
@@ -569,15 +619,18 @@ class _PriceListScreenState extends State<PriceListScreen> {
         storageByProduct: storageByProduct,
       );
 
-      if (mounted) Navigator.of(context).pop();
+      if (context.mounted) {
+        try {
+          Navigator.of(context).pop(); // Закрываем лоадер
+        } catch (_) {}
+      }
 
-      if (result != null && mounted) {
+      if (result != null && context.mounted) {
         if (kIsWeb) {
-          // 🔥 ДЛЯ WEB — скачиваем файл
+          // 🔥 WEB: скачивание
           final bytes = result as Uint8List;
           final fileName = 'price_list_${DateTime.now().millisecondsSinceEpoch}.${format == 'pdf' ? 'pdf' : 'csv'}';
           
-          // Создаём blob и ссылку для скачивания
           final blob = html.Blob([bytes]);
           final url = html.Url.createObjectUrlFromBlob(blob);
           
@@ -592,13 +645,20 @@ class _PriceListScreenState extends State<PriceListScreen> {
           html.Url.revokeObjectUrl(url);
           
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Файл успешно создан и скачан'),
-              duration: Duration(seconds: 3),
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Text('✅ Файл скачан: $fileName'),
+                ],
+              ),
+              backgroundColor: Colors.green[700],
+              duration: const Duration(seconds: 4),
             ),
           );
         } else {
-          // 🔥 ДЛЯ МОБИЛЬНЫХ/ДЕСКТОП — делимся файлом
+          // 🔥 Mobile/Desktop: Share
           final file = result as File;
           await Share.shareXFiles(
             [XFile(file.path)],
@@ -607,8 +667,9 @@ class _PriceListScreenState extends State<PriceListScreen> {
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Файл успешно создан: ${file.path.split('/').last}'),
-              duration: const Duration(seconds: 3),
+              content: Text('✅ Файл создан: ${file.path.split('/').last}'),
+              backgroundColor: Colors.green[700],
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -616,15 +677,16 @@ class _PriceListScreenState extends State<PriceListScreen> {
         throw Exception('Не удалось создать файл');
       }
     } catch (e) {
-      if (mounted) {
+      if (context.mounted) {
         try {
           Navigator.of(context).pop();
         } catch (_) {}
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Ошибка экспорта: $e'),
-            backgroundColor: Colors.red,
+            content: Text('❌ Ошибка: $e'),
+            backgroundColor: Colors.red[700],
+            duration: const Duration(seconds: 5),
           ),
         );
       }
