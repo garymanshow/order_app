@@ -22,6 +22,7 @@ class CacheService {
   static const String _unitsBox = 'units';
   static const String _pendingOperationsBox = 'pending_operations';
   static const String _metadataBox = 'metadata';
+  static const String _contactsBox = 'admin_contacts';
   // 🔥 КЛЮЧИ ДЛЯ ХРАНЕНИЯ ФЛАГОВ
   static const String _keyHasBeenUsed = 'app_has_been_used';
   static const String _keyLastPhone = 'last_login_phone';
@@ -37,6 +38,7 @@ class CacheService {
   late Box<UnitOfMeasureSheet> _units;
   late Box<Map<String, dynamic>> _pendingOperations;
   late Box<Map<String, dynamic>> _metadata;
+  late Box<Map<String, dynamic>> _contacts;
 
   bool _isInitialized = false;
 
@@ -73,6 +75,7 @@ class CacheService {
     _pendingOperations =
         await Hive.openBox<Map<String, dynamic>>(_pendingOperationsBox);
     _metadata = await Hive.openBox<Map<String, dynamic>>(_metadataBox);
+    _contacts = await Hive.openBox<Map<String, dynamic>>(_contactsBox);
 
     _isInitialized = true;
     print('✅ CacheService инициализирован');
@@ -326,6 +329,28 @@ class CacheService {
     });
   }
 
+  // ==================== КОНТАКТЫ АДМИНИСТРАТОРОВ ====================
+
+  /// Сохраняет контакты администраторов в кэш
+  Future<void> saveAdminContacts(List<Map<String, dynamic>> contacts) async {
+    await _contacts.clear();
+    for (var i = 0; i < contacts.length; i++) {
+      await _contacts.put(i.toString(), contacts[i]);
+    }
+    print('📞 Сохранено ${contacts.length} контактов администраторов');
+  }
+
+  /// Получает контакты администраторов из кэша
+  List<Map<String, dynamic>> getAdminContacts() {
+    return _contacts.values.toList();
+  }
+
+  /// Очищает кэш контактов
+  Future<void> clearAdminContacts() async {
+    await _contacts.clear();
+    print('🗑️ Кэш контактов очищен');
+  }
+
   // ==================== ОЧЕРЕДЬ ОПЕРАЦИЙ ====================
 
   /// Добавляет операцию в очередь для последующей синхронизации
@@ -390,6 +415,7 @@ class CacheService {
     await _units.clear();
     await _pendingOperations.clear();
     await _metadata.clear();
+    await _contacts.clear();
     print('🗑️ Все кэши очищены');
   }
 
@@ -466,6 +492,7 @@ class CacheService {
         _productionOperations.length +
         _units.length +
         _pendingOperations.length +
-        _metadata.length;
+        _metadata.length +
+        _contacts.length;
   }
 }

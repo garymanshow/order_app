@@ -1,10 +1,10 @@
 // lib/main.dart
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 
 // Screens
 import 'screens/admin/admin_dashboard_screen.dart';
@@ -20,11 +20,10 @@ import 'screens/admin/admin_warehouse_screen.dart';
 
 // Services
 import 'services/image_preloader.dart';
-import 'services/api_service.dart';
 import 'services/env_service.dart';
 import 'services/cache_service.dart';
 import 'services/sync_service.dart';
-import 'services/unit_service.dart';
+//import 'services/unit_service.dart';
 
 // Providers
 import 'providers/auth_provider.dart';
@@ -39,7 +38,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 // Глобальные переменные для сервисов
 late CacheService cacheService;
 late SyncService syncService;
-late UnitService unitService;
+//late UnitService unitService;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,9 +54,9 @@ void main() async {
   cacheService = await CacheService.getInstance();
   print('✅ CacheService инициализирован');
 
-  unitService = UnitService(ApiService());
-  await unitService.loadUnits(); // 🔥 Это может быть медленно, но нужно для UI
-  print('✅ UnitService инициализирован');
+  //unitService = UnitService(ApiService());
+  //await unitService.loadUnits(); // 🔥 Это может быть медленно, но нужно для UI
+  //print('✅ UnitService инициализирован');
 
   // 🔥 СРАЗУ ПОКАЗЫВАЕМ ПРИЛОЖЕНИЕ
   runApp(MyApp());
@@ -83,8 +82,8 @@ void main() async {
       print('✅ Локализация инициализирована');
 
       // Запуск синхронизации
-      syncService.startPeriodicSync();
-      print('✅ Синхронизация запущена');
+      //syncService.startPeriodicSync();
+      //print('✅ Синхронизация запущена');
 
       // Подписка на интернет
       Connectivity().onConnectivityChanged.listen((result) {
@@ -93,38 +92,12 @@ void main() async {
         }
       });
 
-      // Тест API в фоне
-      await _testApiConnection();
-
       print('✅ Фоновая инициализация завершена!');
     } catch (e, stack) {
       print('❌ Ошибка фона: $e');
       print('Stack: $stack');
     }
   });
-}
-
-// 🔥 Тестирование соединения с API (теперь в фоне)
-Future<void> _testApiConnection() async {
-  print('\n🔧 ===== ПРОВЕРКА СОЕДИНЕНИЯ С API =====');
-
-  try {
-    final apiService = ApiService();
-    final isConnected = await apiService.testConnection();
-
-    if (isConnected) {
-      print('✅ API доступен и работает');
-    } else {
-      print('❌ API не отвечает. Проверьте:');
-      print('   1. Правильность APP_SCRIPT_URL в .env');
-      print('   2. Доступность скрипта (опубликован ли он)');
-      print('   3. Интернет-соединение');
-    }
-  } catch (e) {
-    print('❌ Ошибка при проверке API: $e');
-  }
-
-  print('🔧 ===== КОНЕЦ ПРОВЕРКИ =====\n');
 }
 
 class MyApp extends StatelessWidget {
@@ -146,7 +119,7 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(create: (context) => CartProvider()),
         // 🔥 ИСПРАВЛЕНО: используем Provider без Listenable
-        Provider<UnitService>.value(value: unitService),
+        //Provider<UnitService>.value(value: unitService),
         Provider<CacheService>.value(value: cacheService),
         Provider<SyncService>.value(value: syncService),
         StreamProvider<ConnectivityResult>(

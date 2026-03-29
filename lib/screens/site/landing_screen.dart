@@ -2,7 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../services/api_service.dart';
 import '../../services/cache_service.dart';
 import '../../models/product.dart';
@@ -16,16 +16,16 @@ class LandingScreen extends StatefulWidget {
   State<LandingScreen> createState() => _LandingScreenState();
 }
 
-class _LandingScreenState extends State<LandingScreen> {
-// Добавляем константу для названия компании
-  final String _companyName = 'Вкусные моменты';
+class _LandingScreenState extends State<LandingScreen>
+    with TickerProviderStateMixin {
+  // 🔥 ЕДИНАЯ КОНСТАНТА ДЛЯ ВСЕХ УПОМИНАНИЙ ГОДА
+  static const int _startYear = 2018;
   final ApiService _apiService = ApiService();
   final GlobalKey _productsSectionKey = GlobalKey();
 
   // 🔥 АНИМИРОВАННЫЕ ПОДЗАГОЛОВКИ
   final List<String> _heroSubtitles = [
     'Готовый формат для увеличения чека Вашей торговой точки',
-    'Только натуральные ингредиенты, ручная работа',
     'Премиум десерты в инновационной упаковке с кольцом',
     'Срок реализации до 90 суток — минимальные списания',
     'Высокая маржинальность для Вашего бизнеса',
@@ -35,20 +35,18 @@ class _LandingScreenState extends State<LandingScreen> {
   int _currentSubtitleIndex = 0;
   Timer? _subtitleTimer;
 
+  // 🔥 ДАННЫЕ ДЛЯ ВИТРИНЫ
   List<Product> _products = [];
+  List<Map<String, dynamic>> _adminContacts = []; // ✅ Используем Map
+
   bool _isLoading = true;
   String? _error;
-
-  // 🔥 КОНТАКТЫ АДМИНА (из GAS)
-  Map<String, String>? _adminContact;
-  bool _isLoadingContacts = true;
 
   @override
   void initState() {
     super.initState();
     _startSubtitleRotation();
-    _loadPublicData();
-    _loadAdminContact();
+    _loadShowcaseData(); // 🔥 Загрузка данных (кэш → сервер)
   }
 
   @override
@@ -57,6 +55,7 @@ class _LandingScreenState extends State<LandingScreen> {
     super.dispose();
   }
 
+  // 🔥 РОТАЦИЯ ПОДЗАГОЛОВКОВ
   void _startSubtitleRotation() {
     _subtitleTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (mounted) {
@@ -68,6 +67,137 @@ class _LandingScreenState extends State<LandingScreen> {
     });
   }
 
+  // 🔥 ЗАГРУЗКА ДАННЫХ ДЛЯ ВИТРИНЫ (ПРИОРИТЕТ КЭША)
+  Future<void> _loadShowcaseData() async {
+    try {
+      print('🔍 Загрузка данных витрины...');
+
+      // 1. Проверить локальный кэш
+      final cacheService = await CacheService.getInstance();
+      final localContacts = await cacheService.getAdminContacts();
+      final localProducts = await cacheService.getProducts();
+
+      print(
+          '📦 Кэш: ${localContacts.length} контактов, ${localProducts.length} товаров');
+
+      if (localContacts.isNotEmpty && localProducts.isNotEmpty) {
+        // ✅ ЕСТЬ КЭШ → показать сразу (0 запросов!)
+        print('✅ Загружено из кэша');
+
+        if (mounted) {
+          setState(() {
+            _adminContacts = localContacts;
+            _products =
+                localProducts.take(7).toList(); // 🔥 Только 7 для витрины
+            _isLoading = false;
+          });
+        }
+
+        // 🔄 Фоновое обновление (если есть интернет)
+        final connectivity = await Connectivity().checkConnectivity();
+        if (connectivity != ConnectivityResult.none) {
+          print('🔄 Интернет есть, обновляем данные в фоне...');
+          _refreshShowcaseData(); // Неблокирующее
+        }
+      } else {
+        // ❌ НЕТ КЭША → запрос к серверу
+        print('⚠️ Кэш пуст, запрашиваем сервер...');
+        await _refreshShowcaseData();
+      }
+    } catch (e) {
+      print('❌ Ошибка загрузки данных витрины: $e');
+      if (mounted) {
+        setState(() {
+          _error = 'Ошибка загрузки: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // 🔥 ОБНОВЛЕНИЕ ДАННЫХ С СЕРВЕРА (ГОСТЕВОЙ РЕЖИМ)
+  Future<void> _refreshShowcaseData() async {
+    try {
+      print('📤 Запрос authenticate(\'\') для гостевого режима...');
+
+      final response = await _apiService.authenticate(
+        phone: '',
+        localMetadata: {},
+      );
+
+      if (!mounted) return;
+
+      if (response == null) {
+        print('⚠️ Ответ от сервера: null');
+        setState(() {
+          _error = 'Нет ответа от сервера';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // ✅ ИСПРАВЛЕНИЕ: Проверяем наличие 'data', а не 'success'
+      // ApiService уже отфильтровал ошибки, если мы здесь — значит запрос прошел
+      final data = response['data'] as Map<String, dynamic>?;
+
+      if (data == null) {
+        print('⚠️ data в ответе отсутствует');
+        if (mounted) {
+          setState(() {
+            _error = 'Нет данных в ответе';
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      // 💾 Сохранить в кэш
+      final cacheService = await CacheService.getInstance();
+
+      // 🔥 Парсинг контактов
+      final employeesRaw = data['employees'];
+      final contacts = employeesRaw is List
+          ? employeesRaw
+              .where((e) => e['Роль'] == 'Администратор')
+              .cast<Map<String, dynamic>>()
+              .toList()
+          : <Map<String, dynamic>>[];
+
+      // 🔥 Парсинг товаров
+      final productsRaw = data['products'];
+      final products = productsRaw is List
+          ? productsRaw
+              .map((item) => Product.fromJson(item as Map<String, dynamic>))
+              .toList()
+          : <Product>[];
+
+      await cacheService.saveAdminContacts(contacts);
+      await cacheService.saveProducts(products);
+
+      print(
+          '✅ Сохранено в кэш: ${contacts.length} контактов, ${products.length} товаров');
+
+      // ✅ Обновить UI
+      if (mounted) {
+        setState(() {
+          _adminContacts = contacts;
+          _products = products.toList();
+          _isLoading = false;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      print('❌ Ошибка обновления данных: $e');
+      if (mounted) {
+        setState(() {
+          _error = 'Ошибка сети: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // 🔥 ПРОКРУТКА К ТОВАРАМ
   void _scrollToProducts() {
     Future.delayed(const Duration(milliseconds: 200), () {
       final context = _productsSectionKey.currentContext;
@@ -82,112 +212,20 @@ class _LandingScreenState extends State<LandingScreen> {
     });
   }
 
-  // 🔥 ЗАГРУЗКА ТОВАРОВ
-  Future<void> _loadPublicData() async {
-    try {
-      print('🔍 Загрузка товаров...');
-      final productsData = await _apiService.fetchProducts();
+  // 🔥 ПЕРЕХОД К АВТОРИЗАЦИИ
+  void _navigateToLogin() async {
+    final cacheService = Provider.of<CacheService>(context, listen: false);
 
-      if (mounted) {
-        if (productsData != null) {
-          setState(() {
-            _products =
-                productsData.map((item) => Product.fromJson(item)).toList();
-            _isLoading = false;
-          });
-          print('✅ Товары загружены: ${_products.length}');
-        } else {
-          setState(() {
-            _error = 'Не удалось загрузить товары';
-            _isLoading = false;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = 'Ошибка подключения: $e';
-          _isLoading = false;
-        });
-      }
-      print('❌ Ошибка загрузки: $e');
-    }
-  }
-
-  // 🔥 ЗАГРУЗКА КОНТАКТОВ АДМИНА (используем существующий метод)
-  Future<void> _loadAdminContact() async {
-    try {
-      print('🔍 Загрузка контактов администратора...');
-      final contact = await _apiService.fetchAdminContact();
-
-      if (mounted) {
-        setState(() {
-          _adminContact = contact;
-          _isLoadingContacts = false;
-        });
-
-        if (contact != null) {
-          print('✅ Контакты загружены: ${contact['name']}');
-        } else {
-          print('⚠️ Контакты не загружены, используем запасные');
-        }
-      }
-    } catch (e) {
-      setState(() {
-        _isLoadingContacts = false;
-      });
-      print('⚠️ Ошибка загрузки контактов: $e');
-    }
-  }
-
-  // 🔥 ФОРМАТИРОВАНИЕ ТЕЛЕФОНА
-  String _formatPhone(String? phone) {
-    if (phone == null || phone.isEmpty) return '+7 (391) 200-12-34';
-
-    String cleaned = phone;
-    if (cleaned.startsWith("'")) {
-      cleaned = cleaned.substring(1);
-    }
-    if (cleaned.startsWith("+")) {
-      cleaned = cleaned.substring(1);
-    }
-
-    if (cleaned.length == 11 && cleaned.startsWith("7")) {
-      return '+7 (${cleaned.substring(1, 4)}) ${cleaned.substring(4, 7)}-${cleaned.substring(7, 9)}-${cleaned.substring(9, 11)}';
-    }
-    return phone;
-  }
-
-  // 🔥 ЗВОНОК
-  Future<void> _makePhoneCall(String? phone) async {
-    if (phone == null || phone.isEmpty) return;
-
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: phone.replaceAll(RegExp(r'[^0-9+]'), ''),
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AuthPhoneScreen()),
     );
-    if (await canLaunchUrl(launchUri)) {
-      await launchUrl(launchUri);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось совершить звонок')),
-      );
-    }
-  }
 
-  // 🔥 EMAIL
-  Future<void> _sendEmail(String? email) async {
-    if (email == null || email.isEmpty) return;
-
-    final Uri launchUri = Uri(
-      scheme: 'mailto',
-      path: email,
-    );
-    if (await canLaunchUrl(launchUri)) {
-      await launchUrl(launchUri);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось отправить письмо')),
+    if (result == true && mounted) {
+      await cacheService.markAsUsed();
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const PriceListScreen()),
       );
     }
   }
@@ -208,110 +246,89 @@ class _LandingScreenState extends State<LandingScreen> {
           ],
         ),
       ),
-      floatingActionButton: _buildFloatingButtons(),
+      // 🔥 ПЛАВАЮЩИЕ КНОПКИ — КОМПАКТНЫЕ, НО МАКСИМАЛЬНО РАЗНЕСЕНЫ
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+        child: Row(
+          mainAxisAlignment:
+              MainAxisAlignment.spaceBetween, // 🔥 Максимальное расстояние
+          children: [
+            // 🔥 ЛЕВАЯ КНОПКА — компактная
+            FloatingActionButton.extended(
+              onPressed: () => _navigateToLogin(),
+              backgroundColor: const Color(0xFF5D4037),
+              heroTag: 'partner',
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              label: const Text(
+                'Стать партнёром',
+                style: TextStyle(color: Colors.white),
+              ),
+              elevation: 4,
+            ),
+            // 🔥 ПРАВАЯ КНОПКА — компактная
+            FloatingActionButton.extended(
+              onPressed: () => _navigateToLogin(),
+              backgroundColor: const Color(0xFF5D4037),
+              heroTag: 'login',
+              icon: const Icon(Icons.login, color: Colors.white),
+              label: const Text(
+                'Вход для партнеров',
+                style: TextStyle(color: Colors.white),
+              ),
+              elevation: 4,
+            ),
+          ],
+        ),
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 
-  // 🔥 APP BAR (с динамическими контактами)
-// lib/screens/site/landing_screen.dart
-
-// 🔥 ИСПРАВЛЕННЫЙ APP BAR (центрированное название)
+  // 🔥 APP BAR С ДИНАМИЧЕСКИМИ КОНТАКТАМИ
   Widget _buildAppBar() {
     return Container(
-      height: 100,
-      decoration: BoxDecoration(
-        color: const Color(0xFF5D4037).withValues(alpha: 0.95),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          _companyName,
-          style: const TextStyle(
-            fontFamily: 'PlayfairDisplay',
-            fontWeight: FontWeight.bold,
-            fontSize: 28,
-            color: Colors.white,
-            letterSpacing: 2,
-            shadows: [
-              Shadow(
-                blurRadius: 10,
-                color: Colors.black26,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-// 🔥 ИСПРАВЛЕННЫЙ FOOTER (с динамическим годом и названием компании)
-  Widget _buildFooter() {
-    final currentYear = DateTime.now().year;
-    final startYear = 2018;
-    final yearText = startYear == currentYear
-        ? startYear.toString()
-        : '$startYear-$currentYear';
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      color: const Color(0xFF3E2723),
-      child: Column(
-        children: [
-          Text(
-            '© $yearText «$_companyName»',
-            style: const TextStyle(
-              fontFamily: 'Lora',
-              fontSize: 14,
-              color: Colors.white70,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Производство премиум десертов',
-            style: TextStyle(
-              fontFamily: 'Lora',
-              fontSize: 12,
-              color: Colors.white54,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-// 🔥 ИСПРАВЛЕННЫЙ FLOATING ACTION BUTTONS (с отступами от краёв)
-  Widget _buildFloatingButtons() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      height: 100, // 🔥 Чуть меньше, так как только логотип + название
+      color: const Color(0xFF5D4037).withValues(alpha: 0.95),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.center, // 🔥 Центрируем содержимое
         children: [
-          FloatingActionButton.extended(
-            onPressed: () => _navigateToLogin(),
-            backgroundColor: const Color(0xFF5D4037),
-            heroTag: 'partner',
-            icon: const Icon(Icons.person_add, color: Colors.white),
-            label: const Text(
-              'Стать партнёром',
-              style: TextStyle(color: Colors.white),
+          // 🔥 ЛОГОТИП
+          ClipRRect(
+            borderRadius:
+                BorderRadius.circular(8), // 🔥 Скругление углов (опционально)
+            child: Image.asset(
+              'assets/images/auth/logo.webp',
+              height: 60, // 🔥 Высота логотипа
+              width: 60, // 🔥 Ширина логотипа
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                print('⚠️ Логотип не найден: assets/images/auth/logo.webp');
+                return const Icon(
+                  Icons.cake,
+                  size: 60,
+                  color: Colors.white,
+                );
+              },
             ),
           ),
-          FloatingActionButton.extended(
-            onPressed: () => _navigateToLogin(),
-            backgroundColor: const Color(0xFF5D4037),
-            heroTag: 'login',
-            icon: const Icon(Icons.login, color: Colors.white),
-            label: const Text(
-              'Войти для опта',
-              style: TextStyle(color: Colors.white),
+          const SizedBox(width: 16), // 🔥 Отступ между логотипом и названием
+          // 🔥 НАЗВАНИЕ КОМПАНИИ
+          const Text(
+            'Вкусные моменты',
+            style: TextStyle(
+              fontFamily: 'PlayfairDisplay',
+              fontWeight: FontWeight.bold,
+              fontSize: 28, // 🔥 Чуть крупнее
+              color: Colors.white,
+              letterSpacing: 2, // 🔥 Разреженные буквы для премиум-вида
+              shadows: [
+                Shadow(
+                  blurRadius: 10,
+                  color: Colors.black26,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
           ),
         ],
@@ -319,7 +336,7 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 HERO СЕКЦИЯ
+  // 🔥 HERO СЕКЦИЯ (ГРАДИЕНТ, БЕЗ ФОТО)
   Widget _buildHeroSection() {
     return Container(
       height: 600,
@@ -341,7 +358,7 @@ class _LandingScreenState extends State<LandingScreen> {
         children: [
           const SizedBox(height: 40),
           const Text(
-            'Премиум кондитерские изделия\nручной работы\nдля Вашего бизнеса',
+            'Премиум кондитерские изделия\nдля Вашего бизнеса',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'PlayfairDisplay',
@@ -414,7 +431,7 @@ class _LandingScreenState extends State<LandingScreen> {
                   elevation: 4,
                 ),
                 child: const Text(
-                  'Войти для опта',
+                  'Вход для партнеров',
                   style: TextStyle(
                     fontFamily: 'PlayfairDisplay',
                     fontSize: 16,
@@ -500,6 +517,8 @@ class _LandingScreenState extends State<LandingScreen> {
             ),
           ),
           const SizedBox(height: 32),
+
+          // 🔥 СОСТОЯНИЯ: ЗАГРУЗКА / ОШИБКА / ПУСТО / ДАННЫЕ
           if (_isLoading)
             _buildSkeletonGrid()
           else if (_error != null)
@@ -509,7 +528,7 @@ class _LandingScreenState extends State<LandingScreen> {
                   Text('❌ $_error', style: const TextStyle(color: Colors.red)),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: _loadPublicData,
+                    onPressed: _loadShowcaseData,
                     child: const Text('Попробовать снова'),
                   ),
                 ],
@@ -527,11 +546,12 @@ class _LandingScreenState extends State<LandingScreen> {
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
               ),
-              itemCount: _products.take(6).length,
+              itemCount: _products.length,
               itemBuilder: (context, index) {
                 return _buildProductCard(_products[index]);
               },
             ),
+
           const SizedBox(height: 24),
           Center(
             child: TextButton(
@@ -552,6 +572,7 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
+  // 🔥 СКЕЛЕТОНЫ ДЛЯ ТОВАРОВ (ПОКА ГРУЗЯТСЯ)
   Widget _buildSkeletonGrid() {
     return GridView.builder(
       shrinkWrap: true,
@@ -617,6 +638,7 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
+  // 🔥 КАРТОЧКА ТОВАРА
   Widget _buildProductCard(Product product) {
     return Container(
       decoration: BoxDecoration(
@@ -643,16 +665,7 @@ class _LandingScreenState extends State<LandingScreen> {
                 ),
               ),
               child: Center(
-                child: product.imageUrl != null && product.imageUrl!.isNotEmpty
-                    ? Image.network(
-                        product.imageUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(Icons.cake,
-                                size: 64, color: Color(0xFF5D4037)),
-                      )
-                    : const Icon(Icons.cake,
-                        size: 64, color: Color(0xFF5D4037)),
+                child: _buildProductImage(product),
               ),
             ),
           ),
@@ -713,15 +726,32 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
+  // 🔥 ФОТО ТОВАРА ИЗ ASSETS
+  Widget _buildProductImage(Product product) {
+    // 🔥 ИСПОЛЬЗУЕМ ID ТОВАРА ДЛЯ ИМЕНИ ФАЙЛА
+    print(product.id);
+    final imageUrl = 'assets/images/products/${product.id}.webp';
+
+    return Image.asset(
+      imageUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        print('⚠️ Фото не найдено: $imageUrl');
+        return const Icon(Icons.cake, size: 64, color: Color(0xFF5D4037));
+      },
+    );
+  }
+
+  // 🔥 О НАС
   Widget _buildAboutSection() {
     return Container(
       padding: const EdgeInsets.all(32),
       color: const Color(0xFFFFF8E1),
       child: Column(
         children: [
-          Text(
+          const Text(
             'О нас',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'PlayfairDisplay',
               fontSize: 32,
               fontWeight: FontWeight.bold,
@@ -729,9 +759,9 @@ class _LandingScreenState extends State<LandingScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          Text(
-            '$_companyName — ручная работа с 2018 года',
-            style: const TextStyle(
+          const Text(
+            'Ручная работа с $_startYear года',
+            style: TextStyle(
               fontFamily: 'PlayfairDisplay',
               fontSize: 20,
               fontWeight: FontWeight.w600,
@@ -741,8 +771,9 @@ class _LandingScreenState extends State<LandingScreen> {
           const SizedBox(height: 16),
           const Text(
             'Только премиальные ингредиенты:\n'
-            'французский шоколад, свежие яйца Сибири,\n'
-            'ваниль из Мадагаскара',
+            'Крафтовые изделия, современный дизайн\n'
+            'бельгийский шоколад, ваниль из Мадагаскара\n'
+            'свежие яйца и натуральное сибирское масло.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'Lora',
@@ -757,9 +788,9 @@ class _LandingScreenState extends State<LandingScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildStatItem('2018', 'Работаем'),
+              _buildStatItem(_startYear.toString(), 'Работаем'),
               _buildStatItem('4', 'Региона'),
-              _buildStatItem('500+', 'Партнёров'),
+              _buildStatItem('100+', 'Партнёров'),
             ],
           ),
         ],
@@ -792,6 +823,7 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
+  // 🔥 ПРЕИМУЩЕСТВА
   Widget _buildFeaturesSection() {
     final features = [
       {
@@ -801,18 +833,18 @@ class _LandingScreenState extends State<LandingScreen> {
       },
       {
         'icon': Icons.schedule,
-        'title': 'Срок до 7 суток',
+        'title': 'Срок до 90 суток',
         'desc': 'Минимальные списания'
       },
       {
         'icon': Icons.trending_up,
-        'title': 'Маржинальность 40-60%',
+        'title': 'Маржинальность до 60%',
         'desc': 'Высокая прибыль'
       },
       {
         'icon': Icons.local_shipping,
         'title': 'Доставка по Сибири',
-        'desc': 'Точно в срок'
+        'desc': 'В согласованные сроки'
       },
     ];
 
@@ -858,8 +890,11 @@ class _LandingScreenState extends State<LandingScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(feature['icon'] as IconData,
-              size: 48, color: const Color(0xFF5D4037)),
+          Icon(
+            feature['icon'] as IconData,
+            size: 48,
+            color: const Color(0xFF5D4037),
+          ),
           const SizedBox(height: 12),
           Text(
             feature['title'] as String,
@@ -886,12 +921,8 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  // 🔥 СЕКЦИЯ КОНТАКТОВ (с динамическими данными)
+  // 🔥 КОНТАКТЫ
   Widget _buildContactSection() {
-    final name = _adminContact?['name'] ?? 'Администратор';
-    final phone = _adminContact?['phone'];
-    final email = _adminContact?['email'];
-
     return Container(
       padding: const EdgeInsets.all(32),
       color: const Color(0xFF5D4037),
@@ -907,58 +938,13 @@ class _LandingScreenState extends State<LandingScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          if (_isLoadingContacts)
-            const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            )
-          else ...[
-            // Имя администратора
-            Text(
-              name,
-              style: const TextStyle(
-                fontFamily: 'PlayfairDisplay',
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Телефон
-            if (phone != null && phone.isNotEmpty)
-              _buildContactItem(
-                Icons.phone,
-                _formatPhone(phone),
-                'Позвоните нам',
-                onTap: () => _makePhoneCall(phone),
-              ),
-
-            // Email
-            if (email != null && email.isNotEmpty)
-              _buildContactItem(
-                Icons.email,
-                email,
-                'Напишите нам',
-                onTap: () => _sendEmail(email),
-              ),
-
-            // Если нет контактов
-            if ((phone == null || phone.isEmpty) &&
-                (email == null || email.isEmpty)) ...[
-              const SizedBox(height: 16),
-              const Text(
-                'Контакты временно недоступны',
-                style: TextStyle(color: Colors.white70),
-              ),
-            ],
-          ],
+//          _buildContactItem(Icons.phone, '+7 (391) 200-12-34', 'Позвоните нам'),
+//          const SizedBox(height: 16),
+          _buildContactItem(
+              Icons.email, 'info@vkusnyemomenty.ru', 'Напишите нам'),
           const SizedBox(height: 16),
           _buildContactItem(
-            Icons.location_on,
-            'г. Красноярск',
-            'пр. Металлургов, 41, б',
-            onTap: null,
-          ),
+              Icons.location_on, 'г. Красноярск', 'пр. Металлургов, 41 Б'),
           const SizedBox(height: 32),
           ElevatedButton(
             onPressed: () => _navigateToLogin(),
@@ -967,7 +953,8 @@ class _LandingScreenState extends State<LandingScreen> {
               foregroundColor: const Color(0xFF5D4037),
               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(25)),
+                borderRadius: BorderRadius.circular(25),
+              ),
             ),
             child: const Text(
               'Стать партнёром',
@@ -983,59 +970,70 @@ class _LandingScreenState extends State<LandingScreen> {
     );
   }
 
-  Widget _buildContactItem(IconData icon, String text, String label,
-      {VoidCallback? onTap}) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildContactItem(IconData icon, String text, String label) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, color: Colors.white70),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: Colors.white70),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  text,
-                  style: const TextStyle(
-                    fontFamily: 'PlayfairDisplay',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontFamily: 'Lora',
-                    fontSize: 12,
-                    color: Colors.white70,
-                  ),
-                ),
-              ],
+            Text(
+              text,
+              style: const TextStyle(
+                fontFamily: 'PlayfairDisplay',
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Lora',
+                fontSize: 12,
+                color: Colors.white70,
+              ),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 
-  void _navigateToLogin() async {
-    final cacheService = Provider.of<CacheService>(context, listen: false);
+  // 🔥 FOOTER
+  Widget _buildFooter() {
+    // 🔥 ДИНАМИЧЕСКИЙ ГОД
+    final currentYear = DateTime.now().year;
+    final yearText = _startYear == currentYear
+        ? _startYear.toString()
+        : '$_startYear-$currentYear';
 
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => AuthPhoneScreen()),
+    return Container(
+      padding: const EdgeInsets.all(24),
+      color: const Color(0xFF3E2723),
+      child: Column(
+        children: [
+          Text(
+            '© $yearText «Вкусные моменты»', // ← Динамический год
+            style: const TextStyle(
+              fontFamily: 'Lora',
+              fontSize: 14,
+              color: Colors.white70,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Производство премиум десертов',
+            style: TextStyle(
+              fontFamily: 'Lora',
+              fontSize: 12,
+              color: Colors.white54,
+            ),
+          ),
+        ],
+      ),
     );
-
-    if (result == true && mounted) {
-      await cacheService.markAsUsed();
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const PriceListScreen()),
-      );
-    }
   }
 }
