@@ -181,8 +181,21 @@ class AuthProvider with ChangeNotifier {
 
       if (authResponse != null) {
         // Есть ответ от сервера — обновляем кэш
-        await _handleServerResponse(authResponse, normalizedPhone, context);
-        _isOffline = false;
+        // 🔥 ИСПРАВЛЕНО: Оборачиваем обработку ответа в try-catch
+        try {
+          await _handleServerResponse(authResponse, normalizedPhone, context);
+          _isOffline = false;
+        } catch (e) {
+          print('❌ Ошибка обработки ответа сервера: $e');
+          // Если ошибка при парсинге, пробуем кэш
+          final hasCache = await _loadCachedData();
+          if (hasCache && _currentUser != null) {
+            _isOffline = true;
+            _showOfflineModeDialog(context);
+          } else {
+            rethrow; // Если кэша нет, кидаем ошибку дальше
+          }
+        }
       } else {
         // Нет сети — пытаемся загрузить из кэша
         final hasCache = await _loadCachedData();
@@ -194,21 +207,35 @@ class AuthProvider with ChangeNotifier {
         }
       }
 
-      // Подписка на push
+      // 🔥 ВАЖНО: Если мы здесь, значит авторизация прошла успешно (либо онлайн, либо из кэша)
+      // Убеждаемся, что isLoading false перед тем как идти дальше
+      _isLoading = false;
+      notifyListeners();
+
+      // 🔥 PUSH ПОДПИСКА: Запускаем отдельно, чтобы ошибки не ломали вход
       if (kIsWeb && _currentUser != null) {
-        _handlePushSubscription(_currentUser!.phone!).catchError((e) {
-          print('⚠️ Ошибка фоновой подписки: $e');
-        });
+        // Запускаем без await, чтобы не блокировать UI, и ловим все ошибки внутри
+        _handlePushSubscriptionSafe(_currentUser!.phone!);
       }
     } catch (e) {
-      print('❌ Ошибка входа: $e');
+      print('❌ Критическая ошибка входа: $e');
       _currentUser = null;
       _clientData = null;
       _metadata = null;
-      rethrow;
-    } finally {
-      _isLoading = false;
+      _isLoading = false; // Убеждаемся что ложим спиннер при ошибке
       notifyListeners();
+      rethrow;
+    }
+    // finally убран, так как мы управляем _isLoading явно в успешном пути и в catch
+  }
+
+  // 🔥 БЕЗОПАССНЫЙ ОБЕРТКА ДЛЯ PUSH
+  Future<void> _handlePushSubscriptionSafe(String phone) async {
+    try {
+      await _handlePushSubscription(phone);
+    } catch (e) {
+      print('⚠️ PUSH ошибка (безопасный режим): $e');
+      // Ошибка здесь никак не повлияет на состояние авторизации
     }
   }
 

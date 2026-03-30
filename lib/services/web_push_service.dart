@@ -37,7 +37,7 @@ class WebPushService {
 
   Future<void> initialize(String vapidPublicKey) async {
     if (!kIsWeb) {
-      print('📱 Push-уведомления работают только в веб-версии');
+      // print('📱 Push-уведомления работают только в веб-версии'); // Убрал лишний шум
       return;
     }
 
@@ -99,7 +99,6 @@ class WebPushService {
 
   Future<bool> isSupported() async {
     if (!kIsWeb) return false;
-
     try {
       final available = await _checkPushManager();
       return available;
@@ -108,39 +107,42 @@ class WebPushService {
     }
   }
 
-  // 🔥 Установка обработчика уведомлений
   void set onNotificationReceived(Function(Map<String, dynamic>) callback) {
     _onNotificationReceived = callback;
   }
 
-  // 🔥 Настройка обработчика из JavaScript
+  // 🔥 ИСПРАВЛЕНО: Защита от null
   void _setupNotificationHandler() {
-    if (pushManager == null) return;
+    // Проверяем, что pushManager не null перед вызовом метода
+    if (pushManager == null) {
+      print('⚠️ PushManager is null, cannot set notification handler');
+      return;
+    }
 
-    // Создаем JS функцию-обработчик
-    final handler = (JSAny? data) {
-      if (data != null) {
-        try {
-          // Преобразуем JS объект в Dart Map
-          final Map<String, dynamic> notificationData =
-              data.dartify() as Map<String, dynamic>;
+    try {
+      final handler = (JSAny? data) {
+        if (data != null) {
+          try {
+            final Map<String, dynamic> notificationData =
+                data.dartify() as Map<String, dynamic>;
 
-          print('📨 Получено уведомление: $notificationData');
+            print('📨 Получено уведомление: $notificationData');
 
-          // Вызываем Dart-коллбек, если он установлен
-          if (_onNotificationReceived != null) {
-            _onNotificationReceived!(notificationData);
+            if (_onNotificationReceived != null) {
+              _onNotificationReceived!(notificationData);
+            }
+          } catch (e) {
+            print('❌ Ошибка обработки уведомления: $e');
           }
-        } catch (e) {
-          print('❌ Ошибка обработки уведомления: $e');
         }
-      }
-    }.toJS;
+      }.toJS;
 
-    pushManager!.setNotificationHandler(handler);
+      pushManager!.setNotificationHandler(handler);
+    } catch (e) {
+      print('❌ Ошибка установки обработчика уведомлений: $e');
+    }
   }
 
-  // 🔥 Подписка на уведомления
   Future<bool> subscribe() async {
     if (!kIsWeb || !_isInitialized) return false;
 
@@ -171,7 +173,6 @@ class WebPushService {
         try {
           final subscriptionResult =
               await pushManager!.getSubscriptionData().toDart;
-          // 🔥 ИСПРАВЛЕНО: передаём 3 аргумента
           await _sendSubscriptionToServer(
               phone, 'Водитель', subscriptionResult);
         } catch (e) {
@@ -186,7 +187,6 @@ class WebPushService {
     }
   }
 
-  // 🔥 Получение данных подписки
   Future<Map<String, dynamic>?> getSubscriptionData() async {
     if (!kIsWeb || !_isInitialized || pushManager == null) return null;
 
@@ -199,7 +199,6 @@ class WebPushService {
     }
   }
 
-  // 🔥 Отписка от уведомлений
   Future<bool> unsubscribe() async {
     if (!kIsWeb || !_isInitialized) return false;
 
@@ -232,12 +231,9 @@ class WebPushService {
     }
   }
 
-  // 🔥 Отправка подписки на сервер через ApiService
-  // 🔥 ИСПРАВЛЕНО: правильные типы параметров
   Future<void> _sendSubscriptionToServer(
       String phone, String role, JSObject subscriptionData) async {
     try {
-      // Преобразуем JSObject в Map
       final subMap = subscriptionData.dartify() as Map<String, dynamic>;
 
       final success = await _apiService.savePushSubscription(
@@ -259,7 +255,6 @@ class WebPushService {
     }
   }
 
-  // 🔥 Уведомление сервера об отписке через ApiService
   Future<void> _sendUnsubscribeToServer(String phone) async {
     try {
       final success = await _apiService.deletePushSubscription(phone);
@@ -276,7 +271,6 @@ class WebPushService {
     }
   }
 
-  // 🔥 Получение подписок водителей с сервера через ApiService
   Future<List<Map<String, dynamic>>> getDriverSubscriptions() async {
     try {
       return await _apiService.getDriverSubscriptions();

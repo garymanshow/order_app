@@ -255,29 +255,44 @@ class ApiService {
   Future<bool> createOrder({
     required String clientId,
     required String employeeId,
-    required List<Map<String, dynamic>>
-        items, // Изменено с List<dynamic> на List<Map<String, dynamic>>
+    required List<Map<String, dynamic>> items,
     required double totalAmount,
     String? deliveryCity,
     String? deliveryAddress,
     String? comment,
   }) async {
     try {
-      final data = {
-        'clientId': clientId,
-        'employeeId': employeeId,
+      // 🔥 ИСПРАВЛЕНО: Оборачиваем данные заказа в объект 'data'
+      // и переименовываем clientId в phone для совместимости с GAS
+
+      final orderData = {
         'items': items,
         'totalAmount': totalAmount,
         if (deliveryCity != null) 'deliveryCity': deliveryCity,
         if (deliveryAddress != null) 'deliveryAddress': deliveryAddress,
         if (comment != null) 'comment': comment,
+        // Добавляем employeeId внутрь data, если это нужно серверу
+        'employeeId': employeeId,
       };
 
-      final response = await _makeRequest('createOrder', data);
+      final payload = {
+        'phone': clientId, // GAS ожидает поле 'phone'
+        'data': orderData, // GAS ожидает поле 'data'
+      };
+
+      final response = await _makeRequest('createOrder', payload);
 
       if (response.statusCode == 200) {
+        // Защита от пустого ответа
+        if (response.body.isEmpty) {
+          print('❌ Ошибка: сервер вернул пустой ответ');
+          return false;
+        }
+
         final Map<String, dynamic> result = jsonDecode(response.body);
-        return result['success'] == true;
+
+        // Проверяем success или status
+        return result['success'] == true || result['status'] == 'success';
       } else {
         print('❌ Ошибка создания заказа: ${response.statusCode}');
         return false;
