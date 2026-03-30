@@ -73,3 +73,4 @@ flutter:
     - assets/images/products/
     - assets/fonts/PlayfairDisplay-Regular.ttf
     - assets/fonts/Lora-Regular.ttf
+    - assets/texts/offer.txt
