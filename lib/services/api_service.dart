@@ -250,8 +250,7 @@ class ApiService {
     }
   }
 
-  /// Создание заказа
-  /// Возвращает true при успешном создании, false при ошибке
+  // Создание заказа
   Future<bool> createOrder({
     required String clientId,
     required String employeeId,
@@ -262,37 +261,36 @@ class ApiService {
     String? comment,
   }) async {
     try {
-      // 🔥 ИСПРАВЛЕНО: Оборачиваем данные заказа в объект 'data'
-      // и переименовываем clientId в phone для совместимости с GAS
-
       final orderData = {
         'items': items,
         'totalAmount': totalAmount,
         if (deliveryCity != null) 'deliveryCity': deliveryCity,
         if (deliveryAddress != null) 'deliveryAddress': deliveryAddress,
         if (comment != null) 'comment': comment,
-        // Добавляем employeeId внутрь data, если это нужно серверу
         'employeeId': employeeId,
       };
 
       final payload = {
-        'phone': clientId, // GAS ожидает поле 'phone'
-        'data': orderData, // GAS ожидает поле 'data'
+        'phone': clientId,
+        'data': orderData,
       };
 
       final response = await _makeRequest('createOrder', payload);
 
       if (response.statusCode == 200) {
         // Защита от пустого ответа
-        if (response.body.isEmpty) {
-          print('❌ Ошибка: сервер вернул пустой ответ');
-          return false;
+        if (response.body.isEmpty || response.body.trim() == '{}') {
+          print('⚠️ Сервер вернул пустой ответ 200. Считаем успехом.');
+          return true;
         }
 
-        final Map<String, dynamic> result = jsonDecode(response.body);
-
-        // Проверяем success или status
-        return result['success'] == true || result['status'] == 'success';
+        try {
+          final Map<String, dynamic> result = jsonDecode(response.body);
+          return result['success'] == true || result['status'] == 'success';
+        } catch (e) {
+          print('⚠️ Ошибка парсинга ответа, но статус 200. Считаем успехом.');
+          return true;
+        }
       } else {
         print('❌ Ошибка создания заказа: ${response.statusCode}');
         return false;
@@ -335,6 +333,38 @@ class ApiService {
     } catch (e) {
       print('❌ Ошибка создания заказа: $e');
       return null;
+    }
+  }
+
+  // 🔥 УДАЛЕНИЕ ЗАКАЗА (по совокупности полей)
+  Future<bool> deleteOrder({
+    required String clientPhone,
+    required String clientName,
+    required String status,
+  }) async {
+    try {
+      final data = {
+        'clientPhone': clientPhone,
+        'clientName': clientName,
+        'status': status,
+      };
+
+      final response = await _makeRequest('deleteOrder', data);
+
+      if (response.statusCode == 200) {
+        if (response.body.isEmpty || response.body.trim() == '{}') return true;
+
+        try {
+          final Map<String, dynamic> result = jsonDecode(response.body);
+          return result['success'] == true;
+        } catch (_) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления заказа: $e');
+      return false;
     }
   }
 
@@ -445,22 +475,6 @@ class ApiService {
       return false;
     } catch (e) {
       print('❌ Ошибка обновления метаданных: $e');
-      return false;
-    }
-  }
-
-  // 🔥 УДАЛЕНИЕ ЗАКАЗА
-  Future<bool> deleteOrder(String orderId) async {
-    try {
-      final response = await _makeRequest('deleteOrder', {'orderId': orderId});
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> result = jsonDecode(response.body);
-        return result['success'] == true;
-      }
-      return false;
-    } catch (e) {
-      print('❌ Ошибка удаления заказа: $e');
       return false;
     }
   }

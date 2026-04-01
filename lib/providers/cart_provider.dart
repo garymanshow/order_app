@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 import '../models/client.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
-import '../models/delivery_condition.dart';
+import '../models/delivery_condition.dart'; // ✅ Добавлен импорт
 import '../models/price_list_mode.dart';
 import '../services/api_service.dart';
 import '../services/delivery_conditions_service.dart' as delivery;
@@ -103,7 +103,7 @@ class CartProvider with ChangeNotifier {
           productName: product.name,
           quantity: adjustedQuantity,
           totalPrice: product.price * adjustedQuantity,
-          date: DateTime.now().toIso8601String(),
+          date: DateTime.now().toUtc().toIso8601String(),
           clientPhone: _currentClient!.phone!,
           clientName: _currentClient!.name!,
           priceListId: productId,
@@ -154,7 +154,7 @@ class CartProvider with ChangeNotifier {
     _currentClient = client;
     _allOrders = allOrders;
     _allProducts = allProducts;
-    _isInitialized = true; // 👈 ДОБАВЛЯЕМ
+    _isInitialized = true;
     _updateDeliveryCondition();
     notifyListeners();
   }
@@ -226,62 +226,70 @@ class CartProvider with ChangeNotifier {
     return cartTotal >= minAmount;
   }
 
-  // 🔥 Отправка всех заказов
+  // 🔥 Отправка всех заказов с возможностью очистки старых
   Future<bool> submitAllOrders(
     BuildContext context,
-    ApiService apiService,
-  ) async {
-    if (_allOrders == null || _allOrders!.isEmpty) return false;
+    ApiService apiService, {
+    String? deleteStatus, // Добавлен параметр
+  }) async {
+    // ✅ Исправлено: используем геттер cartItems вместо переменной _cartItems
+    if (cartItems.isEmpty) return false;
 
     try {
-      // Получаем город и адрес текущего клиента
       final deliveryCity = _currentClient?.city ?? '';
       final deliveryAddress = _currentClient?.deliveryAddress ?? '';
-      final cartTotal =
-          cartItems.fold(0.0, (sum, item) => sum + item.totalPrice);
       final minAmount = getMinOrderAmount(context);
       final discount = getClientDiscount();
+      String comment =
+          discount > 0 ? 'Скидка ${discount.toStringAsFixed(0)}%' : '';
 
-      print('📦 Отправка заказа: сумма=$cartTotal, мин.сумма=$minAmount');
-
-      // Проверяем минимальную сумму заказа
+      // Проверка минимальной суммы
       if (!meetsMinimumOrderAmount(context)) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
               content: Text(
                   'Минимальная сумма заказа ${minAmount.toStringAsFixed(0)}₽'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
+              backgroundColor: Colors.orange),
+        );
         return false;
       }
 
-      // Формируем комментарий к заказу
-      String comment = '';
-      if (discount > 0) {
-        comment = 'Скидка ${discount.toStringAsFixed(0)}%';
-      }
-
-      // Группируем заказы по клиентам
+      // Группировка по клиентам
       final ordersByClient = <String, List<OrderItem>>{};
 
-      for (var order in _allOrders!) {
-        if (order.quantity > 0) {
-          final key = '${order.clientPhone}_${order.clientName}';
-          ordersByClient.putIfAbsent(key, () => []).add(order);
+      // ✅ Исправлено: используем геттер cartItems
+      for (var item in cartItems) {
+        if (item.quantity > 0) {
+          final key = '${item.clientPhone}_${item.clientName}';
+          ordersByClient.putIfAbsent(key, () => []).add(item);
         }
       }
 
-      // Отправляем заказы для каждого клиента
-      for (var orders in ordersByClient.values) {
-        if (orders.isEmpty) continue;
+      bool allSuccess = true;
 
-        final client = orders.first;
-        final items = orders.map((o) => o.toJson()).toList();
-        final totalAmount = orders.fold(0.0, (sum, o) => sum + o.totalPrice);
+      for (var entry in ordersByClient.entries) {
+        final clientOrders = entry.value;
+        final client = clientOrders.first;
+        final totalAmount =
+            clientOrders.fold(0.0, (sum, o) => sum + o.totalPrice);
+        final items = clientOrders.map((o) => o.toJson()).toList();
 
+        // 🔥 ШАГ 1: Удаление старых заказов (если передан статус)
+        if (deleteStatus != null && deleteStatus.isNotEmpty) {
+          print(
+              '🗑 Удаление старых заказов для ${client.clientName} (статус: $deleteStatus)');
+          final deleted = await apiService.deleteOrder(
+            clientPhone: client.clientPhone,
+            clientName: client.clientName,
+            status: deleteStatus,
+          );
+          if (!deleted) {
+            print('⚠️ Не удалось удалить старые заказы (продолжаем создание)');
+          }
+        }
+
+        // 🔥 ШАГ 2: Создание новых
+        print('📤 Создание новых заказов для ${client.clientName}');
         final result = await apiService.createOrder(
           clientId: client.clientPhone,
           employeeId: 'автомат',
@@ -293,39 +301,40 @@ class CartProvider with ChangeNotifier {
         );
 
         if (!result) {
-          throw Exception('Ошибка отправки заказа для ${client.clientName}');
-        }
-
-        // Если заказ успешно отправлен, удаляем его из локального списка
-        for (var order in orders) {
-          _allOrders!.remove(order);
+          allSuccess = false;
         }
       }
 
-      // Сохраняем обновленный список заказов
-      await _saveOrdersToPreferences();
+      if (allSuccess) {
+        // ✅ Исправлено: очищаем через существующий метод clearCart
+        clearCart();
 
-      print('✅ Все заказы успешно отправлены');
+        // ✅ Исправлено: используем существующий метод сохранения
+        await _saveOrdersToPreferences();
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Заказы успешно отправлены!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Заказы успешно синхронизированы!'),
+                backgroundColor: Colors.green),
+          );
+        }
+        return true;
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Часть заказов не удалось синхронизировать'),
+                backgroundColor: Colors.orange),
+          );
+        }
+        return false;
       }
-
-      return true;
     } catch (e) {
       print('❌ Ошибка отправки заказов: $e');
-
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка отправки заказов: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red),
         );
       }
       return false;

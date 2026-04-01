@@ -258,9 +258,18 @@ class AuthProvider with ChangeNotifier {
           .map((item) => Employee.fromJson(item as Map<String, dynamic>))
           .toList();
     } else {
-      if (userData['role'] != null) {
+      // Проверяем наличие поля "Роль" (с большой буквы, как в GAS)
+      // Если поле есть и оно не пустое -> это Сотрудник
+      if (userData['Роль'] != null && userData['Роль'].toString().isNotEmpty) {
+        print('🕵️‍♂️ Обнаружен сотрудник с ролью: ${userData['Роль']}');
         _currentUser = Employee.fromJson(userData);
-      } else {
+      }
+      // Иначе проверяем старое поле 'role' для совместимости
+      else if (userData['role'] != null) {
+        _currentUser = Employee.fromJson(userData);
+      }
+      // Если ролей нет -> это Клиент
+      else {
         _currentUser = Client.fromJson(userData);
       }
     }

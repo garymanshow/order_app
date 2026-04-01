@@ -40,7 +40,8 @@
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- PWA tags -->
-  <meta name="theme-color" content="#4CAF50">
+  <!-- 🔥 Используем цвет из вашего manifest.json -->
+  <meta name="theme-color" content="#5D4037">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
   <!-- Favicon -->
@@ -49,12 +50,11 @@
   <title>Вкусные моменты</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- 🔥 Firebase SDK для Google Sign-In -->
+  <!-- 🔥 Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
 
   <script>
-    // 🔥 Инициализация Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBc2C0gNtnvzFpDK5kGBQtyzf_O5TI9EEo",
       authDomain: "order-app-9cf50.firebaseapp.com",
@@ -63,15 +63,14 @@
       messagingSenderId: "237431695039",
       appId: "1:237431695039:web:53fb85f6e22dcf2c6a080a"
     };
-
     firebase.initializeApp(firebaseConfig);
     console.log('🔥 Firebase инициализирован');
   </script>
 
-  <!-- 🔥 Переменные окружения для Web -->
+  <!-- 🔥 Переменные окружения -->
   <script>
     window.ENV = {
-      APP_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwcLo8UkTbtcV8mkF7WZVEOiE8Ii3DRxiC1yMU9iVQjbZKShN48iFpNZTO3R2MERnfWAw/exec',
+      APP_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbz-msDMU08QxMTY0ih_c4sNyyoc-d6UC2MoCMXW8UlUIxCreO81V7gfKADtl3YlBCaOVQ/exec',
       SPREADSHEET_ID: '16LQhpJgAduO-g7V5pl9zXNuvPMUzs0vwoHZJlz_FXe8',
       GOOGLE_DRIVE_IMAGES_FOLDER_ID: '1zXLAmW2kxfHUimaXTrbJHjl5MqGtnRX7',
       VAPID_PUBLIC_KEY: 'BMpzIzZ2LhJf5bK62MA6NlOVUCRQP4vz-yVHgv-dmYVeDpiwieph16f2qXvZRfZdDuRsHcUj765dQPN5ExlyY40'
@@ -79,40 +78,75 @@
   </script>
 
   <style>
-    #update-notification {
-      animation: slideUp 0.3s ease-out;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #5D4037;
+      /* Цвет фона из manifest */
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
 
-    @keyframes slideUp {
-      from {
-        transform: translateY(100px);
-        opacity: 0;
+    /* 🔥 SPLASH SCREEN: Центрированный логотип при загрузке */
+    .loading-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      width: 100vw;
+      position: fixed;
+      top: 0;
+      left: 0;
+      background-color: #5D4037;
+      z-index: 9999;
+      transition: opacity 0.3s ease-out;
+    }
+
+    .loading-container img {
+      width: 120px;
+      /* Размер логотипа при запуске */
+      height: 120px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        opacity: 0.8;
       }
 
-      to {
-        transform: translateY(0);
+      50% {
+        transform: scale(1.05);
         opacity: 1;
       }
+
+      100% {
+        transform: scale(1);
+        opacity: 0.8;
+      }
     }
 
-    #update-notification button:hover {
-      background: #f0f0f0 !important;
-      transform: scale(1.05);
-      transition: all 0.2s;
+    /* Скрытие splash screen после загрузки Flutter */
+    .loading-container.hidden {
+      opacity: 0;
+      pointer-events: none;
     }
   </style>
 </head>
 
 <body>
+  <!-- 🔥 SPLASH SCREEN: Картинка, которую увидят первой -->
+  <div class="loading-container" id="loading">
+    <img src="icons/Icon-512.png" alt="Logo" />
+  </div>
+
   <script src="scripts/push-client.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 
   <script>
-    // 🔥 УПРОЩЁННАЯ РЕГИСТРАЦИЯ SW БЕЗ АВТООБНОВЛЕНИЯ
+    // 🔥 Регистрация Service Workers
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        // Регистрируем sw.js (кастомный для оффлайна)
+        // Основной SW (для офлайна)
         navigator.serviceWorker.register('sw.js')
           .then(function (reg) {
             console.log('✅ SW зарегистрирован');
@@ -121,7 +155,7 @@
             console.warn('⚠️ Ошибка SW:', err);
           });
 
-        // Регистрируем push-sw.js
+        // Push SW (для уведомлений)
         navigator.serviceWorker.register('push-sw.js')
           .then(function (reg) {
             console.log('📬 Push SW зарегистрирован');
@@ -131,7 +165,18 @@
           });
       });
     }
-    // 🔥 НЕТ БОЛЬШЕ controllerchange - НЕТ БЕСКОНЕЧНОГО ЦИКЛА!
+
+    // 🔥 Скрытие Splash Screen после загрузки Flutter
+    window.addEventListener('flutter-first-frame', function () {
+      var loader = document.getElementById('loading');
+      if (loader) {
+        loader.classList.add('hidden');
+        // Удаляем из DOM через 0.3с (время анимации)
+        setTimeout(function () {
+          loader.remove();
+        }, 300);
+      }
+    });
   </script>
 </body>
 

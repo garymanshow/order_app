@@ -203,9 +203,12 @@ class ClientSelectionScreen extends StatelessWidget {
 
     if (confirm != true) return;
 
+    // 🔥 ПЕРЕДАЕМ СТАТУС "оформлен" ЯВНО
+    // Это означает: "Удали старые заказы со статусом 'оформлен' и создай новые"
     final success = await cartProvider.submitAllOrders(
       context,
       apiService,
+      deleteStatus: 'оформлен',
     );
 
     if (context.mounted) {
@@ -215,7 +218,7 @@ class ClientSelectionScreen extends StatelessWidget {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ошибка при отправке заказов')),
+          const SnackBar(content: Text('Ошибка при обновлении заказов')),
         );
       }
     }

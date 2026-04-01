@@ -75,22 +75,26 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final cacheService = Provider.of<CacheService>(context, listen: false);
 
+      // 🔥 1. Выполняем вход
       await authProvider.login(phone, context: context);
 
-      // 🔥 СОХРАНЯЕМ, что устройство использовано + последний телефон
+      // 🔥 2. Сохраняем флаг использования и телефон
       await cacheService.markAsUsed();
       await cacheService.saveLastPhone(phone);
 
+      // 🔥 3. Закрываем экран ТОЛЬКО если мы все еще смонтированы
       if (mounted) {
         Navigator.pop(context, true);
       }
     } catch (e) {
+      // 🔥 4. Обрабатываем ошибки
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Ошибка входа: $e')),
         );
       }
     } finally {
+      // 🔥 5. Всегда убираем спиннер, если мы на экране
       if (mounted) {
         setState(() => _isLoading = false);
       }

@@ -36,11 +36,7 @@ class WebPushService {
   Function(Map<String, dynamic>)? _onNotificationReceived;
 
   Future<void> initialize(String vapidPublicKey) async {
-    if (!kIsWeb) {
-      // print('📱 Push-уведомления работают только в веб-версии'); // Убрал лишний шум
-      return;
-    }
-
+    if (!kIsWeb) return;
     if (_isInitialized) return;
 
     _vapidPublicKey = vapidPublicKey;
@@ -111,9 +107,8 @@ class WebPushService {
     _onNotificationReceived = callback;
   }
 
-  // 🔥 ИСПРАВЛЕНО: Защита от null
+  // 🔥 ИСПРАВЛЕНО: Безопасный каст типов внутри обработчика
   void _setupNotificationHandler() {
-    // Проверяем, что pushManager не null перед вызовом метода
     if (pushManager == null) {
       print('⚠️ PushManager is null, cannot set notification handler');
       return;
@@ -123,13 +118,21 @@ class WebPushService {
       final handler = (JSAny? data) {
         if (data != null) {
           try {
-            final Map<String, dynamic> notificationData =
-                data.dartify() as Map<String, dynamic>;
+            final dynamic rawMap = data.dartify();
 
-            print('📨 Получено уведомление: $notificationData');
+            // 🔥 ВОЗВРАЩАЕМ КОСТЫЛЬ (он необходим для Web)
+            // dartify возвращает LinkedMap<Object?, Object?>, нельзя кастовать напрямую
+            if (rawMap is Map) {
+              final Map<String, dynamic> notificationData = {};
+              rawMap.forEach((key, value) {
+                notificationData[key.toString()] = value;
+              });
 
-            if (_onNotificationReceived != null) {
-              _onNotificationReceived!(notificationData);
+              print('📨 Получено уведомление: $notificationData');
+
+              if (_onNotificationReceived != null) {
+                _onNotificationReceived!(notificationData);
+              }
             }
           } catch (e) {
             print('❌ Ошибка обработки уведомления: $e');
@@ -174,7 +177,7 @@ class WebPushService {
           final subscriptionResult =
               await pushManager!.getSubscriptionData().toDart;
           await _sendSubscriptionToServer(
-              phone, 'Водитель', subscriptionResult);
+              phone, 'Клиент', subscriptionResult); // Исправил роль на Клиент
         } catch (e) {
           print('⚠️ Не удалось получить данные подписки: $e');
         }
@@ -192,7 +195,17 @@ class WebPushService {
 
     try {
       final result = await pushManager!.getSubscriptionData().toDart;
-      return result.dartify() as Map<String, dynamic>;
+      final dynamic rawMap = result.dartify();
+
+      // 🔥 Безопасный каст
+      if (rawMap is Map) {
+        final Map<String, dynamic> typedMap = {};
+        rawMap.forEach((key, value) {
+          typedMap[key.toString()] = value;
+        });
+        return typedMap;
+      }
+      return null;
     } catch (e) {
       print('❌ Ошибка получения данных подписки: $e');
       return null;
@@ -231,10 +244,22 @@ class WebPushService {
     }
   }
 
+  // 🔥 ИСПРАВЛЕНО: Безопасный каст аргументов
   Future<void> _sendSubscriptionToServer(
       String phone, String role, JSObject subscriptionData) async {
     try {
-      final subMap = subscriptionData.dartify() as Map<String, dynamic>;
+      final dynamic rawMap = subscriptionData.dartify();
+
+      if (rawMap is! Map) {
+        print('❌ Данные подписки не являются Map');
+        return;
+      }
+
+      // Создаем правильно типизированную Map
+      final Map<String, dynamic> subMap = {};
+      rawMap.forEach((key, value) {
+        subMap[key.toString()] = value;
+      });
 
       final success = await _apiService.savePushSubscription(
         phone: phone,

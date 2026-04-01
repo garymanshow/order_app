@@ -5,12 +5,16 @@
     "description": "Приложение для заказа десертов и сладостей",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#ffffff",
-    "theme_color": "#4CAF50",
+    "background_color": "#5D4037",
+    "theme_color": "#5D4037",
     "orientation": "portrait-primary",
     "scope": "/",
     "prefer_related_applications": false,
-    "categories": ["business", "shopping", "food"],
+    "categories": [
+        "business",
+        "shopping",
+        "food"
+    ],
     "screenshots": [
         {
             "src": "screenshots/home.webp",
@@ -64,21 +68,36 @@
             "short_name": "Прайс",
             "description": "Открыть прайс-лист",
             "url": "/?page=price",
-            "icons": [{ "src": "icons/shortcut-price.png", "sizes": "96x96" }]
+            "icons": [
+                {
+                    "src": "icons/shortcut-price.png",
+                    "sizes": "96x96"
+                }
+            ]
         },
         {
             "name": "Корзина",
             "short_name": "Корзина",
             "description": "Перейти в корзину",
             "url": "/?page=cart",
-            "icons": [{ "src": "icons/shortcut-cart.png", "sizes": "96x96" }]
+            "icons": [
+                {
+                    "src": "icons/shortcut-cart.png",
+                    "sizes": "96x96"
+                }
+            ]
         },
         {
             "name": "Заказы",
             "short_name": "Заказы",
             "description": "История заказов",
             "url": "/?page=orders",
-            "icons": [{ "src": "icons/shortcut-orders.png", "sizes": "96x96" }]
+            "icons": [
+                {
+                    "src": "icons/shortcut-orders.png",
+                    "sizes": "96x96"
+                }
+            ]
         }
     ]
 }

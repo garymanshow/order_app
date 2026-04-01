@@ -30,7 +30,7 @@ class Employee extends User {
     );
   }
 
-  // 🔥 БЕЗОПАСНЫЙ fromJson для восстановления из кэша
+  // 🔥 ИСПРАВЛЕННЫЙ fromJson: читает и кэш, и формат сервера
   factory Employee.fromJson(Map<String, dynamic> json) {
     // Безопасное преобразование bool
     bool safeBool(dynamic value) {
@@ -44,12 +44,15 @@ class Employee extends User {
     }
 
     return Employee(
-      name: json['name']?.toString(),
-      phone: json['phone']?.toString(),
-      role: json['role']?.toString(),
-      twoFactorAuth: safeBool(json['twoFactorAuth']),
-      email: json['email']?.toString(), // 👈 ДОБАВЛЕНО чтение из JSON
-      fcm: json['fcm']?.toString(),
+      // Приоритет: 1. Обычный JSON (кэш), 2. Формат Google Таблиц (сервер)
+      name: json['name']?.toString() ?? json['Сотрудник']?.toString(),
+      phone: json['phone']?.toString() ?? json['Телефон']?.toString(),
+      role: json['role']?.toString() ?? json['Роль']?.toString(),
+      twoFactorAuth: safeBool(json['twoFactorAuth'] ?? json['2FA']),
+      email: json['email']?.toString() ?? json['Email']?.toString(),
+      fcm: json['fcm']?.toString() ??
+          json['FCM']?.toString() ??
+          json['fcmToken']?.toString(),
     );
   }
 

@@ -178,7 +178,20 @@ class SyncService {
             break;
           case 'delete':
             if (entity == 'order') {
-              success = await _api.deleteOrder(data['id']);
+              // 🔥 ИСПРАВЛЕНО: Передаем именованные параметры для deleteOrder
+              // Для удаления требуются clientPhone, clientName, status
+              if (data['clientPhone'] != null &&
+                  data['clientName'] != null &&
+                  data['status'] != null) {
+                success = await _api.deleteOrder(
+                  clientPhone: data['clientPhone'],
+                  clientName: data['clientName'],
+                  status: data['status'],
+                );
+              } else {
+                print('⚠️ Недостаточно данных для удаления заказа в очереди');
+                success = false;
+              }
             }
             break;
         }
