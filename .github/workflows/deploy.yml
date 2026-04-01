@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  flutter_version: '3.41.4'
+  flutter_version: '3.41.6'
 
 jobs:
   build:
@@ -43,6 +43,12 @@ jobs:
 
       - name: 🔍 Analyze code
         run: flutter analyze
+
+      - name: 🔍 Debug environment
+        run: |
+          flutter --version
+          dart --version
+          flutter doctor -v
 
       - name: 🧪 Run tests (optional)
         run: flutter test
