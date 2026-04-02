@@ -67,7 +67,6 @@ flutter:
 
   uses-material-design: true
   assets:
-    - assets/.env
     - assets/images/auth/
     - assets/images/web/
     - assets/images/products/
