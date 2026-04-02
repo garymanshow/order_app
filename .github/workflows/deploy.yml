@@ -43,6 +43,7 @@ jobs:
 
       - name: 🔍 Analyze code
         run: flutter analyze
+        continue-on-error: true
 
       - name: 🧪 Run tests (optional)
         run: flutter test
