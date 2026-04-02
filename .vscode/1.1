@@ -1,0 +1,125 @@
+    {
+      "label": "git: show latest tag",
+      "type": "shell",
+      "command": "git describe --tags --abbrev=0 2>/dev/null || echo 'No tags found'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag",
+        "color": "terminal.ansiCyan"
+      }
+    },
+    {
+      "label": "git: increment patch tag",
+      "type": "shell",
+      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null || echo \"v.0.0.0\"); new=$(echo $latest | awk -F. \"{print \\$1\\\".\\\"\\$2\\\".\\\"\\$3+1}\"); echo \"📌 Latest tag: $latest\"; echo \"🏷️  New tag: $new\"; read -p \"Create and push tag $new? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"; else echo \"❌ Cancelled\"; fi'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag-add",
+        "color": "terminal.ansiGreen"
+      }
+    },
+    {
+      "label": "git: increment minor tag",
+      "type": "shell",
+      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null || echo \"v.0.0.0\"); IFS=\".\" read -r major minor patch <<< $(echo $latest | sed \"s/v\\.//\"); new_minor=$((minor + 1)); new=\"v.$major.$new_minor.0\"; echo \"📌 Latest tag: $latest\"; echo \"🏷️  New tag: $new\"; read -p \"Create and push tag $new? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"; else echo \"❌ Cancelled\"; fi'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag-add",
+        "color": "terminal.ansiYellow"
+      }
+    },
+    {
+      "label": "git: increment major tag",
+      "type": "shell",
+      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null || echo \"v.0.0.0\"); IFS=\".\" read -r major minor patch <<< $(echo $latest | sed \"s/v\\.//\"); new_major=$((major + 1)); new=\"v.$new_major.0.0\"; echo \"📌 Latest tag: $latest\"; echo \"🏷️  New tag: $new\"; read -p \"Create and push tag $new? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"; else echo \"❌ Cancelled\"; fi'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag-add",
+        "color": "terminal.ansiRed"
+      }
+    },
+    {
+      "label": "git: create custom tag",
+      "type": "shell",
+      "command": "bash -c 'read -p \"Enter tag name (e.g., v.1.0.0): \" tag; echo \"Creating tag: $tag\"; read -p \"Push to origin? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag $tag && git push origin $tag && echo \"✅ Tag $tag created and pushed!\"; else echo \"❌ Cancelled\"; fi'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag",
+        "color": "terminal.ansiBlue"
+      }
+    },
+    {
+      "label": "git: list all tags",
+      "type": "shell",
+      "command": "git tag -l --sort=-v:refname",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "list-unordered",
+        "color": "terminal.ansiCyan"
+      }
+    },
+    {
+      "label": "git: delete last tag",
+      "type": "shell",
+      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null); if [ -z \"$latest\" ]; then echo \"No tags found\"; exit 1; fi; echo \"Last tag: $latest\"; read -p \"Delete tag $latest locally and remotely? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag -d $latest && git push origin --delete $latest && echo \"✅ Tag $latest deleted!\"; else echo \"❌ Cancelled\"; fi'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "trash",
+        "color": "terminal.ansiRed"
+      }
+    },
+    {
+      "label": "git: release (patch + push + build)",
+      "type": "shell",
+      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null || echo \"v.0.0.0\"); new=$(echo $latest | awk -F. \"{print \\$1\\\".\\\"\\$2\\\".\\\"\\$3+1}\"); echo \"📌 Creating release: $new\"; git tag $new && git push origin $new && echo \"✅ Release $new created!\"'",
+      "problemMatcher": [],
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "flutter: clean build web",
+        "git: increment patch tag"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "icon": {
+        "id": "rocket",
+        "color": "terminal.ansiGreen"
+      }
+    }

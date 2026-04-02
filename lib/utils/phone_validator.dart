@@ -1,5 +1,4 @@
 // lib/utils/phone_validator.dart
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 class PhoneValidator {
   /// Нормализует телефонный номер (поддержка российских форматов)
@@ -11,7 +10,7 @@ class PhoneValidator {
 
     // Российский формат: +7 XXX XXX XX XX
     if (digitsOnly.length == 11 && digitsOnly.startsWith('7')) {
-      return '+7${digitsOnly.substring(1)}';
+      return '+$digitsOnly';
     }
     if (digitsOnly.length == 10) {
       return '+7$digitsOnly';
@@ -48,27 +47,5 @@ class PhoneValidator {
 
     final digitsOnly = normalized.replaceAll(RegExp(r'[^0-9]'), '');
     return digitsOnly.length == 11 && digitsOnly.startsWith('7');
-  }
-
-  // 🔥 ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ ДЛЯ АВТОРИЗАЦИИ
-
-  /// Получение FCM токена (требуется firebase_messaging)
-  static Future<String?> getFcmToken() async {
-    try {
-      // Импортируйте firebase_messaging в файле, где используете этот метод
-      // import 'package:firebase_messaging/firebase_messaging.dart';
-      final fcmToken = await FirebaseMessaging.instance.getToken();
-      return fcmToken;
-    } catch (e) {
-      print('Ошибка получения FCM токена: $e');
-      return null;
-    }
-  }
-
-  // Попытка получить номер телефона устройства (только Android, требует telephony)
-  static Future<String?> getDevicePhoneNumber() async {
-    // Эта функция будет реализована в экране авторизации,
-    // так как требует специфических зависимостей и разрешений
-    return null;
   }
 }

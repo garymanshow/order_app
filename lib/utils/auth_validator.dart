@@ -1,5 +1,4 @@
 // lib/utils/auth_validator.dart
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 class AuthValidator {
   // ================= EMAIL =================
@@ -42,24 +41,11 @@ class AuthValidator {
     return input;
   }
 
-  /// Проверка юзернейма Telegram (пример специфичной валидации)
+  /// Проверка юзернейма Telegram
   static bool isValidTelegram(String? value) {
     if (value == null || value.isEmpty) return false;
-    // Допускаем @username или https://t.me/username
     if (value.startsWith('@')) return value.length > 1;
     if (value.contains('t.me')) return true;
     return false;
-  }
-
-  // ================= СЕРВИСЫ (OPINIONATED) =================
-  // Перенесем FCM сюда, чтобы не засорять валидаторы телефона
-
-  static Future<String?> getFcmToken() async {
-    try {
-      return await FirebaseMessaging.instance.getToken();
-    } catch (e) {
-      print('Ошибка FCM: $e');
-      return null;
-    }
   }
 }
