@@ -48,6 +48,7 @@ dev_dependencies:
   build_runner: ^2.4.0
   flutter_test:
     sdk: flutter
+  flutter_lints: ^6.0.0
 
 flutter:
   # 🔥 VARIABLE FONTS — оптимально для Web/PWA
