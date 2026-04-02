@@ -90,16 +90,21 @@ class ProductionPlanningService {
           .toList();
 
       for (var comp in productComposition) {
-        // Проверяем, является ли ингредиент начинкой
-        final filling = fillings.firstWhere(
-          (f) => f.name == comp.ingredientName,
-          orElse: () => null as Filling,
-        );
+        // 🔥 ИСПРАВЛЕНО: Безопасный поиск начинки
+        // Используем .where + .firstOrNull (или безопасный цикл)
+        Filling? filling;
+        try {
+          filling = fillings.firstWhere((f) => f.name == comp.ingredientName);
+        } catch (e) {
+          filling = null;
+        }
 
-        // Это начинка
-        final neededKg = (comp.quantity * quantity) / 1000; // переводим в кг
-        fillingsNeeded[filling.name] =
-            (fillingsNeeded[filling.name] ?? 0) + neededKg;
+        // Если это начинка — добавляем в расчет
+        if (filling != null) {
+          final neededKg = (comp.quantity * quantity) / 1000; // переводим в кг
+          fillingsNeeded[filling.name] =
+              (fillingsNeeded[filling.name] ?? 0) + neededKg;
+        }
       }
     }
 
