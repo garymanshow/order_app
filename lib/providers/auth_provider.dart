@@ -37,6 +37,9 @@ class AuthProvider with ChangeNotifier {
 
   bool _clientSelected = false;
 
+  // 👇 ДОБАВЛЯЕМ ФЛАГ БЛОКИРОВКИ
+  bool _isPushDialogShowing = false;
+
   bool get clientSelected => _clientSelected;
 
   // 👇 ДЛЯ PUSH (только Web Push, без FCM)
@@ -374,21 +377,34 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД ДЛЯ СОТРУДНИКОВ
   Future<void> _handleEmployeePushSubscription(
       WebPushService pushService) async {
+    // Если диалог открыт, не проверяем подписку и не зовем оформить
+    if (_isPushDialogShowing) return;
+
     bool subscribed = await pushService.subscribe();
     if (!subscribed) {
       _startPushReminders();
     }
   }
 
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД ДЛЯ КЛИЕНТОВ
   Future<void> _handleClientPushSubscription(WebPushService pushService) async {
-    if (pushService.isSubscribed) return;
+    // Если уже подписан или диалог открыт — выходим
+    if (pushService.isSubscribed || _isPushDialogShowing) return;
 
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('push_offer_declined') == true) return;
 
+    // 👇 СТАВИМ БЛОКИРОВКУ ПЕРЕД SHOWDIALOG
+    _isPushDialogShowing = true;
+
     final shouldSubscribe = await _showPushOfferDialog();
+
+    // 👇 СНИМАЕМ БЛОКИРОВКУ ПОСЛЕ ЗАКРЫТИЯ
+    _isPushDialogShowing = false;
+
     if (shouldSubscribe) {
       await pushService.subscribe();
     } else {
@@ -484,8 +500,12 @@ class AuthProvider with ChangeNotifier {
     });
   }
 
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД НАПОМИНАНИЯ
   Future<void> _checkSubscriptionAndRemind() async {
     if (!kIsWeb) return;
+
+    // 👇 ГЛАВНАЯ ПРОВЕРКА: Если диалог уже открыт, просто выходим
+    if (_isPushDialogShowing) return;
 
     final pushService = WebPushService();
     await pushService.initialize(EnvService.vapidPublicKey);
@@ -499,9 +519,16 @@ class AuthProvider with ChangeNotifier {
     _showPushReminder();
   }
 
+  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД ПОКАЗА ДИАЛОГА-НАПОМИНАНИЯ
   void _showPushReminder() {
     final context = navigatorKey.currentContext;
     if (context == null) return;
+
+    // 👇 ДВОЙНАЯ ПРОВЕРКА ПЕРЕД ПОКАЗОМ
+    if (_isPushDialogShowing) return;
+
+    // Включаем блокировку
+    _isPushDialogShowing = true;
 
     showDialog(
       context: context,
@@ -512,7 +539,11 @@ class AuthProvider with ChangeNotifier {
             'Нажмите "Разрешить" в следующем диалоге браузера.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              Navigator.pop(context);
+              // Снимаем блокировку при закрытии
+              _isPushDialogShowing = false;
+            },
             child: Text('Напомнить позже'),
           ),
           ElevatedButton(
@@ -525,12 +556,17 @@ class AuthProvider with ChangeNotifier {
                 _pushReminderTimer?.cancel();
                 _pushReminderTimer = null;
               }
+              // Снимаем блокировку после действия
+              _isPushDialogShowing = false;
             },
             child: Text('Попробовать сейчас'),
           ),
         ],
       ),
-    );
+    ).then((_) {
+      // 👇 СТРАХОВКА: Снимаем блокировку, если диалог закрыли свайпом или кнопкой "назад"
+      _isPushDialogShowing = false;
+    });
   }
 
   // ================== ДЕСЕРИАЛИЗАЦИЯ ==================

@@ -155,11 +155,25 @@ class ParsingUtils {
     }
   }
 
-  /// Парсит дату в формате DD.MM.YYYY → DateTime
+  /// Преобразует ISO-дату или DD.MM.YYYY в локальную дату (без времени)
   static DateTime? parseDate(String? dateStr) {
     if (dateStr == null || dateStr.trim().isEmpty) return null;
+
+    final trimmed = dateStr.trim();
+
     try {
-      final parts = dateStr.trim().split('.');
+      // Случай 1: ISO-формат (например, "2026-03-31T17:00:00.000Z")
+      if (trimmed.contains('T')) {
+        final utcDate = DateTime.tryParse(trimmed);
+        if (utcDate != null) {
+          // Конвертируем UTC → локальное время → извлекаем только дату
+          final localDate = utcDate.toLocal();
+          return DateTime(localDate.year, localDate.month, localDate.day);
+        }
+      }
+
+      // Случай 2: DD.MM.YYYY
+      final parts = trimmed.split('.');
       if (parts.length == 3) {
         final day = int.tryParse(parts[0]);
         final month = int.tryParse(parts[1]);

@@ -157,7 +157,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               context,
               icon: Icons.currency_ruble,
               title: 'Прайс-лист',
-              description: 'Управление ценами и блюдами',
+              description: 'Управление ценами и позициями',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -171,7 +171,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               context,
               icon: Icons.people_outline,
               title: 'Клиенты',
-              description: 'База клиентов и их данные',
+              description: 'База и данные клиентов',
               onPressed: () {
                 Navigator.push(
                   context,

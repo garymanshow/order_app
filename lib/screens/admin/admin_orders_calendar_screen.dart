@@ -1,8 +1,12 @@
-// lib/screens/admin_orders_calendar_screen.dart
+// lib/screens/admin/admin_orders_calendar_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
+
+// 🔥 Импорт утилит
+import '../../utils/parsing_utils.dart';
+
 import '../../providers/auth_provider.dart';
 import '../../models/order_item.dart';
 import 'admin_client_orders_screen.dart';
@@ -18,10 +22,8 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
   DateTime? _selectedDay;
   Map<DateTime, List<OrderItem>> _ordersByDate = {};
   bool _isLoading = true;
-  String _statusFilter =
-      'all'; // 'all', 'оформлен', 'производство', 'готов', 'доставлен'
+  String _statusFilter = 'all';
 
-  final DateFormat _dateFormat = DateFormat('d MMMM yyyy', 'ru_RU');
   final DateFormat _monthYearFormat = DateFormat('MMMM yyyy', 'ru_RU');
   final DateFormat _dayMonthFormat = DateFormat('d MMMM', 'ru_RU');
 
@@ -52,29 +54,38 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final allOrders = authProvider.clientData?.orders ?? [];
 
+    print('🔍 [Админ-календарь] Всего заказов получено: ${allOrders.length}');
+
     final Map<DateTime, List<OrderItem>> ordersByDate = {};
 
     for (var order in allOrders) {
       if (order.status == 'отменен') continue;
 
-      try {
-        final dateParts = order.date.split('.');
-        if (dateParts.length == 3) {
-          final day = int.parse(dateParts[0]);
-          final month = int.parse(dateParts[1]);
-          final year = int.parse(dateParts[2]);
-          final date = DateTime(year, month, day);
+      final date = ParsingUtils.parseDate(order.date);
 
-          ordersByDate.putIfAbsent(date, () => []).add(order);
-        }
-      } catch (e) {
-        print('⚠️ Ошибка парсинга даты: ${order.date}');
+      if (date != null) {
+        final normalized = DateTime(date.year, date.month, date.day);
+        ordersByDate.putIfAbsent(normalized, () => []).add(order);
+      } else {
+        print('❌ Не удалось распарсить дату: "${order.date}"');
       }
     }
+
+    print('📊 Уникальных дней с заказами: ${ordersByDate.keys.length}');
 
     setState(() {
       _ordersByDate = ordersByDate;
       _isLoading = false;
+
+      // Устанавливаем выбранную дату на сегодня или первую доступную
+      final today = DateTime.now();
+      final todayNormalized = DateTime(today.year, today.month, today.day);
+
+      if (_ordersByDate.containsKey(todayNormalized)) {
+        _selectedDay = todayNormalized;
+      } else if (_ordersByDate.isNotEmpty) {
+        _selectedDay = _ordersByDate.keys.first;
+      }
     });
   }
 
@@ -86,7 +97,6 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
     return orders.where((o) => o.status == _statusFilter).toList();
   }
 
-  // 👇 ПОДСЧЕТ СТАТИСТИКИ ЗА ДЕНЬ
   double get totalForDay {
     if (_selectedDay == null) return 0;
     return _getOrdersForDay(_selectedDay!)
@@ -108,36 +118,15 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
     return uniqueClients.length;
   }
 
-  Color _getMarkerColorForDate(DateTime date) {
-    final orders =
-        _ordersByDate[DateTime(date.year, date.month, date.day)] ?? [];
-    if (orders.isEmpty) return Colors.transparent;
-
-    if (orders.any((o) => o.status == 'доставлен')) {
-      return Colors.green;
-    }
-    if (orders.any((o) => o.status == 'готов')) {
-      return Colors.blue;
-    }
-    if (orders.any((o) => o.status == 'производство')) {
-      return Colors.orange;
-    }
-    return Colors.grey;
-  }
-
   Map<String, List<OrderItem>> _groupOrdersByClient(List<OrderItem> orders) {
     final grouped = <String, List<OrderItem>>{};
     for (var order in orders) {
       final key = '${order.clientPhone}_${order.clientName}';
-      if (!grouped.containsKey(key)) {
-        grouped[key] = [];
-      }
-      grouped[key]!.add(order);
+      grouped.putIfAbsent(key, () => []).add(order);
     }
     return grouped;
   }
 
-  // 👇 ПОДСЧЕТ СТАТИСТИКИ ПО КЛИЕНТУ
   Map<String, dynamic> _getClientStats(List<OrderItem> orders) {
     double total = 0;
     double paid = 0;
@@ -152,6 +141,16 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
     };
   }
 
+  String _getPluralForm(int count) {
+    if (count % 10 == 1 && count % 100 != 11) return 'позиция';
+    if (count % 10 >= 2 &&
+        count % 10 <= 4 &&
+        (count % 100 < 10 || count % 100 >= 20)) {
+      return 'позиции';
+    }
+    return 'позиций';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,7 +159,6 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         elevation: 0,
         actions: [
-          // 👇 ФИЛЬТР ПО СТАТУСАМ
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list),
             onSelected: (value) => setState(() => _statusFilter = value),
@@ -194,7 +192,6 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Календарь
                 Card(
                   margin: const EdgeInsets.all(8),
                   elevation: 2,
@@ -231,8 +228,7 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
                           shape: BoxShape.circle,
                         ),
                         todayDecoration: BoxDecoration(
-                          color: Colors.blue
-                              .withValues(alpha: 0.3), // 👈 ИСПРАВЛЕНО
+                          color: Colors.blue.withOpacity(0.3),
                           shape: BoxShape.circle,
                         ),
                         markersMaxCount: 1,
@@ -257,11 +253,25 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
                       onPageChanged: (focusedDay) {
                         _focusedDay = focusedDay;
                       },
+                      // 🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: eventLoader
+                      eventLoader: (day) => _getOrdersForDay(day),
                       calendarBuilders: CalendarBuilders(
                         markerBuilder: (context, date, events) {
-                          final markerColor = _getMarkerColorForDate(date);
-                          if (markerColor == Colors.transparent) {
+                          // 🔥 Приводим события к OrderItem
+                          final orders = events.cast<OrderItem>();
+
+                          if (orders.isEmpty) {
                             return const SizedBox();
+                          }
+
+                          Color markerColor = Colors.grey;
+                          if (orders.any((o) => o.status == 'доставлен')) {
+                            markerColor = Colors.green;
+                          } else if (orders.any((o) => o.status == 'готов')) {
+                            markerColor = Colors.blue;
+                          } else if (orders
+                              .any((o) => o.status == 'производство')) {
+                            markerColor = Colors.orange;
                           }
 
                           return Positioned(
@@ -283,7 +293,7 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
                 ),
 
                 // Статистика за день
-                if (_selectedDay != null && !_isLoading)
+                if (_selectedDay != null)
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -379,23 +389,16 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
 
   Widget _buildOrderList(DateTime? selectedDay) {
     if (selectedDay == null) {
-      return const Center(
-        child: Text('Выберите дату в календаре'),
-      );
+      return const Center(child: Text('Выберите дату в календаре'));
     }
 
     final orders = _getOrdersForDay(selectedDay);
-
     if (orders.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.inbox_outlined,
-              size: 48,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.inbox_outlined, size: 48, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
               'Нет заказов на ${_dayMonthFormat.format(selectedDay)}',
@@ -415,7 +418,6 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
         final clientKey = groupedByClient.keys.elementAt(index);
         final clientOrders = groupedByClient[clientKey]!;
         final clientName = clientOrders.first.clientName;
-        final clientPhone = clientOrders.first.clientPhone;
         final stats = _getClientStats(clientOrders);
 
         return Card(
@@ -430,7 +432,7 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => AdminClientOrdersScreen(
-                    phone: clientPhone,
+                    phone: clientOrders.first.clientPhone,
                     clientName: clientName,
                   ),
                 ),
@@ -490,8 +492,6 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-
-                  // Список товаров
                   ...clientOrders.take(3).map((order) => Padding(
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Row(
@@ -530,7 +530,6 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
                           ],
                         ),
                       )),
-
                   if (clientOrders.length > 3)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -550,15 +549,5 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
         );
       },
     );
-  }
-
-  String _getPluralForm(int count) {
-    if (count % 10 == 1 && count % 100 != 11) return 'позиция';
-    if (count % 10 >= 2 &&
-        count % 10 <= 4 &&
-        (count % 100 < 10 || count % 100 >= 20)) {
-      return 'позиции';
-    }
-    return 'позиций';
   }
 }
