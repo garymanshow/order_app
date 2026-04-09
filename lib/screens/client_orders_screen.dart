@@ -6,6 +6,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../models/order_item.dart';
 import '../models/client.dart';
 import '../providers/auth_provider.dart';
+import '../utils/parsing_utils.dart';
 
 class ClientOrdersScreen extends StatefulWidget {
   const ClientOrdersScreen({super.key});
@@ -70,13 +71,12 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
     for (var order in clientOrders) {
       if (order.status == 'оформлен') continue;
 
-      try {
-        final date = DateTime.parse(order.date);
+      final date = ParsingUtils.parseDate(order.date);
+      if (date != null) {
         final normalizedDate = DateTime(date.year, date.month, date.day);
-
         ordersByDate.putIfAbsent(normalizedDate, () => []).add(order);
-      } catch (e) {
-        print('❌ Ошибка парсинга даты: ${order.date}');
+      } else {
+        print('❌ Не удалось распарсить дату: "${order.date}"');
       }
     }
 
