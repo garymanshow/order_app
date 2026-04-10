@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:contacts_service/contacts_service.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
@@ -190,7 +191,12 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
 
   // Проверка, является ли платформа мобильной
   bool get _isMobilePlatform {
-    return Platform.isAndroid || Platform.isIOS;
+    try {
+      if (kIsWeb) return false; // Если это веб, считаем что это десктоп
+      return Platform.isAndroid || Platform.isIOS;
+    } catch (e) {
+      return false; // Если платформа не определяется, безопасно возвращаем false
+    }
   }
 
   // Запрос разрешения на контакты

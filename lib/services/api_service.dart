@@ -368,6 +368,32 @@ class ApiService {
     }
   }
 
+  // 🔥 Удаление конкретных позиций из всех оформленных заказов
+  Future<bool> deletePositionsFromOrders(List<String> priceListIds) async {
+    try {
+      final data = {
+        'priceListIds': priceListIds,
+      };
+
+      final response = await _makeRequest('deletePositionsFromOrders', data);
+
+      if (response.statusCode == 200) {
+        if (response.body.isEmpty || response.body.trim() == '{}') return true;
+
+        try {
+          final Map<String, dynamic> result = jsonDecode(response.body);
+          return result['success'] == true;
+        } catch (_) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка удаления позиций: $e');
+      return false;
+    }
+  }
+
   // 🔥 ЗАГРУЗКА ЗАКАЗОВ
   Future<List<dynamic>?> fetchOrders({
     String? clientId,
@@ -396,15 +422,17 @@ class ApiService {
     }
   }
 
-  // 🔥 ОБНОВЛЕНИЕ СТАТУСА ЗАКАЗА
+  // 🔥 ОБНОВЛЕНИЕ СТАТУСА ЗАКАЗА (теперь используется и для массового)
   Future<bool> updateOrderStatus({
-    required String orderId,
+    required String
+        orderId, // Сюда мы из экрана передаем _selectedStatus (например, 'оформлен')
     required String newStatus,
     String? comment,
   }) async {
     try {
       final data = {
-        'orderId': orderId,
+        'orderData':
+            orderId, // <--- ИЗМЕНЕНО ЗДЕСЬ! Было 'orderId', стало 'orderData'
         'newStatus': newStatus,
         if (comment != null) 'comment': comment,
       };
@@ -413,7 +441,8 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> result = jsonDecode(response.body);
-        return result['success'] == true;
+        return result['success'] ==
+            true; // GAS теперь возвращает поле success: true
       }
       return false;
     } catch (e) {

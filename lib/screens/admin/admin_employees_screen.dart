@@ -19,7 +19,7 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
   String? _selectedRole;
   List<String> _roles = [];
   bool _isLoading = false;
-  bool _showOnly2FA = true; // 👈 ПО УМОЛЧАНИЮ TRUE (все с 2FA)
+  bool _showOnly2FA = false; // 👈 ПО УМОЛЧАНИЮ FALSE (все с 2FA и без 2FA)
   final ApiService _apiService = ApiService();
 
   // Цвета для ролей
@@ -43,17 +43,56 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
   void _loadEmployees() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    final employees =
+    // 1. ПРОВЕРЯЕМ, ГДЕ ЛЕЖАТ СОТРУДНИКИ
+    print('🔍 Ищем сотрудников...');
+    print('🔍 clients.length: ${authProvider.clientData?.clients.length}');
+
+    // Пробуем найти через dynamic (отладка)
+    try {
+      final dynamic data = authProvider.clientData;
+      print(
+          '🔍 Есть ли свойство employees у clientData? ${data?.employees != null}');
+      if (data?.employees != null) {
+        print('🔍 employees.length: ${(data.employees as List).length}');
+      }
+    } catch (e) {
+      print('🔍 Ошибка доступа к employees: $e');
+    }
+
+    // 1. УНИВЕРСАЛЬНЫЙ ПОИСК СОТРУДНИКОВ
+    // Сначала пробуем как наследников (если Employee extends Client)
+    var employees =
         authProvider.clientData?.clients.whereType<Employee>().toList() ?? [];
 
-    // Получаем уникальные роли
-    final roles = employees
-        .map((e) => e.role)
-        .where((role) => role != null && role.isNotEmpty)
-        .toSet()
-        .toList() as List<String>;
+    // 2. ЕСЛИ СПИСОК ПУСТОЙ - пробуем найти по полю Роли (на случай, если модели независимы)
+    // В Google Таблицах сотрудники обычно отличатся наличием роли (не "Клиент")
+    if (employees.isEmpty) {
+      try {
+        employees = authProvider.clientData?.clients
+                .where((c) {
+                  // Пытаемся прочитать поле role через dynamic (это обходит строгую типизацию)
+                  final role = (c as dynamic).role as String?;
+                  return role != null &&
+                      role.isNotEmpty &&
+                      role.toLowerCase() != 'клиент';
+                })
+                .cast<Employee>()
+                .toList() ??
+            [];
+      } catch (e) {
+        // Игнорируем ошибки каста, если структура другая
+      }
+    }
 
-    roles.sort();
+    // Получаем уникальные роли (безопасный каст для Web)
+    final Set<String> tempRoles = {};
+    for (var e in employees) {
+      final role = e.role;
+      if (role != null && role.isNotEmpty) {
+        tempRoles.add(role);
+      }
+    }
+    final roles = tempRoles.toList()..sort();
 
     setState(() {
       _filteredEmployees = employees;
@@ -61,6 +100,55 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
     });
 
     print('📊 Загружено сотрудников: ${employees.length}');
+  }
+
+  // ПРИМЕНЕНИЕ ФИЛЬТРОВ
+  void _applyFilters() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    // Используем ту же логику поиска, что и в _loadEmployees
+    var allEmployees =
+        authProvider.clientData?.clients.whereType<Employee>().toList() ?? [];
+
+    if (allEmployees.isEmpty) {
+      try {
+        allEmployees = authProvider.clientData?.clients
+                .where((c) {
+                  final role = (c as dynamic).role as String?;
+                  return role != null &&
+                      role.isNotEmpty &&
+                      role.toLowerCase() != 'клиент';
+                })
+                .cast<Employee>()
+                .toList() ??
+            [];
+      } catch (e) {}
+    }
+
+    _filteredEmployees = allEmployees.where((employee) {
+      bool matches = true;
+
+      // Поиск по тексту
+      if (_searchQuery.isNotEmpty) {
+        matches = matches &&
+            (employee.name?.toLowerCase().contains(_searchQuery) == true ||
+                employee.phone?.toLowerCase().contains(_searchQuery) == true ||
+                employee.role?.toLowerCase().contains(_searchQuery) == true ||
+                employee.email?.toLowerCase().contains(_searchQuery) == true);
+      }
+
+      // Фильтр по роли
+      if (_selectedRole != null) {
+        matches = matches && employee.role == _selectedRole;
+      }
+
+      // ФИЛЬТР 2FA: Проверяем безопасно. Если поле null, считаем что false.
+      if (_showOnly2FA) {
+        matches = matches && (employee.twoFactorAuth == true);
+      }
+
+      return matches;
+    }).toList();
   }
 
   // ПОИСК СОТРУДНИКОВ
@@ -77,40 +165,6 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
       _selectedRole = role;
       _applyFilters();
     });
-  }
-
-  // ПРИМЕНЕНИЕ ФИЛЬТРОВ
-  void _applyFilters() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final allEmployees =
-        authProvider.clientData?.clients.whereType<Employee>().toList() ?? [];
-
-    _filteredEmployees = allEmployees.where((employee) {
-      bool matches = true;
-
-      // Поиск по тексту
-      if (_searchQuery.isNotEmpty) {
-        matches = matches &&
-            (employee.name?.toLowerCase().contains(_searchQuery) == true ||
-                employee.phone?.toLowerCase().contains(_searchQuery) == true ||
-                employee.role?.toLowerCase().contains(_searchQuery) == true ||
-                employee.email?.toLowerCase().contains(_searchQuery) ==
-                    true // 👈 ДОБАВЛЕНО
-            );
-      }
-
-      // Фильтр по роли
-      if (_selectedRole != null) {
-        matches = matches && employee.role == _selectedRole;
-      }
-
-      // 👇 Фильтр "Только с 2FA" (по умолчанию true)
-      if (_showOnly2FA) {
-        matches = matches && employee.twoFactorAuth;
-      }
-
-      return matches;
-    }).toList();
   }
 
   // УДАЛЕНИЕ СОТРУДНИКА

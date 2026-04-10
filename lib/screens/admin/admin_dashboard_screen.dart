@@ -141,20 +141,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             SizedBox(height: 24),
             _buildAdminButton(
               context,
-              icon: Icons.shopping_cart,
-              title: 'Все заказы',
-              description: 'Управление всеми заказами клиентов',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => AdminOrdersScreen()),
-                );
-              },
-            ),
-
-            SizedBox(height: 24),
-            _buildAdminButton(
-              context,
               icon: Icons.currency_ruble,
               title: 'Прайс-лист',
               description: 'Управление ценами и позициями',
