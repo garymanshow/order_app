@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../price_list_management_screen.dart';
 
 class AdminPriceListScreen extends StatelessWidget {
-  const AdminPriceListScreen({Key? key}) : super(key: key);
+  const AdminPriceListScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

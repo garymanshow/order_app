@@ -9,6 +9,8 @@ import '../services/env_service.dart';
 import 'driver_route_screen.dart';
 
 class DriverScreen extends StatefulWidget {
+  const DriverScreen({super.key});
+
   @override
   _DriverScreenState createState() => _DriverScreenState();
 }
@@ -95,7 +97,7 @@ class _DriverScreenState extends State<DriverScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
 
     if (authProvider.currentUser == null ||
-        !(authProvider.currentUser is Employee)) {
+        authProvider.currentUser is! Employee) {
       return Scaffold(
         body: Center(child: Text('Ошибка авторизации')),
       );

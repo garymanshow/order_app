@@ -8,6 +8,8 @@ import '../../services/api_service.dart';
 import '../../utils/user_utils.dart';
 
 class AdminOrdersScreen extends StatefulWidget {
+  const AdminOrdersScreen({super.key});
+
   @override
   _AdminOrdersScreenState createState() => _AdminOrdersScreenState();
 }

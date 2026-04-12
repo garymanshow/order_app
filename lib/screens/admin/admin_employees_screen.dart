@@ -99,8 +99,9 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
         bool matches = true;
 
         final role = emp.role as String?;
-        if (role == null || role.isEmpty || role.toLowerCase() == 'клиент')
+        if (role == null || role.isEmpty || role.toLowerCase() == 'клиент') {
           return false;
+        }
 
         if (_searchQuery.isNotEmpty) {
           final name = (emp.name as String?)?.toLowerCase() ?? '';

@@ -11,11 +11,11 @@ class ManagerCompositionScreen extends StatefulWidget {
   final String sourceName;
 
   const ManagerCompositionScreen({
-    Key? key,
+    super.key,
     required this.sourceSheet,
     required this.sourceId,
     required this.sourceName,
-  }) : super(key: key);
+  });
 
   @override
   _ManagerCompositionScreenState createState() =>
@@ -261,8 +261,8 @@ class _ManagerCompositionScreenState extends State<ManagerCompositionScreen> {
                 ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addItem,
-        child: const Icon(Icons.add),
         tooltip: 'Добавить ингредиент',
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -274,11 +274,11 @@ class CompositionItemDialog extends StatefulWidget {
   final Function(Composition) onSave;
 
   const CompositionItemDialog({
-    Key? key,
+    super.key,
     this.item,
     required this.ingredients,
     required this.onSave,
-  }) : super(key: key);
+  });
 
   @override
   _CompositionItemDialogState createState() => _CompositionItemDialogState();

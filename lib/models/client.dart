@@ -16,8 +16,8 @@ class Client extends User {
   final String? fcmToken;
 
   Client({
-    String? name,
-    String? phone,
+    super.name,
+    super.phone,
     this.firm,
     this.postalCode,
     this.legalEntity,
@@ -28,13 +28,9 @@ class Client extends User {
     this.latitude,
     this.longitude,
     this.fcmToken,
-    double? discount,
-    double? minOrderAmount,
-  }) : super(
-            phone: phone,
-            name: name,
-            discount: discount,
-            minOrderAmount: minOrderAmount);
+    super.discount,
+    super.minOrderAmount,
+  });
 
   // 🔥 ГЕТТЕР ДЛЯ СУММЫ АКТИВНЫХ ЗАКАЗОВ
   double getActiveOrdersTotal(ClientData? clientData) {
@@ -103,14 +99,14 @@ class Client extends User {
         '🔍 fcmToken: ${json['fcmToken']} (тип: ${json['fcmToken'].runtimeType})');
 
     // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ СТРОКИ
-    String? _safeString(dynamic value) {
+    String? safeString(dynamic value) {
       if (value == null) return null;
       if (value is String) return value.isEmpty ? null : value;
       return value.toString();
     }
 
     // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ ЧИСЛА
-    double? _safeDouble(dynamic value) {
+    double? safeDouble(dynamic value) {
       if (value == null) return null;
       if (value is double) return value;
       if (value is int) return value.toDouble();
@@ -123,7 +119,7 @@ class Client extends User {
     }
 
     // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ BOOL
-    bool? _safeBool(dynamic value) {
+    bool? safeBool(dynamic value) {
       if (value == null) return null;
       if (value is bool) return value;
       if (value is num) return value == 1;
@@ -136,20 +132,20 @@ class Client extends User {
     }
 
     return Client(
-      name: _safeString(json['name']),
-      phone: _safeString(json['phone']),
-      firm: _safeString(json['firm']),
-      postalCode: _safeString(json['postalCode']),
-      legalEntity: _safeBool(json['isLegalEntity']),
-      city: _safeString(json['city']),
-      deliveryAddress: _safeString(json['deliveryAddress']),
-      delivery: _safeBool(json['hasDelivery']),
-      comment: _safeString(json['comment']),
-      latitude: _safeDouble(json['latitude']),
-      longitude: _safeDouble(json['longitude']),
-      fcmToken: _safeString(json['fcmToken']),
-      discount: _safeDouble(json['discount']),
-      minOrderAmount: _safeDouble(json['minOrderAmount']) ?? 3000.0,
+      name: safeString(json['name']),
+      phone: safeString(json['phone']),
+      firm: safeString(json['firm']),
+      postalCode: safeString(json['postalCode']),
+      legalEntity: safeBool(json['isLegalEntity']),
+      city: safeString(json['city']),
+      deliveryAddress: safeString(json['deliveryAddress']),
+      delivery: safeBool(json['hasDelivery']),
+      comment: safeString(json['comment']),
+      latitude: safeDouble(json['latitude']),
+      longitude: safeDouble(json['longitude']),
+      fcmToken: safeString(json['fcmToken']),
+      discount: safeDouble(json['discount']),
+      minOrderAmount: safeDouble(json['minOrderAmount']) ?? 3000.0,
     );
   }
 

@@ -13,14 +13,14 @@ class ProductImage extends StatelessWidget {
       useNetworkFallback; // использовать ли сетевой URL как запасной вариант
 
   const ProductImage({
-    Key? key,
+    super.key,
     required this.product,
     this.width = 60,
     this.height = 60,
     this.fit = BoxFit.contain,
     this.onTap,
     this.useNetworkFallback = true,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

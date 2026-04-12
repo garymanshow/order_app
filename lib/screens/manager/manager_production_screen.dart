@@ -6,6 +6,8 @@ import '../../models/production_operation.dart';
 import '../../widgets/unit_selector.dart';
 
 class ManagerProductionScreen extends StatefulWidget {
+  const ManagerProductionScreen({super.key});
+
   @override
   _ManagerProductionScreenState createState() =>
       _ManagerProductionScreenState();
@@ -311,8 +313,8 @@ class _ManagerProductionScreenState extends State<ManagerProductionScreen> {
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: _showAddOperationDialog,
-          child: const Icon(Icons.add),
           tooltip: 'Добавить операцию',
+          child: const Icon(Icons.add),
         ),
       ),
     );

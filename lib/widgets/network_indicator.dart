@@ -5,7 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 class NetworkIndicator extends StatefulWidget {
   final Widget child;
 
-  const NetworkIndicator({Key? key, required this.child}) : super(key: key);
+  const NetworkIndicator({super.key, required this.child});
 
   @override
   State<NetworkIndicator> createState() => _NetworkIndicatorState();

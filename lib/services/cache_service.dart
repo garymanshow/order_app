@@ -476,6 +476,71 @@ class CacheService {
     return await Hive.openBox(name);
   }
 
+  // ==================== ТИХАЯ СИНХРОНИЗАЦИЯ ====================
+
+  static const String _keyLastMetadataCheck = 'last_metadata_check';
+  static const String _keyPendingUpdates = 'pending_updates';
+
+  /// 🔥 Проверить: прошло ли 24 часа с последней проверки метаданных?
+  Future<bool> shouldCheckMetadata() async {
+    try {
+      final box = await _getBox('settings');
+      final lastCheckStr = box.get(_keyLastMetadataCheck) as String?;
+
+      if (lastCheckStr == null) return true; // Никогда не проверяли
+
+      final lastCheck = DateTime.parse(lastCheckStr);
+      final now = DateTime.now();
+
+      return now.difference(lastCheck) >= const Duration(hours: 24);
+    } catch (e) {
+      print('⚠️ Ошибка shouldCheckMetadata: $e');
+      return true; // При ошибке — разрешаем проверку
+    }
+  }
+
+  /// 🔥 Сохранить время последней проверки
+  Future<void> markMetadataChecked() async {
+    try {
+      final box = await _getBox('settings');
+      await box.put(_keyLastMetadataCheck, DateTime.now().toIso8601String());
+    } catch (e) {
+      print('⚠️ Ошибка markMetadataChecked: $e');
+    }
+  }
+
+  /// 🔥 Сохранить список листов, ожидающих обновления
+  Future<void> setPendingUpdates(List<String> sheetNames) async {
+    try {
+      final box = await _getBox('settings');
+      await box.put(_keyPendingUpdates, sheetNames);
+    } catch (e) {
+      print('⚠️ Ошибка setPendingUpdates: $e');
+    }
+  }
+
+  /// 🔥 Получить список ожидающих обновлений
+  Future<List<String>> getPendingUpdates() async {
+    try {
+      final box = await _getBox('settings');
+      final list = box.get(_keyPendingUpdates);
+      return list is List ? List<String>.from(list) : [];
+    } catch (e) {
+      print('⚠️ Ошибка getPendingUpdates: $e');
+      return [];
+    }
+  }
+
+  /// 🔥 Очистить список ожидающих обновлений
+  Future<void> clearPendingUpdates() async {
+    try {
+      final box = await _getBox('settings');
+      await box.put(_keyPendingUpdates, []);
+    } catch (e) {
+      print('⚠️ Ошибка clearPendingUpdates: $e');
+    }
+  }
+
   // ==================== СТАТУС ====================
 
   /// Проверяет, инициализирован ли сервис

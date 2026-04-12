@@ -13,7 +13,7 @@ import '../../utils/phone_validator.dart';
 class AdminEmployeeFormScreen extends StatefulWidget {
   final Employee? employee;
 
-  const AdminEmployeeFormScreen({Key? key, this.employee}) : super(key: key);
+  const AdminEmployeeFormScreen({super.key, this.employee});
 
   @override
   _AdminEmployeeFormScreenState createState() =>

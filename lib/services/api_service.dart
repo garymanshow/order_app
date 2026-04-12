@@ -471,6 +471,54 @@ class ApiService {
     }
   }
 
+  // 🔥 НОВЫЙ МЕТОД: лёгкая проверка метаданных (~2 КБ)
+  Future<Map<String, dynamic>?> checkMetadataUpdates({
+    String? phone,
+    required Map<String, SheetMetadata> localMetadata,
+  }) async {
+    print('\n🔍 ===== ПРОВЕРКА МЕТАДАННЫХ (checkOnly) =====');
+    print('🔍 Телефон: ${phone ?? "(гость)"}');
+    print('🔍 Локальные метаданные: ${localMetadata.length} листов');
+
+    try {
+      final data = {
+        'action': 'authenticate',
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        'localMetadata': localMetadata.map(
+          (key, value) => MapEntry(key, value.toJson()),
+        ),
+        'checkOnly': true, // 🔥 Флаг лёгкого режима
+      };
+
+      final response = await _makeRequest('authenticate', data);
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body) as Map<String, dynamic>;
+
+        print('🔍 Статус: ${result['status']}');
+        print('🔍 hasUpdates: ${result['hasUpdates']}');
+        print('🔍 changedSheets: ${result['changedSheets']}');
+
+        if (result['success'] == true && result['checkOnly'] == true) {
+          print('✅ Проверка метаданных успешна!');
+          print('🔍 ===== КОНЕЦ ПРОВЕРКИ =====\n');
+
+          // Возвращаем только нужные поля
+          return {
+            'hasUpdates': result['hasUpdates'] ?? false,
+            'changedSheets': List<String>.from(result['changedSheets'] ?? []),
+            'metadata': result['metadata'] ?? {},
+          };
+        }
+        return null;
+      }
+      return null;
+    } catch (e) {
+      print('❌ Ошибка checkMetadataUpdates: $e');
+      return null;
+    }
+  }
+
   // 🔥 ЗАГРУЗКА МЕТАДАННЫХ
   Future<Map<String, SheetMetadata>?> fetchMetadata() async {
     try {
@@ -1560,6 +1608,33 @@ class ApiService {
       return false;
     } catch (e) {
       print('❌ Ошибка массового обновления заказов: $e');
+      return false;
+    }
+  }
+
+  // 🔥 УНИВЕРСАЛЬНАЯ ПАКЕТНАЯ ОПЕРАЦИЯ (Создание + Обновление + Удаление)
+  Future<bool> batchOperations({
+    List<Product>? created,
+    List<Product>? updated,
+    List<String>? deleted,
+  }) async {
+    try {
+      final operations = {
+        'created': created?.map((p) => p.toJson()).toList() ?? [],
+        'updated': updated?.map((p) => p.toJson()).toList() ?? [],
+        'deleted': deleted ?? [],
+      };
+
+      final response =
+          await _makeRequest('batchOperations', {'operations': operations});
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка пакетной операции: $e');
       return false;
     }
   }

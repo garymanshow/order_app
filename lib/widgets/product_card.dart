@@ -9,11 +9,11 @@ class ProductCard extends StatelessWidget {
   final Function(int) onQuantityChanged;
 
   const ProductCard({
-    Key? key,
+    super.key,
     required this.product,
     required this.quantity,
     required this.onQuantityChanged,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

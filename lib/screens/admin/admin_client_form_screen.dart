@@ -16,7 +16,7 @@ import '../../utils/phone_validator.dart';
 class AdminClientFormScreen extends StatefulWidget {
   final Client? client;
 
-  const AdminClientFormScreen({Key? key, this.client}) : super(key: key);
+  const AdminClientFormScreen({super.key, this.client});
 
   @override
   _AdminClientFormScreenState createState() => _AdminClientFormScreenState();
@@ -581,8 +581,9 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                       keyboardType: TextInputType.number,
                       validator: (value) {
                         if (value!.trim().isEmpty) return null;
-                        if (double.tryParse(value) == null)
+                        if (double.tryParse(value) == null) {
                           return 'Неверный формат';
+                        }
                         return null;
                       },
                     ),
@@ -594,8 +595,9 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                       keyboardType: TextInputType.number,
                       validator: (value) {
                         if (value!.trim().isEmpty) return null;
-                        if (double.tryParse(value) == null)
+                        if (double.tryParse(value) == null) {
                           return 'Неверный формат';
+                        }
                         return null;
                       },
                     ),
@@ -604,11 +606,11 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
 
                     ElevatedButton(
                       onPressed: _saveClient,
-                      child: Text(
-                        widget.client != null ? 'Сохранить' : 'Добавить',
-                      ),
                       style: ElevatedButton.styleFrom(
                         minimumSize: Size(double.infinity, 50),
+                      ),
+                      child: Text(
+                        widget.client != null ? 'Сохранить' : 'Добавить',
                       ),
                     ),
                   ],

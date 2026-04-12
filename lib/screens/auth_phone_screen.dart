@@ -10,6 +10,8 @@ import '../utils/phone_validator.dart';
 import '../widgets/app_image.dart';
 
 class AuthPhoneScreen extends StatefulWidget {
+  const AuthPhoneScreen({super.key});
+
   @override
   _AuthPhoneScreenState createState() => _AuthPhoneScreenState();
 }

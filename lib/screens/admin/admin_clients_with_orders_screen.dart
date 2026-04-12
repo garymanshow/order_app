@@ -12,7 +12,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../models/order_item.dart';
 import '../../models/status_update.dart';
-import 'admin_analytics_screen.dart';
+import 'admin_order_analytics_screen.dart';
 import 'admin_client_orders_screen.dart';
 import 'admin_exclude_positions_screen.dart';
 import 'admin_orders_calendar_screen.dart';

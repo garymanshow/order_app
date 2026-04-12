@@ -11,8 +11,7 @@ import '../../models/product.dart';
 class AdminPriceCategoryFormScreen extends StatefulWidget {
   final PriceCategory? category;
 
-  const AdminPriceCategoryFormScreen({Key? key, this.category})
-      : super(key: key);
+  const AdminPriceCategoryFormScreen({super.key, this.category});
 
   @override
   _AdminPriceCategoryFormScreenState createState() =>

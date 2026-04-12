@@ -10,13 +10,13 @@ class Employee extends User {
   String? fcm;
 
   Employee({
-    String? name,
-    String? phone,
+    super.name,
+    super.phone,
     this.role,
     this.twoFactorAuth = false,
     this.email, // 👈 ДОБАВЛЕНО в конструктор
     this.fcm,
-  }) : super(phone: phone, name: name);
+  });
 
   // 🔥 ИСПРАВЛЕННЫЙ fromMap для Google Таблиц
   factory Employee.fromMap(Map<String, dynamic> map) {

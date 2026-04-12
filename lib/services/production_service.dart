@@ -66,8 +66,8 @@ class ProductionService {
   Map<String, double> _fillingBalance = {}; // начинки: ID -> остаток в кг
   Map<String, int> _productBalance =
       {}; // готовая продукция: ID -> остаток в шт
-  Map<String, String> _fillingNames = {}; // начинки: ID -> название
-  Map<String, String> _productNames = {}; // продукты: ID -> название
+  final Map<String, String> _fillingNames = {}; // начинки: ID -> название
+  final Map<String, String> _productNames = {}; // продукты: ID -> название
 
   ProductionService({
     required ApiService apiService,

@@ -15,7 +15,7 @@ class AppImage extends StatelessWidget {
   final bool useCache; // для будущего использования
 
   const AppImage({
-    Key? key,
+    super.key,
     this.assetPath,
     this.networkUrl,
     this.base64Data,
@@ -27,7 +27,7 @@ class AppImage extends StatelessWidget {
     this.errorWidget,
     this.borderRadius,
     this.useCache = true,
-  }) : super(key: key);
+  });
 
   // Фабричные конструкторы для удобства
   factory AppImage.asset({

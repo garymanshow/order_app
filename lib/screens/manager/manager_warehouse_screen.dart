@@ -5,6 +5,8 @@ import '../../models/warehouse_operation.dart';
 import '../../services/warehouse_service.dart';
 
 class ManagerWarehouseScreen extends StatefulWidget {
+  const ManagerWarehouseScreen({super.key});
+
   @override
   _ManagerWarehouseScreenState createState() => _ManagerWarehouseScreenState();
 }

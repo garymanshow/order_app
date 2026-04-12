@@ -55,8 +55,9 @@ class CartProvider with ChangeNotifier {
   // 🔥 Установка количества - напрямую в заказ
   Future<void> setQuantity(
       String productId, int quantity, int multiplicity) async {
-    if (_currentClient == null || _allOrders == null || _allProducts == null)
+    if (_currentClient == null || _allOrders == null || _allProducts == null) {
       return;
+    }
 
     print('🛒 setQuantity: productId=$productId, quantity=$quantity');
 

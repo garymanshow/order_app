@@ -20,6 +20,7 @@ import '../models/sheet_metadata.dart';
 import '../screens/two_factor_screen.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
+import '../services/silent_sync_service.dart';
 import '../services/sync_service.dart';
 import '../services/web_push_service.dart';
 import '../services/env_service.dart';
@@ -45,6 +46,15 @@ class AuthProvider with ChangeNotifier {
   // 👇 ДЛЯ PUSH (только Web Push, без FCM)
   bool _pushSubscriptionAttempted = false;
   Timer? _pushReminderTimer;
+
+  // 🔥 ТИХАЯ СИНХРОНИЗАЦИЯ: поля
+  bool _hasPendingUpdates = false;
+  List<String> _pendingSheets = [];
+  SilentSyncService? _silentSync;
+
+  // 🔥 Геттеры для UI
+  bool get hasPendingUpdates => _hasPendingUpdates;
+  List<String> get pendingSheets => _pendingSheets;
 
   // 👇 СЕРВИСЫ
   late final CacheService _cacheService;
@@ -230,6 +240,30 @@ class AuthProvider with ChangeNotifier {
       rethrow;
     }
     // finally убран, так как мы управляем _isLoading явно в успешном пути и в catch
+  }
+
+  // ================== ТИХАЯ СИНХРОНИЗАЦИЯ ==================
+
+  /// 🔥 Установить сервис синхронизации (вызывается из main)
+  void setSilentSync(SilentSyncService service) {
+    _silentSync = service;
+  }
+
+  /// 🔥 Обновить статус ожидающих обновлений
+  void setHasPendingUpdates(bool value, List<String> sheets) {
+    _hasPendingUpdates = value;
+    _pendingSheets = sheets;
+    notifyListeners(); // 🔥 UI обновится автоматически
+  }
+
+  /// 🔥 Проверка обновлений (вызывается при старте / resume)
+  Future<void> checkForUpdates() async {
+    await _silentSync?.checkIfNeeded();
+  }
+
+  /// 🔥 Принудительная синхронизация (по тапу на иконку)
+  Future<void> syncNow() async {
+    await _silentSync?.syncNow();
   }
 
   // 🔥 БЕЗОПАССНЫЙ ОБЕРТКА ДЛЯ PUSH
@@ -659,11 +693,36 @@ class AuthProvider with ChangeNotifier {
 
     // 🔥 Десериализация priceCategories
     if (clientDataMap['priceCategories'] != null) {
-      clientData.priceCategories = (clientDataMap['priceCategories'] as List?)
-              ?.map((item) =>
-                  PriceCategory.fromJson(item as Map<String, dynamic>))
-              .toList() ??
-          [];
+      try {
+        final rawList = clientDataMap['priceCategories'];
+        if (rawList is List) {
+          debugPrint('📋 Найдено сырых категорий: ${rawList.length}');
+
+          clientData.priceCategories = rawList.map((item) {
+            if (item is Map<String, dynamic>) {
+              return PriceCategory.fromJson(item);
+            }
+            throw Exception('Неверный формат элемента категории');
+          }).toList();
+
+          debugPrint(
+              '✅ Успешно распарсено категорий: ${clientData.priceCategories.length}');
+          if (clientData.priceCategories.isNotEmpty) {
+            debugPrint(
+                '   🏷️ Пример: "${clientData.priceCategories[0].name}" (ID: ${clientData.priceCategories[0].id})');
+          }
+        } else {
+          debugPrint('⚠️ priceCategories не является списком List');
+          clientData.priceCategories = [];
+        }
+      } catch (e, stackTrace) {
+        debugPrint('❌ КРИТИЧЕСКАЯ ОШИБКА парсинга priceCategories: $e');
+        debugPrint('Stack: $stackTrace');
+        clientData.priceCategories = []; // Чтобы приложение не упало
+      }
+    } else {
+      debugPrint('⚠️ Ключ priceCategories отсутствует в ответе сервера');
+      clientData.priceCategories = [];
     }
 
     // Десериализация cart

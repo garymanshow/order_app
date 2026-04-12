@@ -227,8 +227,9 @@ class WarehouseOperationAdapter extends TypeAdapter<WarehouseOperation> {
     writer.writeString(obj.unit);
     writer.writeString(obj.date.toIso8601String());
     writer.writeBool(obj.expiryDate != null);
-    if (obj.expiryDate != null)
+    if (obj.expiryDate != null) {
       writer.writeString(obj.expiryDate!.toIso8601String());
+    }
     writer.writeBool(obj.price != null);
     if (obj.price != null) writer.writeDouble(obj.price!);
     writer.writeBool(obj.supplier != null);

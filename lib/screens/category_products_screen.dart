@@ -11,11 +11,11 @@ class CategoryProductsScreen extends StatelessWidget {
   final Map<String, dynamic> stats;
 
   const CategoryProductsScreen({
-    Key? key,
+    super.key,
     required this.category,
     required this.products,
     required this.stats,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

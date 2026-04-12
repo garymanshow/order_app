@@ -12,6 +12,8 @@ import '../models/status_update.dart';
 import '../models/employee.dart';
 
 class DriverRouteScreen extends StatefulWidget {
+  const DriverRouteScreen({super.key});
+
   @override
   _DriverRouteScreenState createState() => _DriverRouteScreenState();
 }

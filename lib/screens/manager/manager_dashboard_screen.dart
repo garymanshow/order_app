@@ -19,6 +19,8 @@ import 'manager_warehouse_screen.dart';
 import 'manager_price_list_screen.dart';
 
 class ManagerDashboardScreen extends StatefulWidget {
+  const ManagerDashboardScreen({super.key});
+
   @override
   _ManagerDashboardScreenState createState() => _ManagerDashboardScreenState();
 }
@@ -30,7 +32,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen>
   bool _isLoadingPlan = false;
   bool _isLoading = false;
   String? _error;
-  bool _dataLoaded = false;
+  final bool _dataLoaded = false;
 
   // Данные для отображения в дашборде
   int _readyOrdersCount = 0;
@@ -881,7 +883,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Выберите начинку'),
-        content: Container(
+        content: SizedBox(
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,
@@ -938,7 +940,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Выберите продукт'),
-        content: Container(
+        content: SizedBox(
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,

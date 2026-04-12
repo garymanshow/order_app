@@ -11,9 +11,9 @@ class ProductionPlanningScreen extends StatefulWidget {
   final String title;
 
   const ProductionPlanningScreen({
-    Key? key,
+    super.key,
     this.title = 'Аналитика производства',
-  }) : super(key: key);
+  });
 
   @override
   _ProductionPlanningScreenState createState() =>

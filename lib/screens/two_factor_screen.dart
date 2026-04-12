@@ -6,7 +6,7 @@ import '../models/employee.dart';
 class TwoFactorScreen extends StatefulWidget {
   final Employee employee;
 
-  const TwoFactorScreen({Key? key, required this.employee}) : super(key: key);
+  const TwoFactorScreen({super.key, required this.employee});
 
   @override
   _TwoFactorScreenState createState() => _TwoFactorScreenState();
@@ -21,7 +21,7 @@ class _TwoFactorScreenState extends State<TwoFactorScreen> {
     try {
       // ✅ РЕШЕНИЕ ДЛЯ ВЕРСИИ 7.x
       // Используем статический метод authenticate
-      final GoogleSignInAccount? googleUser =
+      final GoogleSignInAccount googleUser =
           await GoogleSignIn.instance.authenticate();
 
       if (googleUser != null) {

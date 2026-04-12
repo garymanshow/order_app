@@ -12,6 +12,8 @@ import '../../models/order_item.dart';
 import 'admin_client_orders_screen.dart';
 
 class AdminOrdersCalendarScreen extends StatefulWidget {
+  const AdminOrdersCalendarScreen({super.key});
+
   @override
   _AdminOrdersCalendarScreenState createState() =>
       _AdminOrdersCalendarScreenState();

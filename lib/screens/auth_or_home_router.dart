@@ -97,8 +97,7 @@ class AuthOrHomeRouter extends StatelessWidget {
 class _GenericEmployeeScreen extends StatelessWidget {
   final Employee employee;
 
-  const _GenericEmployeeScreen({Key? key, required this.employee})
-      : super(key: key);
+  const _GenericEmployeeScreen({super.key, required this.employee});
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +122,8 @@ class _GenericEmployeeScreen extends StatelessWidget {
 
 // Экран-посредник для клиентов
 class ClientRouterScreen extends StatefulWidget {
+  const ClientRouterScreen({super.key});
+
   @override
   _ClientRouterScreenState createState() => _ClientRouterScreenState();
 }

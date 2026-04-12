@@ -15,23 +15,23 @@ enum UnitSelectorMode {
 class UnitSelector extends StatefulWidget {
   final UnitSelectorMode mode;
   final String? selectedUnit;
-  final ValueChanged<String?> onUnitSelected; // Изменено на String?
+  final ValueChanged<String?> onUnitSelected;
   final String? labelText;
   final bool isRequired;
-  final bool showOnlyMetric; // только метрические
+  final bool showOnlyMetric;
 
   const UnitSelector({
-    Key? key,
+    super.key,
     this.mode = UnitSelectorMode.all,
     this.selectedUnit,
     required this.onUnitSelected,
     this.labelText,
     this.isRequired = false,
     this.showOnlyMetric = false,
-  }) : super(key: key);
+  });
 
   @override
-  _UnitSelectorState createState() => _UnitSelectorState();
+  State<UnitSelector> createState() => _UnitSelectorState();
 }
 
 class _UnitSelectorState extends State<UnitSelector> {
@@ -56,70 +56,113 @@ class _UnitSelectorState extends State<UnitSelector> {
     }
   }
 
+  /// 🔥 Загружает единицы через UnitService (который сам знает про кэш)
   Future<void> _loadUnits() async {
-    final unitService = Provider.of<UnitService>(context, listen: false);
-    await unitService.loadUnits();
+    try {
+      // Получаем сервис через Provider
+      final unitService = Provider.of<UnitService>(context, listen: false);
 
-    setState(() {
-      _units = _getFilteredUnits(unitService);
-      _isLoading = false;
-    });
+      // Загружаем данные (сервис сам решит: взять из кэша или пойти на сервер)
+      await unitService.loadUnits();
+
+      if (mounted) {
+        setState(() {
+          _units = _filterUnitsByMode(unitService.allUnits);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ UnitSelector: ошибка загрузки: $e');
+      if (mounted) {
+        setState(() {
+          _units = _getFallbackUnits(); // Фоллбэк на хардкод
+          _isLoading = false;
+        });
+      }
+    }
   }
 
-  List<UnitOfMeasureSheet> _getFilteredUnits(UnitService unitService) {
-    List<UnitOfMeasureSheet> units = [];
-
+  /// 🔥 Фильтрация списка по выбранному режиму
+  List<UnitOfMeasureSheet> _filterUnitsByMode(List<UnitOfMeasureSheet> units) {
     switch (widget.mode) {
       case UnitSelectorMode.weight:
-        units = unitService.getWeightUnits();
-        break;
+        return units.where((u) => u.category == 'weight').toList();
       case UnitSelectorMode.volume:
-        units = unitService.getVolumeUnits();
-        break;
+        return units.where((u) => u.category == 'volume').toList();
       case UnitSelectorMode.piece:
-        units = unitService.getPieceUnits();
-        break;
+        return units.where((u) => u.category == 'piece').toList();
       case UnitSelectorMode.warehouse:
-        units = unitService.getWarehouseUnits();
-        break;
+        return units
+            .where((u) =>
+                (u.category == 'weight' &&
+                    (u.symbol == 'кг' || u.symbol == 'г')) ||
+                (u.category == 'volume' &&
+                    (u.symbol == 'л' || u.symbol == 'мл')) ||
+                u.category == 'piece')
+            .toList();
       case UnitSelectorMode.all:
-        units = unitService.allUnits;
-        break;
+      default:
+        return units;
     }
+  }
 
-    // Фильтр по метрической системе если нужно
-    if (widget.showOnlyMetric) {
-      units = units
-          .where((u) =>
-              u.symbol == 'г' ||
-              u.symbol == 'кг' ||
-              u.symbol == 'мл' ||
-              u.symbol == 'л' ||
-              u.symbol == 'шт')
-          .toList();
-    }
-
-    return units;
+  /// 🔥 Фоллбэк-список, если сервис недоступен
+  List<UnitOfMeasureSheet> _getFallbackUnits() {
+    return [
+      UnitOfMeasureSheet(
+          code: 'GR',
+          symbol: 'г',
+          name: 'грамм',
+          category: 'weight',
+          toBase: 1,
+          baseUnit: 'г'),
+      UnitOfMeasureSheet(
+          code: 'KG',
+          symbol: 'кг',
+          name: 'килограмм',
+          category: 'weight',
+          toBase: 1000,
+          baseUnit: 'г'),
+      UnitOfMeasureSheet(
+          code: 'ML',
+          symbol: 'мл',
+          name: 'миллилитр',
+          category: 'volume',
+          toBase: 1,
+          baseUnit: 'мл'),
+      UnitOfMeasureSheet(
+          code: 'L',
+          symbol: 'л',
+          name: 'литр',
+          category: 'volume',
+          toBase: 1000,
+          baseUnit: 'мл'),
+      UnitOfMeasureSheet(
+          code: 'PCS',
+          symbol: 'шт',
+          name: 'штука',
+          category: 'piece',
+          toBase: 1,
+          baseUnit: 'шт'),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Container(
+      return SizedBox(
         height: 56,
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
     return DropdownButtonFormField<String>(
-      initialValue: _selectedValue,
+      value: _selectedValue,
       decoration: InputDecoration(
         labelText: widget.labelText ?? 'Единица измерения',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         suffixIcon: widget.isRequired
-            ? Text('*', style: TextStyle(color: Colors.red))
+            ? const Text('*', style: TextStyle(color: Colors.red))
             : null,
       ),
       validator: widget.isRequired
@@ -130,14 +173,14 @@ class _UnitSelectorState extends State<UnitSelector> {
           value: unit.symbol,
           child: Row(
             children: [
-              Container(
+              SizedBox(
                 width: 40,
                 child: Text(
                   unit.symbol,
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   unit.name,

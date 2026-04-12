@@ -11,11 +11,11 @@ class UnitSearchSelector extends StatefulWidget {
   final UnitSelectorMode mode;
 
   const UnitSearchSelector({
-    Key? key,
+    super.key,
     this.selectedUnit,
     required this.onUnitSelected,
     this.mode = UnitSelectorMode.all,
-  }) : super(key: key);
+  });
 
   @override
   _UnitSearchSelectorState createState() => _UnitSearchSelectorState();

@@ -11,6 +11,8 @@ import '../../models/employee.dart';
 import '../../models/product.dart';
 
 class AdminWarehouseScreen extends StatefulWidget {
+  const AdminWarehouseScreen({super.key});
+
   @override
   _AdminWarehouseScreenState createState() => _AdminWarehouseScreenState();
 }

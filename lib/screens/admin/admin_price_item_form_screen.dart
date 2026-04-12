@@ -10,7 +10,7 @@ import '../../models/product.dart';
 import '../../models/composition.dart';
 import '../../models/nutrition_info.dart';
 import '../../models/ingredient_info.dart';
-import '../../widgets/unit_selector.dart';
+import '../../widgets/unit_selector.dart'; // Убедитесь, что файл существует и экспортирует UnitSelector
 
 class AdminPriceItemFormScreen extends StatefulWidget {
   final PriceItem? item;
@@ -18,11 +18,11 @@ class AdminPriceItemFormScreen extends StatefulWidget {
   final String? initialCategoryName;
 
   const AdminPriceItemFormScreen({
-    Key? key,
+    super.key,
     this.item,
     this.initialCategoryId,
     this.initialCategoryName,
-  }) : super(key: key);
+  });
 
   @override
   _AdminPriceItemFormScreenState createState() =>
@@ -54,6 +54,9 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
   List<String> _allProductNames = [];
   bool _isLoadingNames = false;
+
+  // Флаг для отслеживания загрузки категорий
+  bool _isCategoriesLoaded = false;
 
   @override
   void initState() {
@@ -99,6 +102,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
       _loadAllProductNames();
     }
+
     // Если есть initialCategoryName, устанавливаем его
     if (widget.initialCategoryName != null &&
         widget.initialCategoryName!.isNotEmpty) {
@@ -140,9 +144,9 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       _allProductNames = products.map((p) => p.name).toList();
       _allProductNames.sort();
     } catch (e) {
-      print('❌ Ошибка загрузки названий: $e');
+      debugPrint('❌ Ошибка загрузки названий: $e');
     } finally {
-      setState(() => _isLoadingNames = false);
+      if (mounted) setState(() => _isLoadingNames = false);
     }
   }
 
@@ -167,26 +171,39 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       final nutrition =
           allNutrition.where((n) => n.priceListId == widget.item!.id).toList();
 
-      final existingProduct = authProvider.clientData?.products.firstWhere(
-          (p) => p.id == widget.item!.id,
-          orElse: () => null as Product);
-
-      if (existingProduct != null) {
-        _compositionController.text = existingProduct.composition;
-        _nutritionController.text = existingProduct.nutrition;
-        _storageController.text = existingProduct.storage;
-        _packagingController.text = existingProduct.packaging;
-        _wastePercentageController.text =
-            existingProduct.wastePercentage.toString();
-        _categoryIdController.text = existingProduct.categoryId;
+      // 🔥 ИСПРАВЛЕНИЕ: Безопасный поиск продукта
+      Product? existingProduct;
+      try {
+        existingProduct = authProvider.clientData?.products
+            .firstWhere((p) => p.id == widget.item!.id);
+      } catch (e) {
+        existingProduct = null;
       }
 
-      setState(() {
-        _ingredients = ingredients;
-        _nutritionItems = nutrition;
-      });
+      if (existingProduct != null) {
+        _compositionController.text = existingProduct.composition ?? '';
+        _nutritionController.text = existingProduct.nutrition ?? '';
+        _storageController.text = existingProduct.storage ?? '';
+        _packagingController.text = existingProduct.packaging ?? '';
+        _wastePercentageController.text =
+            existingProduct.wastePercentage.toString();
+        _categoryIdController.text = existingProduct.categoryId ?? '';
+
+        // Если категория не была установлена из widget, берем из продукта
+        if (_categoryController.text.isEmpty &&
+            existingProduct.categoryName.isNotEmpty) {
+          _categoryController.text = existingProduct.categoryName;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _ingredients = ingredients;
+          _nutritionItems = nutrition;
+        });
+      }
     } catch (e) {
-      print('❌ Ошибка загрузки связанных данных: $e');
+      debugPrint('❌ Ошибка загрузки связанных данных: $e');
     }
   }
 
@@ -311,12 +328,12 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         _showSnackBar('Товар успешно сохранен', Colors.green);
       }
     } catch (e) {
-      print('❌ Ошибка сохранения товара: $e');
+      debugPrint('❌ Ошибка сохранения товара: $e');
       if (mounted) {
         _showSnackBar('Ошибка сохранения: $e', Colors.red);
       }
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -335,7 +352,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
       await _apiService.updateProduct(product);
 
-      print('✅ Товар обновлен: ${product.name}');
+      debugPrint('✅ Товар обновлен: ${product.name}');
     }
   }
 
@@ -350,7 +367,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
     await _apiService.createProduct(product);
 
-    print('✅ Новый товар создан: ${product.name}');
+    debugPrint('✅ Новый товар создан: ${product.name}');
   }
 
   Future<void> _updateIngredients(
@@ -361,8 +378,8 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     for (var ingredient in _ingredients) {
       if (ingredient.name.isNotEmpty) {
         // 🔥 ГЕНЕРИРУЕМ УНИКАЛЬНЫЙ ID
-        final newId = DateTime.now().millisecondsSinceEpoch.toString() +
-            '_${_ingredients.indexOf(ingredient)}';
+        final newId =
+            '${DateTime.now().millisecondsSinceEpoch}_${_ingredients.indexOf(ingredient)}';
 
         authProvider.clientData!.compositions.add(Composition(
           id: newId,
@@ -380,8 +397,8 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     for (var ingredient in _ingredients) {
       if (ingredient.name.isNotEmpty) {
         // 🔥 ГЕНЕРИРУЕМ УНИКАЛЬНЫЙ ID
-        final newId = DateTime.now().millisecondsSinceEpoch.toString() +
-            '_${_ingredients.indexOf(ingredient)}';
+        final newId =
+            '${DateTime.now().millisecondsSinceEpoch}_${_ingredients.indexOf(ingredient)}';
 
         authProvider.clientData!.compositions.add(Composition(
           id: newId,
@@ -440,7 +457,7 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       final clientDataJson = authProvider.clientData!.toJson();
       await prefs.setString('client_data', jsonEncode(clientDataJson));
     } catch (e) {
-      print('❌ Ошибка сохранения ClientData: $e');
+      debugPrint('❌ Ошибка сохранения ClientData: $e');
     }
   }
 
@@ -452,6 +469,73 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  // 🔥 МЕТОД ДЛЯ ЗАГРУЗКИ СПИСКА КАТЕГОРИЙ
+  Future<List<String>> _getCategoryNames() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final categories = authProvider.clientData?.priceCategories ?? [];
+      // Фильтруем пустые имена и сортируем
+      final names = categories
+          .map((c) => c.name)
+          .where((name) => name.isNotEmpty)
+          .toList();
+      names.sort();
+      return names;
+    } catch (e) {
+      debugPrint('⚠️ Ошибка получения категорий: $e');
+      return [];
+    }
+  }
+
+  // 🔥 МЕТОД ДЛЯ ОБРАБОТКИ ВЫБОРА КАТЕГОРИИ
+  void _onCategoryChanged(String? newValue) {
+    if (newValue == null) return;
+
+    setState(() {
+      _categoryController.text = newValue;
+    });
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final categories = authProvider.clientData?.priceCategories ?? [];
+
+      // Ищем категорию по имени
+      final category = categories.firstWhere(
+        (c) => c.name == newValue,
+        orElse: () => null as dynamic,
+      );
+
+      if (category != null) {
+        setState(() {
+          // 1. Устанавливаем ID категории
+          _categoryIdController.text = category.id.toString();
+
+          // 2. 🔥 АВТОМАТИЧЕСКИ ПОДСТАВЛЯЕМ ВЕС ИЗ КАТЕГОРИИ
+          // Поле weight в модели PriceCategory — double
+          _weightController.text = category.weight.toString();
+
+          // 3. 🔥 АВТОМАТИЧЕСКИ ПОДСТАВЛЯЕМ ЕД. ИЗМ. ИЗ КАТЕГОРИИ
+          // Поле unit в модели PriceCategory — String
+          _unitController.text = category.unit;
+
+          // 4. Подставляем издержки (если нужно)
+          _wastePercentageController.text = category.wastePercentage.toString();
+        });
+
+        debugPrint('✅ Категория выбрана: $newValue');
+        debugPrint('   ID: ${category.id}');
+        debugPrint('   Вес: ${category.weight}');
+        debugPrint('   Ед: ${category.unit}');
+        debugPrint('   Издержки: ${category.wastePercentage}%');
+      } else {
+        debugPrint(
+            '⚠️ Категория "$newValue" не найдена в списке (${categories.length} всего)');
+      }
+    } catch (e) {
+      debugPrint('❌ Ошибка при выборе категории: $e');
+    }
   }
 
   @override
@@ -541,10 +625,12 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                               ),
                               keyboardType: TextInputType.number,
                               validator: (value) {
-                                if (value!.trim().isEmpty)
+                                if (value!.trim().isEmpty) {
                                   return 'Обязательное поле';
-                                if (double.tryParse(value) == null)
+                                }
+                                if (double.tryParse(value) == null) {
                                   return 'Неверный формат';
+                                }
                                 return null;
                               },
                             ),
@@ -565,43 +651,110 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            TextFormField(
-                              controller: _categoryController,
-                              decoration: InputDecoration(
-                                labelText: 'Категория *',
-                                prefixIcon: const Icon(Icons.category),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              validator: (value) => value!.trim().isEmpty
-                                  ? 'Обязательное поле'
-                                  : null,
+                            // 🔥 ВЫПАДАЮЩИЙ СПИСОК КАТЕГОРИЙ
+
+                            Consumer<AuthProvider>(
+                              builder: (context, authProvider, child) {
+                                final categories =
+                                    authProvider.clientData?.priceCategories ??
+                                        [];
+
+                                debugPrint(
+                                    '🔍 В Consumer: всего категорий ${categories.length}');
+
+                                // Фильтруем и сортируем
+                                final validCategories = categories
+                                    .where((c) => c.name.isNotEmpty)
+                                    .toList();
+
+                                debugPrint(
+                                    '🔍 После фильтрации: ${validCategories.length}');
+
+                                // Сортировка
+                                validCategories
+                                    .sort((a, b) => a.name.compareTo(b.name));
+
+                                // Проверка первой категории
+                                if (validCategories.isNotEmpty) {
+                                  debugPrint(
+                                      '🔍 Первая категория для UI: "${validCategories[0].name}" (длина: ${validCategories[0].name.length})');
+                                }
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Временный вывод списка имен текстом, чтобы увидеть, что внутри
+                                    Text(
+                                      'Список имен: ${validCategories.map((e) => '"${e.name}"').join(', ')}',
+                                      style: TextStyle(
+                                          fontSize: 10, color: Colors.blue),
+                                      overflow: TextOverflow.visible,
+                                    ),
+                                    SizedBox(height: 8),
+
+                                    DropdownButtonFormField<String>(
+                                      value:
+                                          null, // 🔥 ВРЕМЕННО УБЕРЕМ VALUE, чтобы проверить, появляются ли элементы вообще
+                                      decoration: InputDecoration(
+                                        labelText: 'Категория *',
+                                        prefixIcon: const Icon(Icons.category),
+                                        border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8)),
+                                      ),
+                                      items: validCategories.map((cat) {
+                                        return DropdownMenuItem(
+                                          value: cat.name,
+                                          child: Text(cat.name),
+                                        );
+                                      }).toList(),
+                                      onChanged: (val) {
+                                        debugPrint('🔍 Выбрано: $val');
+                                        if (val != null)
+                                          _onCategoryChanged(val);
+                                      },
+                                      validator: (value) => value == null
+                                          ? 'Обязательное поле'
+                                          : null,
+                                      hint: Text(validCategories.isEmpty
+                                          ? 'Нет данных'
+                                          : 'Выберите...'),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
+
                             const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _categoryIdController,
-                              decoration: InputDecoration(
-                                labelText: 'ID Категории',
-                                prefixIcon: const Icon(Icons.tag),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
+                            // Скрытое или видимое поле для ID категории (можно скрыть, если не нужно редактировать вручную)
+                            // TextFormField(
+                            //   controller: _categoryIdController,
+                            //   decoration: InputDecoration(
+                            //     labelText: 'ID Категории (авто)',
+                            //     enabled: false, // Только для чтения
+                            //     prefixIcon: const Icon(Icons.tag),
+                            //     border: OutlineInputBorder(
+                            //       borderRadius: BorderRadius.circular(8),
+                            //     ),
+                            //   ),
+                            // ),
                             const SizedBox(height: 16),
-                            // 🔥 ЗАМЕНЕНО НА UNITSELECTOR
+
+                            // 🔥 UNIT SELECTOR (Ваш виджет)
                             UnitSelector(
                               mode: UnitSelectorMode.warehouse,
                               selectedUnit: _unitController.text,
                               onUnitSelected: (unit) {
-                                setState(() {
-                                  _unitController.text = unit!;
-                                });
+                                if (unit != null) {
+                                  setState(() {
+                                    _unitController.text = unit;
+                                  });
+                                }
                               },
                               labelText: 'Единица измерения *',
                               isRequired: true,
                             ),
+
                             const SizedBox(height: 16),
                             Row(
                               children: [
@@ -631,10 +784,12 @@ class _AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                     ),
                                     keyboardType: TextInputType.number,
                                     validator: (value) {
-                                      if (value!.trim().isEmpty)
+                                      if (value!.trim().isEmpty) {
                                         return 'Обязательное поле';
-                                      if (int.tryParse(value) == null)
+                                      }
+                                      if (int.tryParse(value) == null) {
                                         return 'Неверный формат';
+                                      }
                                       return null;
                                     },
                                   ),

@@ -14,10 +14,10 @@ class ClientSelectionScreen extends StatelessWidget {
   final List<Client> clients;
 
   const ClientSelectionScreen({
-    Key? key,
+    super.key,
     required this.phone,
     required this.clients,
-  }) : super(key: key);
+  });
 
   // Расчет суммы клиента из его заказов
   double _calculateClientTotal(

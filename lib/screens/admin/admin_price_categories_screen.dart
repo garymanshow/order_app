@@ -12,6 +12,8 @@ import 'admin_price_item_form_screen.dart';
 import '../category_products_screen.dart';
 
 class AdminPriceCategoriesScreen extends StatefulWidget {
+  const AdminPriceCategoriesScreen({super.key});
+
   @override
   _AdminPriceCategoriesScreenState createState() =>
       _AdminPriceCategoriesScreenState();
@@ -26,7 +28,7 @@ class _AdminPriceCategoriesScreenState
   late CacheService _cacheService;
 
   // Расширенная статистика по категориям
-  Map<String, Map<String, dynamic>> _categoryStats = {};
+  final Map<String, Map<String, dynamic>> _categoryStats = {};
 
   @override
   void initState() {
@@ -189,8 +191,9 @@ class _AdminPriceCategoriesScreenState
     if (hasProducts) {
       message.writeln('📦 Товары в категории: ${products.length} шт');
       message.writeln('   ${products.take(5).map((p) => p.name).join(', ')}');
-      if (products.length > 5)
+      if (products.length > 5) {
         message.writeln('   ...и еще ${products.length - 5}');
+      }
       message.writeln();
     }
 
@@ -260,7 +263,7 @@ class _AdminPriceCategoriesScreenState
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Товары в категории "${category.name}"'),
-        content: Container(
+        content: SizedBox(
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,
@@ -330,7 +333,7 @@ class _AdminPriceCategoriesScreenState
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Выберите новую категорию'),
-        content: Container(
+        content: SizedBox(
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,

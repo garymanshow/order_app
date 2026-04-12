@@ -7,7 +7,7 @@ import '../providers/auth_provider.dart';
 class RoleSelectionScreen extends StatelessWidget {
   final List<Employee> roles;
 
-  const RoleSelectionScreen({Key? key, required this.roles}) : super(key: key);
+  const RoleSelectionScreen({super.key, required this.roles});
 
   @override
   Widget build(BuildContext context) {

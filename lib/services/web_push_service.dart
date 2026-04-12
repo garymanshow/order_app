@@ -103,7 +103,7 @@ class WebPushService {
     }
   }
 
-  void set onNotificationReceived(Function(Map<String, dynamic>) callback) {
+  set onNotificationReceived(Function(Map<String, dynamic>) callback) {
     _onNotificationReceived = callback;
   }
 

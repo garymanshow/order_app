@@ -10,6 +10,8 @@ import '../../services/notification_history_service.dart';
 import '../../models/notification_history.dart';
 
 class ManagerOrdersScreen extends StatefulWidget {
+  const ManagerOrdersScreen({super.key});
+
   @override
   _ManagerOrdersScreenState createState() => _ManagerOrdersScreenState();
 }

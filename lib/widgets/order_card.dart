@@ -8,11 +8,11 @@ class OrderCard extends StatelessWidget {
   final VoidCallback? onReject;
 
   const OrderCard({
-    Key? key,
+    super.key,
     required this.order,
     this.onApprove,
     this.onReject,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -110,10 +110,10 @@ class OrderCard extends StatelessWidget {
         if (onApprove != null)
           ElevatedButton(
             onPressed: onApprove,
-            child: Text('производство'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
             ),
+            child: Text('производство'),
           ),
       ],
     );

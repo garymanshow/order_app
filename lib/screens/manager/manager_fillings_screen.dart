@@ -7,7 +7,7 @@ import '../../widgets/unit_selector.dart';
 import 'manager_composition_screen.dart';
 
 class ManagerFillingsScreen extends StatefulWidget {
-  const ManagerFillingsScreen({Key? key}) : super(key: key);
+  const ManagerFillingsScreen({super.key});
 
   @override
   _ManagerFillingsScreenState createState() => _ManagerFillingsScreenState();
@@ -267,8 +267,8 @@ class _ManagerFillingsScreenState extends State<ManagerFillingsScreen> {
                 ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addFilling,
-        child: const Icon(Icons.add),
         tooltip: 'Добавить начинку',
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -279,10 +279,10 @@ class FillingFormDialog extends StatefulWidget {
   final Function(Filling) onSave;
 
   const FillingFormDialog({
-    Key? key,
+    super.key,
     this.filling,
     required this.onSave,
-  }) : super(key: key);
+  });
 
   @override
   _FillingFormDialogState createState() => _FillingFormDialogState();

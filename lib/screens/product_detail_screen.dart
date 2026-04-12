@@ -16,10 +16,10 @@ class ProductDetailScreen extends StatefulWidget {
   final List<Product> allProducts;
 
   const ProductDetailScreen({
-    Key? key,
+    super.key,
     required this.initialProductId,
     required this.allProducts,
-  }) : super(key: key);
+  });
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
@@ -297,9 +297,9 @@ class ProductDetailCard extends StatelessWidget {
   final ExtendedProduct product;
 
   const ProductDetailCard({
-    Key? key,
+    super.key,
     required this.product,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

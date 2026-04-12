@@ -12,6 +12,8 @@ import '../notifications_screen.dart';
 import '../shared/production_planning_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
+  const AdminDashboardScreen({super.key});
+
   @override
   _AdminDashboardScreenState createState() => _AdminDashboardScreenState();
 }

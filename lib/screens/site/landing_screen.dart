@@ -27,22 +27,17 @@ class _LandingScreenState extends State<LandingScreen>
   static const String _companyAddress = 'г. Красноярск, пр. Металлургов, 51К';
   static const int _startYear = 2018;
 
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
   final GlobalKey _productsSectionKey = GlobalKey();
 
-  // Контроллеры слайдеров
+  // Контроллеры слайдеров (Бесконечная прокрутка: старт с 10000)
   final PageController _productPageController =
-      PageController(viewportFraction: 0.85);
-  int _currentProductPage = 0;
+      PageController(initialPage: 10000, viewportFraction: 0.85);
+  int _currentProductPage = 10000;
 
   final PageController _featuresPageController =
-      PageController(viewportFraction: 0.8);
-  int _currentFeaturesPage = 0;
-
-  // Контроллеры формы
-  final _contactController = TextEditingController();
-  String _selectedContactType = 'phone';
+      PageController(initialPage: 10000, viewportFraction: 0.8);
+  int _currentFeaturesPage = 10000;
 
   // 🔥 АНИМИРОВАННЫЕ ПОДЗАГОЛОВКИ
   final List<String> _heroSubtitles = [
@@ -59,7 +54,6 @@ class _LandingScreenState extends State<LandingScreen>
   List<Product> _products = [];
   List<Map<String, dynamic>> _adminContacts = [];
   bool _isLoading = true;
-  String? _error;
 
   @override
   void initState() {
@@ -71,60 +65,9 @@ class _LandingScreenState extends State<LandingScreen>
   @override
   void dispose() {
     _subtitleTimer?.cancel();
-    _contactController.dispose();
     _productPageController.dispose();
     _featuresPageController.dispose();
     super.dispose();
-  }
-
-  // 🔥 ЛОГИКА ВАЛИДАЦИИ И ОТПРАВКИ (Главная форма)
-  void _submitForm() {
-    // Запускаем валидацию всех полей формы
-    if (_formKey.currentState!.validate()) {
-      String contact = _contactController.text;
-
-      // Нормализация перед отправкой
-      if (_selectedContactType == 'phone') {
-        contact = PhoneValidator.normalizePhone(contact) ?? contact;
-      } else if (_selectedContactType == 'telegram') {
-        contact = AuthValidator.normalizeTelegram(contact);
-      }
-
-      print('Отправка заявки: $contact');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Заявка отправлена!')),
-      );
-
-      // Опционально: очистить поле после отправки
-      _contactController.clear();
-    }
-  }
-
-  // Динамический валидатор для главной формы
-  String? Function(String?) get _currentValidator {
-    switch (_selectedContactType) {
-      case 'phone':
-        return PhoneValidator.validatePhone;
-      case 'email':
-        return AuthValidator.validateEmail;
-      case 'telegram':
-        return (value) => AuthValidator.validateSocialLink(value, 'telegram');
-      default:
-        return (value) => null;
-    }
-  }
-
-  String get _hintText {
-    switch (_selectedContactType) {
-      case 'phone':
-        return '+7 (999) 123-45-67';
-      case 'email':
-        return 'example@mail.com';
-      case 'telegram':
-        return '@username или ссылка';
-      default:
-        return '';
-    }
   }
 
   void _startSubtitleRotation() {
@@ -138,23 +81,49 @@ class _LandingScreenState extends State<LandingScreen>
     });
   }
 
+  // 🔥 ФИЛЬТРАЦИЯ ТОВАРОВ: удаляем пустышки и дубликаты картинок по размеру файла
+  Future<List<Product>> _filterValidProducts(List<Product> products) async {
+    final seenSizes = <int>{};
+    final validProducts = <Product>[];
+
+    for (final product in products) {
+      if (product.id.isEmpty) continue;
+
+      try {
+        final byteData = await rootBundle.load(product.assetPath);
+        final sizeInBytes = byteData.lengthInBytes;
+
+        if (sizeInBytes < 1024) continue;
+        if (seenSizes.contains(sizeInBytes)) continue;
+
+        seenSizes.add(sizeInBytes);
+        validProducts.add(product);
+      } catch (e) {
+        continue;
+      }
+    }
+
+    return validProducts;
+  }
+
   // 🔥 ЗАГРУЗКА ДАННЫХ
   Future<void> _loadShowcaseData() async {
     try {
       final cacheService = await CacheService.getInstance();
-      final localContacts = await cacheService.getAdminContacts();
-      final localProducts = await cacheService.getProducts();
+      final localContacts = cacheService.getAdminContacts();
+      final localProducts = cacheService.getProducts();
 
       if (localContacts.isNotEmpty && localProducts.isNotEmpty) {
+        final filteredProducts = await _filterValidProducts(localProducts);
         if (mounted) {
           setState(() {
             _adminContacts = localContacts;
-            _products = localProducts.take(7).toList();
+            _products = filteredProducts.take(7).toList();
             _isLoading = false;
           });
         }
         final connectivity = await Connectivity().checkConnectivity();
-        if (connectivity != ConnectivityResult.none) {
+        if (!connectivity.contains(ConnectivityResult.none)) {
           _refreshShowcaseData();
         }
       } else {
@@ -162,10 +131,7 @@ class _LandingScreenState extends State<LandingScreen>
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _error = 'Ошибка загрузки: $e';
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -178,21 +144,14 @@ class _LandingScreenState extends State<LandingScreen>
       );
 
       if (!mounted) return;
-
       if (response == null) {
-        setState(() {
-          _error = 'Нет ответа от сервера';
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         return;
       }
 
       final data = response['data'] as Map<String, dynamic>?;
       if (data == null) {
-        setState(() {
-          _error = 'Нет данных в ответе';
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         return;
       }
 
@@ -206,11 +165,13 @@ class _LandingScreenState extends State<LandingScreen>
           : <Map<String, dynamic>>[];
 
       final productsRaw = data['products'];
-      final products = productsRaw is List
+      final rawProducts = productsRaw is List
           ? productsRaw
               .map((item) => Product.fromMap(item as Map<String, dynamic>))
               .toList()
           : <Product>[];
+
+      final products = await _filterValidProducts(rawProducts);
 
       await cacheService.saveAdminContacts(contacts);
       await cacheService.saveProducts(products);
@@ -220,15 +181,11 @@ class _LandingScreenState extends State<LandingScreen>
           _adminContacts = contacts;
           _products = products.toList();
           _isLoading = false;
-          _error = null;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _error = 'Ошибка сети: $e';
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -277,7 +234,7 @@ class _LandingScreenState extends State<LandingScreen>
         }
       }
     } catch (e) {
-      print('Ошибка открытия почты: $e');
+      debugPrint('Ошибка открытия почты: $e');
     }
   }
 
@@ -305,7 +262,7 @@ class _LandingScreenState extends State<LandingScreen>
 
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
@@ -333,38 +290,29 @@ class _LandingScreenState extends State<LandingScreen>
                     const Text('Способ связи:',
                         style: TextStyle(
                             fontSize: 12, fontWeight: FontWeight.bold)),
-                    Row(
+                    
+                    // 🔥 ИСПРАВЛЕНО: Обычный Row с выбором метода (без устаревших Radio)
+                    Wrap(
+                      spacing: 8,
                       children: [
-                        Radio<String>(
-                          value: 'Телефон',
-                          groupValue: contactMethod,
-                          activeColor: const Color(0xFF5D4037),
-                          onChanged: (value) {
-                            setStateDialog(() => contactMethod = value!);
-                          },
+                        ChoiceChip(
+                          label: const Text('Телефон'),
+                          selected: contactMethod == 'Телефон',
+                          onSelected: (_) => setStateDialog(() => contactMethod = 'Телефон'),
                         ),
-                        const Text('Телефон', style: TextStyle(fontSize: 12)),
-                        Radio<String>(
-                          value: 'Email',
-                          groupValue: contactMethod,
-                          activeColor: const Color(0xFF5D4037),
-                          onChanged: (value) {
-                            setStateDialog(() => contactMethod = value!);
-                          },
+                        ChoiceChip(
+                          label: const Text('Email'),
+                          selected: contactMethod == 'Email',
+                          onSelected: (_) => setStateDialog(() => contactMethod = 'Email'),
                         ),
-                        const Text('Email', style: TextStyle(fontSize: 12)),
-                        Radio<String>(
-                          value: 'Мессенджер',
-                          groupValue: contactMethod,
-                          activeColor: const Color(0xFF5D4037),
-                          onChanged: (value) {
-                            setStateDialog(() => contactMethod = value!);
-                          },
+                        ChoiceChip(
+                          label: const Text('Мессенджер'),
+                          selected: contactMethod == 'Мессенджер',
+                          onSelected: (_) => setStateDialog(() => contactMethod = 'Мессенджер'),
                         ),
-                        const Text('Мессенджер',
-                            style: TextStyle(fontSize: 12)),
                       ],
                     ),
+                    
                     const SizedBox(height: 8),
                     TextField(
                       controller: contactController,
@@ -425,7 +373,6 @@ class _LandingScreenState extends State<LandingScreen>
                 ElevatedButton(
                   onPressed: isAgreed
                       ? () {
-                          // 🔥 ВАЛИДАЦИЯ В ДИАЛОГЕ
                           if (nameController.text.trim().isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -440,18 +387,21 @@ class _LandingScreenState extends State<LandingScreen>
                           if (contactMethod == 'Телефон') {
                             validationError =
                                 PhoneValidator.validatePhone(contactValue);
-                            if (contactValue.trim().isEmpty)
+                            if (contactValue.trim().isEmpty) {
                               validationError = 'Введите номер телефона';
+                            }
                           } else if (contactMethod == 'Email') {
                             validationError =
                                 AuthValidator.validateEmail(contactValue);
-                            if (contactValue.trim().isEmpty)
+                            if (contactValue.trim().isEmpty) {
                               validationError = 'Введите Email';
+                            }
                           } else {
                             validationError = AuthValidator.validateSocialLink(
                                 contactValue, 'telegram');
-                            if (contactValue.trim().isEmpty)
+                            if (contactValue.trim().isEmpty) {
                               validationError = 'Введите контакт';
+                            }
                           }
 
                           if (validationError != null) {
@@ -497,7 +447,7 @@ class _LandingScreenState extends State<LandingScreen>
           .replaceAll('%COMPANY_ADDRESS%', _companyAddress)
           .replaceAll('%ADMIN_EMAIL%', adminEmail);
     } catch (e) {
-      print('❌ Ошибка чтения оферты: $e');
+      debugPrint('❌ Ошибка чтения оферты: $e');
     }
 
     if (!mounted) return;
@@ -565,19 +515,16 @@ class _LandingScreenState extends State<LandingScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: SingleChildScrollView(
-        child: Form(
-          key: _formKey, // Привязываем ключ формы
-          child: Column(
-            children: [
-              _buildAppBar(),
-              _buildHeroSection(),
-              _buildProductsShowcase(),
-              _buildAboutSection(),
-              _buildFeaturesSection(),
-              _buildContactSection(),
-              _buildFooter(),
-            ],
-          ),
+        child: Column(
+          children: [
+            _buildAppBar(),
+            _buildHeroSection(),
+            _buildProductsShowcase(),
+            _buildAboutSection(),
+            _buildFeaturesSection(),
+            _buildContactSection(),
+            _buildFooter(),
+          ],
         ),
       ),
     );
@@ -590,7 +537,7 @@ class _LandingScreenState extends State<LandingScreen>
   Widget _buildAppBar() {
     return Container(
       height: 100,
-      color: const Color(0xFF5D4037).withOpacity(0.95),
+      color: const Color(0xFF5D4037).withValues(alpha: 0.95),
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -677,6 +624,26 @@ class _LandingScreenState extends State<LandingScreen>
   }
 
   Widget _buildProductsShowcase() {
+    if (!_isLoading && _products.isEmpty) {
+      return Container(
+        key: _productsSectionKey,
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        color: Colors.white,
+        child: Column(
+          children: const [
+            Text('Наш ассортимент',
+                style: TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF5D4037))),
+            SizedBox(height: 32),
+            Center(child: Text('Ассортимент скоро будет обновлен')),
+          ],
+        ),
+      );
+    }
+
     return Container(
       key: _productsSectionKey,
       padding: const EdgeInsets.symmetric(vertical: 24),
@@ -692,8 +659,6 @@ class _LandingScreenState extends State<LandingScreen>
           const SizedBox(height: 32),
           if (_isLoading)
             _buildSkeletonSlider()
-          else if (_products.isEmpty)
-            const Center(child: Text('Товары не найдены'))
           else
             Stack(
               alignment: Alignment.center,
@@ -701,16 +666,18 @@ class _LandingScreenState extends State<LandingScreen>
                 SizedBox(
                   height: 420,
                   child: PageView.builder(
-                    itemCount: _products.length,
+                    itemCount: null,
                     controller: _productPageController,
                     onPageChanged: (index) =>
                         setState(() => _currentProductPage = index),
-                    itemBuilder: (context, index) =>
-                        _buildSlidingProductCard(_products[index]),
+                    itemBuilder: (context, index) {
+                      final realIndex = index % _products.length;
+                      final product = _products[realIndex];
+                      return _buildSlidingProductCard(product);
+                    },
                   ),
                 ),
-                // Стрелка влево
-                if (_currentProductPage > 0)
+                if (_products.length > 1)
                   Positioned(
                       left: 0,
                       child: _buildNavArrow(
@@ -718,8 +685,7 @@ class _LandingScreenState extends State<LandingScreen>
                           onTap: () => _productPageController.previousPage(
                               duration: const Duration(milliseconds: 300),
                               curve: Curves.easeInOut))),
-                // Стрелка вправо
-                if (_currentProductPage < _products.length - 1)
+                if (_products.length > 1)
                   Positioned(
                       right: 0,
                       child: _buildNavArrow(
@@ -746,7 +712,7 @@ class _LandingScreenState extends State<LandingScreen>
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 15,
                 offset: const Offset(0, 5))
           ]),
@@ -760,19 +726,18 @@ class _LandingScreenState extends State<LandingScreen>
           Expanded(
               flex: 3,
               child: Padding(
-                  padding: const EdgeInsets.all(12.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 16.0),
                   child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(product.name,
                             textAlign: TextAlign.center,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold)),
-                        Text('${product.price} ₽',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                                fontSize: 20,
+                                fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF5D4037)))
+                                color: Color(0xFF5D4037))),
                       ]))),
         ],
       ),
@@ -798,7 +763,7 @@ class _LandingScreenState extends State<LandingScreen>
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9), shape: BoxShape.circle),
+                  color: Colors.white.withValues(alpha: 0.9), shape: BoxShape.circle),
               child: Icon(icon, size: 32, color: const Color(0xFF5D4037))));
 
   Widget _buildProductImage(Product product) {
@@ -851,7 +816,6 @@ class _LandingScreenState extends State<LandingScreen>
             style: const TextStyle(fontSize: 14, color: Color(0xFF757575)))
       ]);
 
-  // 🔥 ПРЕИМУЩЕСТВА (СЛАЙДЕР СО СТРЕЛКАМИ)
   Widget _buildFeaturesSection() {
     final features = [
       {
@@ -891,15 +855,13 @@ class _LandingScreenState extends State<LandingScreen>
             ),
           ),
           const SizedBox(height: 32),
-
-          // 🔥 ИСПРАВЛЕНО: Обернули в Stack для стрелок
           Stack(
             alignment: Alignment.center,
             children: [
               SizedBox(
-                height: 250, // Фиксированная высота слайдера преимуществ
+                height: 250,
                 child: PageView.builder(
-                  itemCount: features.length,
+                  itemCount: null,
                   controller: _featuresPageController,
                   onPageChanged: (index) {
                     setState(() {
@@ -907,44 +869,38 @@ class _LandingScreenState extends State<LandingScreen>
                     });
                   },
                   itemBuilder: (context, index) {
-                    // Добавляем отступы для карточки внутри слайдера
+                    final realIndex = index % features.length;
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: _buildFeatureCard(features[index]),
+                      child: _buildFeatureCard(features[realIndex]),
                     );
                   },
                 ),
               ),
-
-              // 🔥 СТРЕЛКА ВЛЕВО
-              if (_currentFeaturesPage > 0)
-                Positioned(
-                  left: 0,
-                  child: _buildNavArrow(
-                    icon: Icons.chevron_left,
-                    onTap: () {
-                      _featuresPageController.previousPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    },
-                  ),
+              Positioned(
+                left: 0,
+                child: _buildNavArrow(
+                  icon: Icons.chevron_left,
+                  onTap: () {
+                    _featuresPageController.previousPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
                 ),
-
-              // 🔥 СТРЕЛКА ВПРАВО
-              if (_currentFeaturesPage < features.length - 1)
-                Positioned(
-                  right: 0,
-                  child: _buildNavArrow(
-                    icon: Icons.chevron_right,
-                    onTap: () {
-                      _featuresPageController.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    },
-                  ),
+              ),
+              Positioned(
+                right: 0,
+                child: _buildNavArrow(
+                  icon: Icons.chevron_right,
+                  onTap: () {
+                    _featuresPageController.nextPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
                 ),
+              ),
             ],
           ),
         ],
@@ -952,7 +908,6 @@ class _LandingScreenState extends State<LandingScreen>
     );
   }
 
-  // Карточка преимущества (используется внутри слайдера)
   Widget _buildFeatureCard(Map<String, dynamic> feature) {
     return Container(
       decoration: BoxDecoration(
@@ -982,7 +937,7 @@ class _LandingScreenState extends State<LandingScreen>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(
-              feature['desc'] as String? ?? '', // Защита от null
+              feature['desc'] as String? ?? '',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'Lora',
@@ -996,7 +951,7 @@ class _LandingScreenState extends State<LandingScreen>
     );
   }
 
-  // 🔥 СЕКЦИЯ КОНТАКТОВ (ВОССТАНОВЛЕНА С ФОРМОЙ)
+  // 🔥 ОЧИЩЕННАЯ СЕКЦИЯ КОНТАКТОВ (Только инфа и кнопка)
   Widget _buildContactSection() {
     final String adminEmail =
         (_adminContacts.isNotEmpty && _adminContacts[0]['Email'] != null)
@@ -1014,8 +969,7 @@ class _LandingScreenState extends State<LandingScreen>
                   fontWeight: FontWeight.bold,
                   color: Colors.white)),
           const SizedBox(height: 32),
-
-          // Контакты администратора
+          
           _buildContactItem(Icons.email, adminEmail, 'Напишите нам',
               onTap: adminEmail != 'Загрузка...'
                   ? () => _handleEmailTap(adminEmail)
@@ -1023,89 +977,11 @@ class _LandingScreenState extends State<LandingScreen>
           const SizedBox(height: 16),
           _buildContactItem(
               Icons.location_on, 'г. Красноярск', 'пр. Металлургов, 51 К'),
-
-          const SizedBox(height: 32),
-          const Divider(color: Colors.white24, thickness: 1),
-          const SizedBox(height: 32),
-
-          // 🔥 ФОРМА ОБРАТНОЙ СВЯЗИ
-          const Text('Оставить заявку',
-              style: TextStyle(
-                  fontFamily: 'PlayfairDisplay',
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white)),
-          const SizedBox(height: 16),
-
-          // Выбор типа связи
-          DropdownButtonFormField<String>(
-            value: _selectedContactType,
-            decoration: const InputDecoration(
-              labelText: 'Способ связи',
-              labelStyle: TextStyle(color: Colors.white70),
-              enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.white54),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.white),
-              ),
-            ),
-            dropdownColor: const Color(0xFF5D4037),
-            style: const TextStyle(color: Colors.white),
-            items: const [
-              DropdownMenuItem(
-                  value: 'phone',
-                  child:
-                      Text('Телефон', style: TextStyle(color: Colors.white))),
-              DropdownMenuItem(
-                  value: 'email',
-                  child: Text('Email', style: TextStyle(color: Colors.white))),
-              DropdownMenuItem(
-                  value: 'telegram',
-                  child:
-                      Text('Telegram', style: TextStyle(color: Colors.white))),
-            ],
-            onChanged: (value) {
-              setState(() {
-                _selectedContactType = value!;
-                _contactController.clear(); // Очищаем при смене типа
-              });
-            },
-          ),
-          const SizedBox(height: 16),
-
-          // Поле ввода
-          TextFormField(
-            controller: _contactController,
-            validator: _currentValidator,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              labelText: 'Ваш контакт',
-              hintText: _hintText,
-              labelStyle: const TextStyle(color: Colors.white70),
-              hintStyle: const TextStyle(color: Colors.white38),
-              enabledBorder: const OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.white54),
-              ),
-              focusedBorder: const OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.white),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.red.shade200),
-              ),
-              focusedErrorBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.red.shade200),
-              ),
-            ),
-            keyboardType: _selectedContactType == 'phone'
-                ? TextInputType.phone
-                : TextInputType.emailAddress,
-          ),
-          const SizedBox(height: 24),
-
-          // Кнопка отправки
+              
+          const SizedBox(height: 40),
+          
           ElevatedButton(
-            onPressed: _submitForm,
+            onPressed: _showPartnerRequestDialog,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: const Color(0xFF5D4037),
@@ -1114,24 +990,8 @@ class _LandingScreenState extends State<LandingScreen>
                 borderRadius: BorderRadius.circular(25),
               ),
             ),
-            child: const Text('Отправить заявку',
+            child: const Text('Стать партнёром (оферта)',
                 style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Кнопка "Стать партнером" (открывает диалог)
-          OutlinedButton(
-            onPressed: _showPartnerRequestDialog,
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Colors.white54),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(25),
-              ),
-            ),
-            child: const Text('Стать партнёром (оферта)'),
           ),
         ],
       ),

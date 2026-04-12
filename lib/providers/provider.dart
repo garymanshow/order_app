@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/product.dart';
 
 class CartProvider with ChangeNotifier {
-  Map<String, int> _cartItems = {}; // id продукта -> количество
+  final Map<String, int> _cartItems = {}; // id продукта -> количество
 
   Map<String, int> get cartItems => {..._cartItems};
 
