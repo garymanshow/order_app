@@ -111,13 +111,14 @@ class CategoryProductsScreen extends StatelessWidget {
             name: product.name,
             price: product.price,
             category: product.categoryName,
+            categoryId: product.categoryId, // 👈 Добавлено
             unit: 'шт',
             weight: double.tryParse(product.weight) ?? 0.0,
             multiplicity: product.multiplicity,
             photoUrl: product.imageUrl,
             description: product.composition,
           );
-
+          // ... Navigator.push
           Navigator.push(
             context,
             MaterialPageRoute(

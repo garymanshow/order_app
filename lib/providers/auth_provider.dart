@@ -289,24 +289,40 @@ class AuthProvider with ChangeNotifier {
       throw Exception('Сервер не вернул данные пользователя');
     }
 
-    // Десериализуем пользователя
+    // 🔥 ЛОГ 1: Проверяем сырые данные от сервера
+    debugPrint('📡 ШАГ 1: Проверка ответа сервера...');
+    if (data != null && data is Map<String, dynamic>) {
+      final rawCategories = data['priceCategories'];
+      debugPrint(
+          '📡 ШАГ 1: Ключ priceCategories найден? ${rawCategories != null}');
+
+      if (rawCategories is List) {
+        debugPrint(
+            '📡 ШАГ 1: Количество категорий в JSON: ${rawCategories.length}');
+        if (rawCategories.isNotEmpty) {
+          // Выведем первую категорию целиком, чтобы увидеть ключи
+          debugPrint('📡 ШАГ 1: Пример первой категории: ${rawCategories[0]}');
+        }
+      } else {
+        debugPrint(
+            '⚠️ ШАГ 1: priceCategories не является списком! Тип: ${rawCategories.runtimeType}');
+      }
+    } else {
+      debugPrint('❌ ШАГ 1: Объект data пуст или отсутствует!');
+    }
+
+    // Десериализуем пользователя (ваш существующий код)
     if (userData is List) {
       _availableRoles = userData
           .map((item) => Employee.fromJson(item as Map<String, dynamic>))
           .toList();
     } else {
-      // Проверяем наличие поля "Роль" (с большой буквы, как в GAS)
-      // Если поле есть и оно не пустое -> это Сотрудник
       if (userData['Роль'] != null && userData['Роль'].toString().isNotEmpty) {
         print('🕵️‍♂️ Обнаружен сотрудник с ролью: ${userData['Роль']}');
         _currentUser = Employee.fromJson(userData);
-      }
-      // Иначе проверяем старое поле 'role' для совместимости
-      else if (userData['role'] != null) {
+      } else if (userData['role'] != null) {
         _currentUser = Employee.fromJson(userData);
-      }
-      // Если ролей нет -> это Клиент
-      else {
+      } else {
         _currentUser = Client.fromJson(userData);
       }
     }
@@ -318,8 +334,21 @@ class AuthProvider with ChangeNotifier {
 
     // Сохраняем данные в кэш
     if (data != null && metadata != null) {
+      // 🔥 ЛОГ 2: Перед парсингом
+      debugPrint('💾 ШАГ 2: Начинаем десериализацию ClientData...');
+
       _clientData = _deserializeClientData(data);
       _metadata = _deserializeMetadata(metadata);
+
+      // 🔥 ЛОГ 3: После парсинга
+      debugPrint(
+          '💾 ШАГ 3: Результат парсинга. Категорий в объекте: ${_clientData?.priceCategories.length ?? 0}');
+      if (_clientData?.priceCategories.isNotEmpty == true) {
+        debugPrint(
+            '💾 ШАГ 3: Первая категория после парсинга: "${_clientData!.priceCategories[0].name}" (ID: ${_clientData!.priceCategories[0].id})');
+      } else {
+        debugPrint('❌ ШАГ 3: Список категорий ПОСЛЕ парсинга ПУСТ!');
+      }
 
       // Сохраняем в Hive
       await _saveToCache();
@@ -358,7 +387,17 @@ class AuthProvider with ChangeNotifier {
     await _cacheService.saveProducts(_clientData!.products);
     await _cacheService.saveFillings(_clientData!.fillings);
     await _cacheService.saveCompositions(_clientData!.compositions);
+
+    // 🔥 ЛОГ 3: Перед сохранением категорий
+    debugPrint(
+        '📦 ШАГ 3: Сохраняем в Hive категорий: ${_clientData!.priceCategories.length}');
     await _cacheService.savePriceCategories(_clientData!.priceCategories);
+    // 🔥 ЛОГ 4: Проверка чтения из Hive сразу после записи
+    final cachedCats = _cacheService.getPriceCategories();
+    debugPrint('📦 ШАГ 4: Прочитали из Hive категорий: ${cachedCats.length}');
+    if (cachedCats.isNotEmpty) {
+      debugPrint('📦 ШАГ 4: Первая из Hive: "${cachedCats[0].name}"');
+    }
 
     if (_metadata != null) {
       await _cacheService.saveMetadata(_metadata!);

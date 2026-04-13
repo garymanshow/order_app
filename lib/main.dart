@@ -67,6 +67,10 @@ void main() async {
     // AuthProvider передадим через сеттер после создания
   );
 
+// 👇 ТОЛЬКО ДЛЯ ОТЛАДКИ - ОЧИСТКА КЭША ПРИ СТАРТЕ
+//  await Hive.deleteFromDisk();
+// 👆 УБЕРИТЕ ЭТУ СТРОКУ ПОСЛЕ ПЕРВОГО УСПЕШНОГО ЗАПУСКА
+
   // 🔥 СРАЗУ ПОКАЗЫВАЕМ ПРИЛОЖЕНИЕ
   runApp(MyApp(silentSync: silentSync, unitService: unitService));
 
