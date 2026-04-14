@@ -1,14 +1,15 @@
 // lib/models/client_data.dart
-import 'product.dart';
-import 'order_item.dart';
 import 'composition.dart';
-import 'filling.dart';
-import 'nutrition_info.dart';
-import 'delivery_condition.dart';
 import 'client_category.dart';
 import 'client.dart';
-import 'storage_condition.dart';
+import 'delivery_condition.dart';
+import 'filling.dart';
+import 'nutrition_info.dart';
+import 'order_item.dart';
+import 'product.dart';
 import 'price_category.dart';
+import 'storage_condition.dart';
+import 'unit_of_measure.dart';
 
 class ClientData {
   List<Product> products = [];
@@ -21,6 +22,7 @@ class ClientData {
   List<Client> clients = [];
   List<StorageCondition> storageConditions = [];
   List<PriceCategory> priceCategories = [];
+  List<UnitOfMeasure> unitsOfMeasure = [];
   Map<String, dynamic> cart = {};
 
   // Индексы для быстрого поиска
@@ -132,6 +134,13 @@ class ClientData {
           .toList();
     }
 
+    // --- ДОБАВЛЕНО: Обработка единиц измерения ---
+    if (json['unitsOfMeasure'] is List) {
+      clientData.unitsOfMeasure = (json['unitsOfMeasure'] as List)
+          .map((item) => UnitOfMeasure.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
     // 🔥 Безопасная обработка корзины
     if (json['cart'] is Map) {
       clientData.cart = json['cart'] as Map<String, dynamic>;
@@ -153,6 +162,7 @@ class ClientData {
     print('   - clients: ${clients.length}');
     print('   - storageConditions: ${storageConditions.length}');
     print('   - priceCategories: ${priceCategories.length}');
+    print('   - unitsOfMeasure: ${unitsOfMeasure.length}');
 
     final json = {
       'products': products.map((p) => p.toJson()).toList(),
@@ -165,6 +175,7 @@ class ClientData {
       'clients': clients.map((c) => c.toJson()).toList(),
       'storageConditions': storageConditions.map((s) => s.toJson()).toList(),
       'priceCategories': priceCategories.map((pc) => pc.toJson()).toList(),
+      'unitsOfMeasure': unitsOfMeasure.map((u) => u.toJson()).toList(),
       'cart': cart,
     };
 

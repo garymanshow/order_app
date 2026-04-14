@@ -1,4 +1,4 @@
-// lib/models/price_category.dart
+import 'package:flutter/foundation.dart';
 import '../utils/parsing_utils.dart';
 
 class PriceCategory {
@@ -13,23 +13,46 @@ class PriceCategory {
   PriceCategory({
     required this.id,
     required this.name,
-    required this.packagingQuantity,
-    required this.packagingName,
-    required this.weight,
-    required this.unit,
-    required this.wastePercentage,
+    this.packagingQuantity = 1,
+    this.packagingName = '',
+    this.weight = 0.0,
+    this.unit = 'г',
+    this.wastePercentage = 10,
   });
 
+  /// 🔥 ОТЛАДКА: Печатаем ключи, которые приходят в метод
   factory PriceCategory.fromJson(Map<String, dynamic> json) {
+    // ВРЕМЕННЫЙ ЛОГ ДЛЯ ОТЛАДКИ (убрать после fixes)
+    if (json['ID'] != null || json['id'] != null) {
+      // Логируем только если это не пустая карта
+      debugPrint(
+          '🛠 PriceCategory.fromJson: ID=${json['ID'] ?? json['id']}, Name=${json['Наименование'] ?? json['name']}');
+    }
+
     return PriceCategory(
-      id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? '',
-      packagingQuantity: ParsingUtils.parseInt(json['packagingQuantity']) ?? 1,
-      packagingName:
-          json['packagingName']?.toString() ?? 'Транспортный контейнер',
-      weight: ParsingUtils.parseDouble(json['weight']) ?? 0.0,
-      unit: json['unit']?.toString() ?? 'г',
-      wastePercentage: ParsingUtils.parseInt(json['wastePercentage']) ?? 10,
+      // ID: проверяем 'ID' (Google Sheets), потом 'id' (Hive)
+      id: json['ID']?.toString() ?? json['id']?.toString() ?? '',
+
+      // Name: проверяем 'Наименование' (Google Sheets), потом 'name' (Hive)
+      name: json['Наименование']?.toString() ?? json['name']?.toString() ?? '',
+
+      packagingQuantity: ParsingUtils.parseInt(json['Фасовка в таре']) ??
+          ParsingUtils.parseInt(json['packagingQuantity']) ??
+          1,
+
+      packagingName: json['Тара']?.toString() ??
+          json['packagingName']?.toString() ??
+          'Транспортный контейнер',
+
+      weight: ParsingUtils.parseDouble(json['Вес']) ??
+          ParsingUtils.parseDouble(json['weight']) ??
+          0.0,
+
+      unit: json['Ед.изм.']?.toString() ?? json['unit']?.toString() ?? 'г',
+
+      wastePercentage: ParsingUtils.parseInt(json['Издержки']) ??
+          ParsingUtils.parseInt(json['wastePercentage']) ??
+          10,
     );
   }
 
@@ -43,19 +66,5 @@ class PriceCategory {
       'unit': unit,
       'wastePercentage': wastePercentage,
     };
-  }
-
-  // Для совместимости с Google Sheets
-  factory PriceCategory.fromMap(Map<String, dynamic> map) {
-    return PriceCategory(
-      id: map['ID']?.toString() ?? '',
-      name: map['Наименование']?.toString() ?? '',
-      packagingQuantity:
-          int.tryParse(map['Фасовка в таре']?.toString() ?? '1') ?? 1,
-      packagingName: map['Тара']?.toString() ?? 'Транспортный контейнер',
-      weight: double.tryParse(map['Вес']?.toString() ?? '0') ?? 0.0,
-      unit: map['Ед.изм.']?.toString() ?? 'г',
-      wastePercentage: int.tryParse(map['Издержки']?.toString() ?? '10') ?? 10,
-    );
   }
 }

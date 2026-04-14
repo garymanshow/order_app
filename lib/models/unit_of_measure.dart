@@ -1,4 +1,5 @@
 // lib/models/unit_of_measure.dart
+
 enum UnitSystem { metric, imperial }
 
 enum UnitCategory { weight, volume }
@@ -95,15 +96,41 @@ enum UnitType {
 }
 
 class UnitOfMeasure {
+  // --- Новые поля для хранения данных из JSON/API ---
+  final String code;
+  final String symbol;
+  final String name;
+  final String category;
+  final double coefficient;
+  final String baseUnit;
+
+  // --- Старые поля, необходимые для вашей логики ---
   final UnitType type;
   final double value;
 
-  const UnitOfMeasure({required this.type, required this.value});
+  UnitOfMeasure({
+    // Параметры для старой логики
+    required this.type,
+    required this.value,
+    // Параметры для новой логики (с дефолтными значениями, чтобы не ломать старый код)
+    this.code = '',
+    this.symbol = '',
+    this.name = '',
+    this.category = '',
+    this.coefficient = 1.0,
+    this.baseUnit = '',
+  });
 
   UnitOfMeasure copyWith({UnitType? type, double? value}) {
     return UnitOfMeasure(
       type: type ?? this.type,
       value: value ?? this.value,
+      code: this.code,
+      symbol: this.symbol,
+      name: this.name,
+      category: this.category,
+      coefficient: this.coefficient,
+      baseUnit: this.baseUnit,
     );
   }
 
@@ -116,16 +143,31 @@ class UnitOfMeasure {
     return '$value ${type.symbol}';
   }
 
-  Map<String, dynamic> toJson() => {
-        'type': type.name,
-        'value': value,
-        'symbol': type.symbol,
-      };
-
   factory UnitOfMeasure.fromJson(Map<String, dynamic> json) {
     return UnitOfMeasure(
-      type: UnitType.values.firstWhere((e) => e.name == json['type']),
-      value: (json['value'] as num).toDouble(),
+      code: json['Код'] ?? json['code'] ?? '',
+      symbol: json['Символ'] ?? json['symbol'] ?? '',
+      name: json['Название'] ?? json['name'] ?? '',
+      category: json['Категория'] ?? json['category'] ?? '',
+      coefficient: (json['Коэффициент к базовой'] ?? json['coefficient'] ?? 1)
+          .toDouble(),
+      baseUnit: json['Базовая единица'] ?? json['baseUnit'] ?? '',
+      // Старые поля заполняем дефолтными значениями при загрузке из JSON,
+      // так как в JSON их нет, а старый код может их ожидать.
+      type: UnitType.gram,
+      value: 0,
     );
+  }
+
+  // Метод для сохранения
+  Map<String, dynamic> toJson() {
+    return {
+      'Код': code,
+      'Символ': symbol,
+      'Название': name,
+      'Категория': category,
+      'Коэффициент к базовой': coefficient,
+      'Базовая единица': baseUnit,
+    };
   }
 }
