@@ -1834,4 +1834,39 @@ class ApiService {
       return null;
     }
   }
+
+  // ==================== СОХРАНЕНИЕ УСЛОВИЙ (МАТРЕШКА) ====================
+
+  /// Универсальный метод для сохранения условий (Транспорт, Хранение, Состав)
+  /// [phone] - Телефон сотрудника (обязателен для авторизации в GAS)
+  Future<bool> saveConditions({
+    required String phone,
+    required String sheetName,
+    required String entityId,
+    required String level,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    try {
+      // Формируем данные
+      final data = {
+        'phone': phone,
+        'sheetName': sheetName,
+        'entityId': entityId,
+        'level': level,
+        'items': items,
+      };
+
+      // Используем ваш единый метод
+      final response = await _makeRequest('saveConditions', data);
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        return result['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Ошибка сохранения условий: $e');
+      return false;
+    }
+  }
 }

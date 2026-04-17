@@ -1,45 +1,50 @@
 // lib/models/nutrition_info.dart
+
 class NutritionInfo {
-  //Энергетическая ценность (КЖБУ)
-  final String? priceListId;
+  final String? id; // Уникальный ID записи (опционально)
+  final String? priceListId; // ID сущности (Товар или Категория)
+  final String? level; // Уровень: "Категории прайса" или "Прайс-лист"
+
   final String? calories;
   final String? proteins;
   final String? fats;
   final String? carbohydrates;
 
   NutritionInfo({
+    this.id,
     this.priceListId,
+    this.level,
     this.calories,
     this.proteins,
     this.fats,
     this.carbohydrates,
   });
 
-  // 🔥 fromMap для Google Таблиц
+  // Парсинг из Google Sheets
   factory NutritionInfo.fromMap(Map<String, dynamic> map) {
     return NutritionInfo(
-      priceListId: map['ID Прайс-лист']?.toString().isNotEmpty == true
-          ? map['ID Прайс-лист']?.toString()
+      id: map['ID']?.toString(),
+      priceListId: map['ID сущности']?.toString().isNotEmpty == true
+          ? map['ID сущности']?.toString()
           : null,
-      calories: map['Калории']?.toString().isNotEmpty == true
-          ? map['Калории']?.toString()
-          : null,
-      proteins: map['Белки']?.toString().isNotEmpty == true
-          ? map['Белки']?.toString()
-          : null,
-      fats: map['Жиры']?.toString().isNotEmpty == true
-          ? map['Жиры']?.toString()
-          : null,
-      carbohydrates: map['Углеводы']?.toString().isNotEmpty == true
-          ? map['Углеводы']?.toString()
-          : null,
+      level: map['Лист']?.toString().isNotEmpty == true
+          ? map['Лист']?.toString()
+          : 'Прайс-лист',
+      calories: map['Калории']?.toString(),
+      proteins: map['Белки']?.toString(),
+      fats: map['Жиры']?.toString(),
+      carbohydrates: map['Углеводы']?.toString(),
     );
   }
 
-  // 🔥 ИСПРАВЛЕНО: безопасный fromJson
+  // Парсинг из JSON (Hive/API)
   factory NutritionInfo.fromJson(Map<String, dynamic> json) {
     return NutritionInfo(
-      priceListId: json['priceListId']?.toString(),
+      id: json['id']?.toString(),
+      // Поддержка обоих вариантов ключа для надежности
+      priceListId:
+          json['priceListId']?.toString() ?? json['ID сущности']?.toString(),
+      level: json['level']?.toString() ?? 'Прайс-лист',
       calories: json['calories']?.toString(),
       proteins: json['proteins']?.toString(),
       fats: json['fats']?.toString(),
@@ -47,26 +52,15 @@ class NutritionInfo {
     );
   }
 
-  // 🔥 ИСПРАВЛЕНО: безопасный toJson
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'priceListId': priceListId,
+      'level': level,
       'calories': calories,
       'proteins': proteins,
       'fats': fats,
       'carbohydrates': carbohydrates,
-    };
-  }
-  // Здесь всё нормально, так как все поля опциональные и могут быть null
-
-  // toMap для Google Таблиц (если нужно)
-  Map<String, dynamic> toMap() {
-    return {
-      'ID Прайс-лист': priceListId ?? '',
-      'Калории': calories ?? '',
-      'Белки': proteins ?? '',
-      'Жиры': fats ?? '',
-      'Углеводы': carbohydrates ?? '',
     };
   }
 }

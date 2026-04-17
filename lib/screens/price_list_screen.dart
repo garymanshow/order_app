@@ -564,8 +564,8 @@ class _PriceListScreenState extends State<PriceListScreen> {
         try {
           storageByProduct[product.id] = clientData.storageConditions
               .firstWhere((s) =>
-                  s.sheetName == 'Прайс-лист' && s.entityId == product.id);
-        } catch (_) {}
+                  s.level == 'Прайс-лист' && s.entityId == product.id);
+        } catch (e) {}
       }
 
       // 🔥 Настраиваем сервис

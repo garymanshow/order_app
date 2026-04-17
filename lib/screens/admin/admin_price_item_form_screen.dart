@@ -9,11 +9,99 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../models/product.dart';
 import '../../models/client_data.dart';
-import '../../models/ingredient_info.dart';
 import '../../models/price_item.dart';
 import '../../models/price_category.dart';
 import '../../models/unit_of_measure.dart';
+import '../../models/composition.dart';
 
+// ==========================================
+// КОНФИГУРАЦИЯ КНОПОК
+// ==========================================
+class _ListButtonConfig {
+  final String title;
+  final IconData icon;
+  final String sheetName;
+  final String levelCategory;
+  final String levelProduct;
+  final bool showQuantity;
+  final bool showUnit;
+  final bool isStorage;
+
+  const _ListButtonConfig({
+    required this.title,
+    required this.icon,
+    required this.sheetName,
+    required this.levelCategory,
+    required this.levelProduct,
+    this.showQuantity = false,
+    this.showUnit = false,
+    this.isStorage = false,
+  });
+}
+
+// ==========================================
+// МОДЕЛЬ ДАННЫХ ФОРМЫ
+// ==========================================
+class ProductFormData {
+  final String productId;
+
+  // Основные поля
+  String name;
+  double price;
+  int multiplicity;
+  String photoUrl;
+  Uint8List? imageBytes;
+  String description;
+  String categoryId;
+  String categoryName;
+  String unit;
+  String weight;
+  int wastePercentage;
+
+  // Динамические списки (Матрешка)
+  Map<String, List<Composition>> baseLists = {};
+  Map<String, List<Composition>> ownLists = {};
+
+  ProductFormData({
+    required this.productId,
+    this.name = '',
+    this.price = 0.0,
+    this.multiplicity = 1,
+    this.photoUrl = '',
+    this.imageBytes,
+    this.description = '',
+    this.categoryId = '',
+    this.categoryName = '',
+    this.unit = 'г',
+    this.weight = '0',
+    this.wastePercentage = 10,
+  });
+
+  List<Composition> getFullList(String key) {
+    return [...(baseLists[key] ?? []), ...(ownLists[key] ?? [])];
+  }
+}
+
+// ==========================================
+// МОДЕЛЬ ОЧЕРЕДИ ИЗМЕНЕНИЙ
+// ==========================================
+class PendingChange {
+  final String sheetName;
+  final String entityId;
+  final String level;
+  final List<Map<String, dynamic>> items;
+
+  PendingChange({
+    required this.sheetName,
+    required this.entityId,
+    required this.level,
+    required this.items,
+  });
+}
+
+// ==========================================
+// ЭКРАН ФОРМЫ
+// ==========================================
 class AdminPriceItemFormScreen extends StatefulWidget {
   final PriceItem? item;
   final String? initialCategoryId;
@@ -32,39 +120,61 @@ class AdminPriceItemFormScreen extends StatefulWidget {
 }
 
 class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
-  // Сервис
+  final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
 
-  // Данные
+  // Константы конфигурации кнопок
+  static const _kTransportConfig = _ListButtonConfig(
+    title: 'Условия транспортировки',
+    icon: Icons.local_shipping,
+    sheetName: 'Условия транспортировки',
+    levelCategory: 'Категории прайса',
+    levelProduct: 'Прайс-лист',
+  );
+
+  static const _kStorageConfig = _ListButtonConfig(
+    title: 'Условия хранения',
+    icon: Icons.inventory_2,
+    sheetName: 'Условия хранения',
+    levelCategory: 'Категории прайса',
+    levelProduct: 'Прайс-лист',
+    isStorage: true,
+  );
+
+  static const _kFillingConfig = _ListButtonConfig(
+    title: 'Начинки',
+    icon: Icons.cake,
+    sheetName: 'Начинки',
+    levelCategory: 'Категории прайса',
+    levelProduct: 'Прайс-лист',
+    showQuantity: true,
+    showUnit: true,
+  );
+
+  static const _kCompositionConfig = _ListButtonConfig(
+    title: 'Состав',
+    icon: Icons.restaurant_menu,
+    sheetName: 'Состав',
+    levelCategory: 'Начинки',
+    levelProduct: 'Прайс-лист',
+    showQuantity: true,
+    showUnit: true,
+  );
+
+  // Переменные состояния
   List<PriceCategory> _categories = [];
   List<UnitOfMeasure> _units = [];
   List<Product> _allProducts = [];
 
-  // Навигация
   late PageController _pageController;
   int _currentIndex = 0;
 
-  // Состояние текущей страницы
-  // Используем отдельные контроллеры и переменные для КАЖДОЙ страницы,
-  // но так как PageView держит в памяти ограниченное число страниц,
-  // мы обновляем их "на лету" в onPageChanged.
-
-  // Контроллеры (общие, но перезаполняемые)
-  late TextEditingController _nameController;
-  late TextEditingController _priceController;
-  late TextEditingController _multiplicityController;
-  late TextEditingController _photoUrlController;
-  late TextEditingController _descriptionController;
-  late TextEditingController _categoryController;
-  late TextEditingController _categoryIdController;
-  late TextEditingController _unitController;
-  late TextEditingController _weightController;
-  late TextEditingController _wastePercentageController;
-
-  List<IngredientInfo> _ingredients = [];
-  Uint8List? _imageBytes;
+  final Map<String, ProductFormData> _formDataMap = {};
   bool _isSaving = false;
-  bool _hasChanges = false;
+  bool _hasLocalChanges = false;
+
+  // Очередь изменений
+  final List<PendingChange> _pendingChanges = [];
 
   final Map<String, String> _unitCategoryLabels = {
     'weight': '⚖️ Вес',
@@ -72,59 +182,43 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     'piece': '📦 Штуки',
   };
 
+  ProductFormData get _currentData {
+    if (_currentIndex < 0 || _currentIndex >= _allProducts.length) {
+      return ProductFormData(productId: '');
+    }
+    final id = _allProducts[_currentIndex].id;
+    return _formDataMap.putIfAbsent(id, () => ProductFormData(productId: id));
+  }
+
   @override
   void initState() {
     super.initState();
-    _initControllers();
+    _pageController = PageController(initialPage: 0);
     _loadInitialData().then((_) {
       _initPageIndex();
     });
   }
 
-  void _initControllers() {
-    _nameController = TextEditingController();
-    _priceController = TextEditingController();
-    _multiplicityController = TextEditingController();
-    _photoUrlController = TextEditingController();
-    _descriptionController = TextEditingController();
-    _categoryController = TextEditingController();
-    _categoryIdController = TextEditingController();
-    _unitController = TextEditingController();
-    _weightController = TextEditingController();
-    _wastePercentageController = TextEditingController();
-  }
-
   void _initPageIndex() {
     if (_allProducts.isEmpty) return;
-
     final idToFind = widget.item?.id;
     if (idToFind != null && idToFind.isNotEmpty) {
       final index = _allProducts.indexWhere((p) => p.id == idToFind);
       if (index != -1) _currentIndex = index;
     }
-
-    _pageController = PageController(initialPage: _currentIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_pageController.hasClients &&
+          _pageController.initialPage != _currentIndex) {
+        _pageController.jumpToPage(_currentIndex);
+      }
+    });
     _loadDataForIndex(_currentIndex);
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _disposeControllers();
     super.dispose();
-  }
-
-  void _disposeControllers() {
-    _nameController.dispose();
-    _priceController.dispose();
-    _multiplicityController.dispose();
-    _photoUrlController.dispose();
-    _descriptionController.dispose();
-    _categoryController.dispose();
-    _categoryIdController.dispose();
-    _unitController.dispose();
-    _weightController.dispose();
-    _wastePercentageController.dispose();
   }
 
   // ==========================================
@@ -135,7 +229,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final clientData = authProvider.clientData;
     if (clientData == null) return;
-
     setState(() {
       _categories = clientData.priceCategories;
       _units = clientData.unitsOfMeasure;
@@ -149,129 +242,171 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final clientData = authProvider.clientData;
 
-    setState(() {
-      _nameController.text = product.name;
-      _priceController.text = product.price.toString();
-      _multiplicityController.text = product.multiplicity.toString();
-      _photoUrlController.text = product.imageUrl ?? '';
-      _descriptionController.text = product.composition ?? '';
-
-      // === ИСПРАВЛЕНО: Логика загрузки категории ===
-      // Сначала пытаемся найти категорию по ID
+    if (!_formDataMap.containsKey(product.id)) {
       PriceCategory? productCategory;
       if (product.categoryId.isNotEmpty) {
         try {
           productCategory = _categories.firstWhere(
-              (c) => c.id.toString() == product.categoryId,
-              orElse: () => _categories.first // Дефолт, если не нашли
-              );
+            (c) => c.id.toString() == product.categoryId,
+          );
         } catch (_) {
-          // Если список пуст или ошибка, игнорируем
+          productCategory = null;
         }
       }
 
-      // Если категория найдена, заполняем поля
-      if (productCategory != null) {
-        _categoryController.text = productCategory.name;
-        _categoryIdController.text = productCategory.id.toString();
-        _weightController.text = productCategory.weight > 0
-            ? productCategory.weight.toString()
-            : product.weight;
-        _unitController.text =
-            productCategory.unit.isNotEmpty ? productCategory.unit : 'г';
-        _wastePercentageController.text =
-            productCategory.wastePercentage.toString();
-      } else {
-        // Если категории нет, берем сырые данные из продукта
-        _categoryController.text = product.categoryName ?? '';
-        _categoryIdController.text = product.categoryId;
-        _weightController.text = product.weight;
-        _unitController.text = 'г';
-        _wastePercentageController.text = product.wastePercentage.toString();
+      final data = ProductFormData(
+        productId: product.id,
+        name: product.name,
+        price: product.price,
+        multiplicity: product.multiplicity,
+        photoUrl: product.imageUrl ?? '',
+        description: product.composition ?? '',
+        categoryId: productCategory?.id.toString() ?? product.categoryId,
+        categoryName: productCategory?.name ?? product.categoryName ?? '',
+        unit: productCategory?.unit ?? 'г',
+        weight: productCategory?.weight.toString() ?? product.weight,
+        wastePercentage:
+            productCategory?.wastePercentage ?? product.wastePercentage,
+      );
+
+      final configs = [
+        _kTransportConfig,
+        _kStorageConfig,
+        _kFillingConfig,
+        _kCompositionConfig
+      ];
+      for (var config in configs) {
+        if (productCategory != null && clientData != null) {
+          data.baseLists[config.sheetName] = clientData.compositions
+              .where((c) =>
+                  c.sheetName == config.sheetName &&
+                  c.level == config.levelCategory &&
+                  c.entityId == productCategory?.id.toString())
+              .toList();
+        }
+        if (clientData != null) {
+          data.ownLists[config.sheetName] = clientData.compositions
+              .where((c) =>
+                  c.sheetName == config.sheetName &&
+                  c.level == config.levelProduct &&
+                  c.entityId == product.id)
+              .toList();
+        }
       }
-
-      _imageBytes = null;
-      _hasChanges = false;
-    });
-
-    // Загрузка состава
-    if (clientData != null) {
-      final ingredients = clientData.compositions
-          .where((comp) =>
-              comp.sheetName == 'Состав' && comp.entityId == product.id)
-          .map((comp) => IngredientInfo(
-              name: comp.ingredientName,
-              quantity: comp.quantity,
-              unit: comp.unitSymbol))
-          .toList();
-      setState(() => _ingredients = ingredients);
+      _formDataMap[product.id] = data;
     }
+    setState(() => _hasLocalChanges = false);
   }
 
   // ==========================================
-  // СОХРАНЕНИЕ
+  // СОХРАНЕНИЕ (ЛОКАЛЬНОЕ)
   // ==========================================
 
-  Future<void> _saveItem() async {
-    // Валидация пропущена для упрощения, но здесь она должна быть
+  void _saveItemLocally() {
+    if (!_formKey.currentState!.validate()) return;
+
+    final data = _currentData;
+    final product = _allProducts[_currentIndex];
+
+    final updatedProduct = Product(
+      id: data.productId,
+      name: data.name,
+      price: data.price,
+      multiplicity: data.multiplicity,
+      categoryId: data.categoryId.isNotEmpty ? data.categoryId : 'default',
+      imageUrl: data.photoUrl,
+      composition: data.description,
+      weight: data.weight,
+      nutrition: '',
+      storage: '',
+      packaging: '',
+      categoryName: data.categoryName,
+      wastePercentage: data.wastePercentage,
+      displayName: data.name,
+    );
+
+    final pIndex = _allProducts.indexWhere((p) => p.id == product.id);
+    if (pIndex != -1) _allProducts[pIndex] = updatedProduct;
+
+    final configs = [
+      _kTransportConfig,
+      _kStorageConfig,
+      _kFillingConfig,
+      _kCompositionConfig
+    ];
+    for (var config in configs) {
+      final newOwnList = data.ownLists[config.sheetName] ?? [];
+      _pendingChanges.add(PendingChange(
+        sheetName: config.sheetName,
+        entityId: product.id,
+        level: config.levelProduct,
+        items: newOwnList.map((c) => c.toJson()).toList(),
+      ));
+    }
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final clientData = authProvider.clientData!;
+    for (var config in configs) {
+      clientData.compositions.removeWhere((c) =>
+          c.sheetName == config.sheetName &&
+          c.level == config.levelProduct &&
+          c.entityId == product.id);
+      clientData.compositions.addAll(data.ownLists[config.sheetName] ?? []);
+    }
+    clientData.buildIndexes();
+
+    setState(() {
+      _hasLocalChanges = false;
+      _isSaving = false;
+    });
+  }
+
+  // ==========================================
+  // ОТПРАВКА НА СЕРВЕР (ПАКЕТНАЯ)
+  // ==========================================
+
+  Future<void> _commitChanges() async {
+    if (_pendingChanges.isEmpty) return;
+
     setState(() => _isSaving = true);
+
+    final Map<String, PendingChange> uniqueChanges = {};
+    for (var change in _pendingChanges) {
+      uniqueChanges['${change.sheetName}_${change.entityId}'] = change;
+    }
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final product = _allProducts[_currentIndex];
+      final String? userPhone = authProvider.currentUser?.phone;
 
-      final priceItem = PriceItem(
-        id: product.id,
-        name: _nameController.text.trim(),
-        price: double.parse(_priceController.text),
-        category: _categoryController.text.trim(),
-        unit: _unitController.text.trim(),
-        weight: double.tryParse(_weightController.text) ?? 0.0,
-        multiplicity: int.parse(_multiplicityController.text),
-        photoUrl: _photoUrlController.text.trim(),
-        description: _descriptionController.text.trim() ?? '',
-        categoryId: _categoryIdController.text,
-      );
+      if (userPhone == null || userPhone.isEmpty) {
+        throw Exception('Не удалось определить телефон пользователя');
+      }
+      bool allSuccess = true;
 
-      final updatedProduct = Product(
-        id: priceItem.id,
-        name: priceItem.name,
-        price: priceItem.price,
-        multiplicity: priceItem.multiplicity,
-        categoryId:
-            priceItem.categoryId.isNotEmpty ? priceItem.categoryId : 'default',
-        imageUrl: priceItem.photoUrl,
-        composition: priceItem.description ?? '',
-        weight: _weightController.text,
-        nutrition: '',
-        storage: '',
-        packaging: '',
-        categoryName: priceItem.category,
-        wastePercentage: int.tryParse(_wastePercentageController.text) ?? 10,
-        displayName: priceItem.name,
-      );
-
-      // Обновляем в Provider
-      final index = authProvider.clientData!.products
-          .indexWhere((p) => p.id == product.id);
-      if (index != -1) {
-        authProvider.clientData!.products[index] = updatedProduct;
-        _allProducts[index] = updatedProduct; // Обновляем локальный кэш
-        authProvider.clientData!.buildIndexes();
-        await _apiService.updateProduct(updatedProduct);
+      for (var change in uniqueChanges.values) {
+        final success = await _apiService.saveConditions(
+          phone: userPhone, // <--- Передаем телефон
+          sheetName: change.sheetName,
+          entityId: change.entityId,
+          level: change.level,
+          items: change.items,
+        );
+        if (!success) allSuccess = false;
       }
 
-      // Сохраняем вPrefs
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           'client_data', jsonEncode(authProvider.clientData!.toJson()));
 
-      setState(() => _hasChanges = false);
-
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Товар сохранен'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(allSuccess
+                ? 'Все изменения сохранены'
+                : 'Часть изменений не удалась'),
+            backgroundColor: allSuccess ? Colors.green : Colors.orange));
       }
+      _pendingChanges.clear();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -285,10 +420,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   // ==========================================
   // ДИАЛОГИ
   // ==========================================
-
-  // (Здесь остались без изменений: _showImageSourceDialog, _pickFile, _showUrlDialog, _showCategoryDialog, _showDescriptionDialog, _showIngredientsDialog, _showFillingsStub, _showStorageStub, _showTransportStub)
-  // Для краткости я не буду дублировать их код, если они не менялись.
-  // Убедитесь, что они есть в вашем файле.
 
   void _showImageSourceDialog() {
     showModalBottomSheet(
@@ -310,15 +441,16 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                   Navigator.pop(context);
                   _pickFile();
                 }),
-            if (_photoUrlController.text.isNotEmpty || _imageBytes != null)
+            if (_currentData.photoUrl.isNotEmpty ||
+                _currentData.imageBytes != null)
               ListTile(
                   leading: const Icon(Icons.delete, color: Colors.red),
                   title: const Text('Удалить фото'),
                   onTap: () {
                     setState(() {
-                      _photoUrlController.clear();
-                      _imageBytes = null;
-                      _hasChanges = true;
+                      _currentData.photoUrl = '';
+                      _currentData.imageBytes = null;
+                      _hasLocalChanges = true;
                     });
                     Navigator.pop(context);
                   }),
@@ -332,9 +464,9 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           .pickFiles(type: FileType.image, withData: true);
       if (result != null && result.files.isNotEmpty) {
         setState(() {
-          _imageBytes = result.files.first.bytes;
-          _photoUrlController.clear();
-          _hasChanges = true;
+          _currentData.imageBytes = result.files.first.bytes;
+          _currentData.photoUrl = '';
+          _hasLocalChanges = true;
         });
       }
     } catch (e) {
@@ -343,8 +475,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   }
 
   void _showUrlDialog() {
-    final tempController =
-        TextEditingController(text: _photoUrlController.text);
+    final tempController = TextEditingController(text: _currentData.photoUrl);
     showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -359,9 +490,9 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                 TextButton(
                     onPressed: () {
                       setState(() {
-                        _photoUrlController.text = tempController.text.trim();
-                        _imageBytes = null;
-                        _hasChanges = true;
+                        _currentData.photoUrl = tempController.text.trim();
+                        _currentData.imageBytes = null;
+                        _hasLocalChanges = true;
                       });
                       Navigator.pop(context);
                     },
@@ -380,94 +511,87 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
             content: SingleChildScrollView(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
               DropdownButtonFormField<String>(
+                  value: _currentData.categoryName.isEmpty
+                      ? null
+                      : _currentData.categoryName,
                   decoration: const InputDecoration(
                       labelText: 'Категория *', border: OutlineInputBorder()),
-                  value: _categoryController.text.isEmpty
-                      ? ''
-                      : _categoryController.text,
-                  items: [
-                    if (_categoryController.text.isEmpty)
-                      const DropdownMenuItem(
-                          value: '',
-                          child: Text('Выберите...',
-                              style: TextStyle(color: Colors.grey))),
-                    ..._categories.map((c) => DropdownMenuItem(
-                        value: c.name,
-                        child: Text(c.name,
-                            style: const TextStyle(color: Colors.white)))),
-                  ],
+                  items: _categories
+                      .map((c) => DropdownMenuItem(
+                          value: c.name,
+                          child: Text(c.name,
+                              style: const TextStyle(color: Colors.white))))
+                      .toList(),
                   onChanged: (val) {
-                    if (val == null || val.isEmpty) return;
+                    if (val == null) return;
                     setState(() {
-                      _categoryController.text = val;
+                      _currentData.categoryName = val;
                       final cat = _categories.firstWhere((c) => c.name == val);
-                      _categoryIdController.text = cat.id.toString();
+                      _currentData.categoryId = cat.id.toString();
                       if (cat.weight > 0)
-                        _weightController.text = cat.weight.toString();
-                      if (cat.unit.isNotEmpty) _unitController.text = cat.unit;
-                      _wastePercentageController.text =
-                          cat.wastePercentage.toString();
-                      _hasChanges = true;
+                        _currentData.weight = cat.weight.toString();
+                      if (cat.unit.isNotEmpty) _currentData.unit = cat.unit;
+                      _currentData.wastePercentage = cat.wastePercentage;
+                      _hasLocalChanges = true;
                     });
                     Navigator.pop(context);
                     _showCategoryDialog();
                   }),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
+                  value: _currentData.unit.isEmpty ? null : _currentData.unit,
                   decoration: const InputDecoration(
                       labelText: 'Ед. изм. *', border: OutlineInputBorder()),
-                  value:
-                      _unitController.text.isEmpty ? '' : _unitController.text,
-                  items: [
-                    if (_unitController.text.isEmpty)
-                      const DropdownMenuItem(
-                          value: '',
-                          child: Text('Выберите...',
-                              style: TextStyle(color: Colors.grey))),
-                    ...['weight', 'volume', 'piece'].map((catKey) {
-                      final units =
-                          _units.where((u) => u.category == catKey).toList();
-                      if (units.isEmpty) return <DropdownMenuItem<String>>[];
-                      return [
-                        DropdownMenuItem(
-                            enabled: false,
-                            value: 'h_$catKey',
-                            child: Text(_unitCategoryLabels[catKey]!,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Theme.of(context).primaryColor))),
-                        ...units.map((u) => DropdownMenuItem(
-                            value: u.symbol,
-                            child: Text('${u.symbol} (${u.name})',
-                                style: const TextStyle(color: Colors.white)))),
-                      ];
-                    }).expand((x) => x),
-                  ],
+                  items: ['weight', 'volume', 'piece']
+                      .map((catKey) {
+                        final units =
+                            _units.where((u) => u.category == catKey).toList();
+                        if (units.isEmpty) return <DropdownMenuItem<String>>[];
+                        return [
+                          DropdownMenuItem(
+                              enabled: false,
+                              value: 'h_$catKey',
+                              child: Text(_unitCategoryLabels[catKey] ?? catKey,
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).primaryColor))),
+                          ...units.map((u) => DropdownMenuItem(
+                              value: u.symbol,
+                              child: Text('${u.symbol} (${u.name})',
+                                  style:
+                                      const TextStyle(color: Colors.white)))),
+                        ];
+                      })
+                      .expand((x) => x)
+                      .toList(),
                   onChanged: (val) {
-                    if (val != null &&
-                        !val.startsWith('h_') &&
-                        val.isNotEmpty) {
+                    if (val != null && !val.startsWith('h_'))
                       setState(() {
-                        _unitController.text = val;
-                        _hasChanges = true;
+                        _currentData.unit = val;
+                        _hasLocalChanges = true;
                       });
-                    }
                   }),
               const SizedBox(height: 12),
               TextFormField(
-                  controller: _weightController,
+                  initialValue: _currentData.weight,
                   decoration: const InputDecoration(
                       labelText: 'Вес', border: OutlineInputBorder()),
                   keyboardType: TextInputType.number,
-                  onChanged: (_) => _hasChanges = true),
+                  onChanged: (val) {
+                    _currentData.weight = val;
+                    _hasLocalChanges = true;
+                  }),
               const SizedBox(height: 12),
               TextFormField(
-                  controller: _wastePercentageController,
+                  initialValue: _currentData.wastePercentage.toString(),
                   decoration: const InputDecoration(
                       labelText: 'Процент издержек (%)',
                       border: OutlineInputBorder()),
                   keyboardType: TextInputType.number,
-                  onChanged: (_) => _hasChanges = true),
+                  onChanged: (val) {
+                    _currentData.wastePercentage = int.tryParse(val) ?? 10;
+                    _hasLocalChanges = true;
+                  }),
             ])),
             actions: [
               TextButton(
@@ -479,16 +603,21 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   }
 
   void _showDescriptionDialog() {
+    final tempController =
+        TextEditingController(text: _currentData.description);
     showDialog(
         context: context,
         builder: (context) => AlertDialog(
               title: const Text('Описание'),
-              content: TextFormField(
-                  controller: _descriptionController,
+              content: TextField(
+                  controller: tempController,
                   maxLines: 5,
                   decoration:
                       const InputDecoration(border: OutlineInputBorder()),
-                  onChanged: (_) => _hasChanges = true),
+                  onChanged: (val) {
+                    _currentData.description = val;
+                    _hasLocalChanges = true;
+                  }),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context),
@@ -497,90 +626,193 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
             ));
   }
 
-  void _showIngredientsDialog() {
+  // === УНИВЕРСАЛЬНЫЙ ДИАЛОГ СПИСКОВ ===
+  void _showListDialog(_ListButtonConfig config) {
+    final data = _currentData;
+    List<Composition> baseList = data.baseLists[config.sheetName] ?? [];
+    List<Composition> ownList =
+        List.from(data.ownLists[config.sheetName] ?? []);
+
     showDialog(
         context: context,
         builder: (context) {
           return StatefulBuilder(builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Начинки и состав'),
+              title: Text(config.title),
               content: SizedBox(
-                  width: double.maxFinite,
-                  height: 400,
-                  child: ListView(children: [
-                    const Text('Ингредиенты',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    ..._ingredients.asMap().entries.map((entry) {
-                      int idx = entry.key;
-                      var ing = entry.value;
-                      return ListTile(
-                          dense: true,
-                          title: Text(ing.name),
-                          subtitle: Text('${ing.quantity} ${ing.unit}'),
-                          trailing: IconButton(
-                              icon: const Icon(Icons.delete, size: 20),
-                              onPressed: () {
-                                setDialogState(
-                                    () => _ingredients.removeAt(idx));
-                                setState(() => _hasChanges = true);
-                              }));
-                    }),
-                    TextButton.icon(
-                        icon: const Icon(Icons.add),
-                        label: const Text('Добавить'),
-                        onPressed: () {
-                          setDialogState(() => _ingredients.add(IngredientInfo(
-                              name: 'Новый', quantity: 0, unit: 'г')));
-                          setState(() => _hasChanges = true);
-                        }),
-                  ])),
+                width: double.maxFinite,
+                height: 500,
+                child: Column(
+                  children: [
+                    if (baseList.isNotEmpty)
+                      ExpansionTile(
+                        title: Text("Унаследовано от категории",
+                            style: TextStyle(
+                                color: Colors.grey[600], fontSize: 14)),
+                        initiallyExpanded: true,
+                        children: [
+                          Container(
+                            color: Colors.grey[100],
+                            constraints: const BoxConstraints(maxHeight: 150),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: baseList.length,
+                              itemBuilder: (context, index) {
+                                final item = baseList[index];
+                                return ListTile(
+                                  dense: true,
+                                  leading: const Icon(Icons.lock_outline,
+                                      size: 16, color: Colors.grey),
+                                  title: Text(
+                                      config.isStorage
+                                          ? item.formattedStorage
+                                          : item.displayName,
+                                      style:
+                                          const TextStyle(color: Colors.grey)),
+                                  subtitle: config.showQuantity
+                                      ? Text(
+                                          '${item.quantity} ${item.unitSymbol}')
+                                      : null,
+                                );
+                              },
+                            ),
+                          ),
+                          const Divider(),
+                        ],
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
+                      child: Text("Индивидуальные условия",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).primaryColor)),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: ownList.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == ownList.length) {
+                            return ListTile(
+                              title: TextButton.icon(
+                                icon: const Icon(Icons.add),
+                                label: const Text('Добавить строку'),
+                                onPressed: () {
+                                  setDialogState(() {
+                                    ownList.add(Composition(
+                                      id: DateTime.now()
+                                          .millisecondsSinceEpoch
+                                          .toString(),
+                                      sheetName: config.sheetName,
+                                      level: config.levelProduct,
+                                      entityId: data.productId,
+                                    ));
+                                  });
+                                },
+                              ),
+                            );
+                          }
+
+                          final item = ownList[index];
+                          return Dismissible(
+                            key: ValueKey(item.id),
+                            onDismissed: (_) =>
+                                setDialogState(() => ownList.removeAt(index)),
+                            background: Container(
+                                color: Colors.red,
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.only(right: 20),
+                                child: const Icon(Icons.delete,
+                                    color: Colors.white)),
+                            child: Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Column(
+                                  children: [
+                                    TextField(
+                                      controller: TextEditingController(
+                                          text: config.isStorage
+                                              ? item.storagePlace
+                                              : item.displayName),
+                                      decoration: InputDecoration(
+                                          labelText: config.isStorage
+                                              ? 'Место хранения / Описание'
+                                              : 'Название',
+                                          border: const OutlineInputBorder(),
+                                          contentPadding:
+                                              const EdgeInsets.all(8)),
+                                      onChanged: (val) {
+                                        if (config.isStorage) {
+                                          item.storagePlace = val;
+                                          item.description = val;
+                                        } else {
+                                          item.description = val;
+                                          item.ingredientName = val;
+                                        }
+                                      },
+                                    ),
+                                    if (config.showQuantity || config.showUnit)
+                                      Row(
+                                        children: [
+                                          if (config.showQuantity)
+                                            Expanded(
+                                              child: TextField(
+                                                controller:
+                                                    TextEditingController(
+                                                        text: item.quantity
+                                                            .toString()),
+                                                decoration:
+                                                    const InputDecoration(
+                                                        labelText: 'Кол-во'),
+                                                keyboardType:
+                                                    TextInputType.number,
+                                                onChanged: (val) => item
+                                                        .quantity =
+                                                    double.tryParse(val) ?? 0,
+                                              ),
+                                            ),
+                                          if (config.showUnit)
+                                            Expanded(
+                                              child: TextField(
+                                                controller:
+                                                    TextEditingController(
+                                                        text: item.unitSymbol),
+                                                decoration:
+                                                    const InputDecoration(
+                                                        labelText: 'Ед.изм.'),
+                                                onChanged: (val) =>
+                                                    item.unitSymbol = val,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Готово'))
+                    child: const Text('Отмена')),
+                ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        data.ownLists[config.sheetName] = ownList;
+                        _hasLocalChanges = true;
+                      });
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Сохранить')),
               ],
             );
           });
         });
-  }
-
-  void _showFillingsStub() {
-    showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-                title: const Text('Начинки'),
-                content: const Text('Будет доступно в следующей версии.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('ОК'))
-                ]));
-  }
-
-  void _showStorageStub() {
-    showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-                title: const Text('Хранение'),
-                content: const Text('Будет доступно в следующей версии.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('ОК'))
-                ]));
-  }
-
-  void _showTransportStub() {
-    showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-                title: const Text('Транспорт'),
-                content: const Text('Будет доступно в следующей версии.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('ОК'))
-                ]));
   }
 
   // ==========================================
@@ -597,7 +829,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        // === ИСПРАВЛЕНО: Навигация в Title ===
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -622,21 +853,22 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         actions: [
           IconButton(
-            icon: Icon(Icons.save, color: _hasChanges ? Colors.orange : null),
-            onPressed: _isSaving ? null : _saveItem,
-            tooltip: 'Сохранить',
+            icon: Icon(Icons.save,
+                color: _hasLocalChanges ? Colors.orange : null),
+            onPressed: _isSaving ? null : _saveItemLocally,
+            tooltip: 'Сохранить позицию',
           ),
         ],
       ),
-      // === ИСПРАВЛЕНО: WillPopScope для сохранения при выходе ===
       body: WillPopScope(
         onWillPop: () async {
-          if (_hasChanges) {
-            final shouldSave = await showDialog<bool>(
+          if (_hasLocalChanges) {
+            final saveLocal = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
                 title: const Text('Сохранить изменения?'),
-                content: const Text('У вас есть несохраненные изменения.'),
+                content: const Text(
+                    'У вас есть несохраненные изменения на этой позиции.'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -647,27 +879,72 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                 ],
               ),
             );
-            if (shouldSave == true) {
-              await _saveItem();
+            if (saveLocal == true) _saveItemLocally();
+          }
+
+          if (_pendingChanges.isNotEmpty) {
+            final commit = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Отправить изменения?'),
+                content: Text(
+                    'Есть ${_pendingChanges.length} ожидающих изменений. Отправить их на сервер?'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Стереть')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Отправить')),
+                ],
+              ),
+            );
+
+            if (commit == true) {
+              await _commitChanges();
+            } else {
+              _pendingChanges.clear();
             }
           }
+
           return true;
         },
         child: PageView.builder(
           controller: _pageController,
           itemCount: _allProducts.length,
           onPageChanged: (index) {
-            // === ИСПРАВЛЕНО: Логика смены страницы ===
-            // Если были изменения, можно либо сохранить, либо сбросить.
-            // Здесь просто загружаем новые данные.
-            // GlobalKey больше не используется явно, поэтому конфликтов не будет.
+            if (_hasLocalChanges) _saveItemLocally();
             _loadDataForIndex(index);
             setState(() => _currentIndex = index);
           },
           itemBuilder: (context, index) {
-            // === ИСПРАВЛЕНО: Уникальный ValueKey ===
-            // Это заставляет Flutter пересоздавать форму при смене страницы, избегая конфликта GlobalKey формы
-            return _buildForm(index);
+            return _isSaving
+                ? const Center(child: CircularProgressIndicator())
+                : Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Form(
+                      key: ValueKey('form_$index'),
+                      child: ListView(children: [
+                        _buildGeneralBlock(),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                            onPressed: _isSaving ? null : _saveItemLocally,
+                            icon: const Icon(Icons.save),
+                            label: Text(
+                                _hasLocalChanges
+                                    ? 'Сохранить позицию'
+                                    : 'Нет изменений',
+                                style: const TextStyle(fontSize: 16)),
+                            style: ElevatedButton.styleFrom(
+                                minimumSize: const Size(double.infinity, 50),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                                backgroundColor: _hasLocalChanges
+                                    ? Colors.green
+                                    : Colors.grey)),
+                      ]),
+                    ),
+                  );
           },
         ),
       ),
@@ -675,43 +952,13 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   }
 
   void _goToPage(int index) {
+    if (_hasLocalChanges) _saveItemLocally();
     _pageController.animateToPage(index,
         duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
   }
 
-  Widget _buildForm(int index) {
-    // Используем UniqueKey для Form, чтобы при смене страницы форма пересоздавалась
-    // Это решает проблему "Multiple widgets used the same GlobalKey"
-    return _isSaving
-        ? const Center(child: CircularProgressIndicator())
-        : Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Form(
-              key: ValueKey('form_$index'),
-              child: ListView(children: [
-                _buildGeneralBlock(),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                    onPressed: _isSaving ? null : _saveItem,
-                    icon: const Icon(Icons.save),
-                    label: Text(
-                        _hasChanges ? 'Сохранить изменения' : 'Нет изменений',
-                        style: const TextStyle(fontSize: 16)),
-                    style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        backgroundColor:
-                            _hasChanges ? Colors.green : Colors.grey)),
-              ]),
-            ),
-          );
-  }
-
-  // ==========================================
-  // UI БЛОК
-  // ==========================================
   Widget _buildGeneralBlock() {
+    final data = _currentData;
     return Card(
       elevation: 2,
       child: Padding(
@@ -720,11 +967,14 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextFormField(
-                controller: _nameController,
+                initialValue: data.name,
                 decoration:
                     const InputDecoration(labelText: 'Название товара *'),
                 validator: (v) => v!.isEmpty ? 'Введите название' : null,
-                onChanged: (_) => setState(() => _hasChanges = true)),
+                onChanged: (val) {
+                  data.name = val;
+                  _hasLocalChanges = true;
+                }),
             const SizedBox(height: 12),
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(
@@ -745,9 +995,9 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                     child: ClipRRect(
                                         borderRadius:
                                             BorderRadius.circular(7.0),
-                                        child: _buildPhotoView())))),
+                                        child: _buildPhotoView(data))))),
                         const SizedBox(height: 4),
-                        _buildPhotoSourceInfo(),
+                        _buildPhotoSourceInfo(data),
                       ]))),
               const SizedBox(width: 12),
               Expanded(
@@ -757,7 +1007,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                         TextFormField(
-                            controller: _priceController,
+                            initialValue: data.price.toString(),
                             decoration: const InputDecoration(
                                 labelText: 'Цена *',
                                 isDense: true,
@@ -765,66 +1015,55 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                     EdgeInsets.symmetric(vertical: 12)),
                             keyboardType: TextInputType.number,
                             validator: (v) => v!.isEmpty ? 'Укажите' : null,
-                            onChanged: (_) =>
-                                setState(() => _hasChanges = true)),
+                            onChanged: (val) {
+                              data.price = double.tryParse(val) ?? 0;
+                              _hasLocalChanges = true;
+                            }),
                         const SizedBox(height: 4),
                         TextFormField(
-                            controller: _multiplicityController,
+                            initialValue: data.multiplicity.toString(),
                             decoration: const InputDecoration(
                                 labelText: 'Кратность',
                                 isDense: true,
                                 contentPadding:
                                     EdgeInsets.symmetric(vertical: 12)),
                             keyboardType: TextInputType.number,
-                            onChanged: (_) =>
-                                setState(() => _hasChanges = true)),
+                            onChanged: (val) {
+                              data.multiplicity = int.tryParse(val) ?? 1;
+                              _hasLocalChanges = true;
+                            }),
                         const Divider(height: 16, thickness: 1),
                         _buildParamButton(
                             icon: Icons.category,
                             title: 'Категория',
-                            subtitle: _categoryController.text.isEmpty
+                            subtitle: data.categoryName.isEmpty
                                 ? '-'
-                                : _categoryController.text,
+                                : data.categoryName,
                             onTap: _showCategoryDialog),
                         const SizedBox(height: 4),
                         _buildParamButton(
                             icon: Icons.scale,
                             title: 'Вес',
-                            subtitle:
-                                '${_weightController.text} ${_unitController.text}',
+                            subtitle: '${data.weight} ${data.unit}',
                             onTap: _showCategoryDialog),
                         const SizedBox(height: 4),
                         _buildParamButton(
                             icon: Icons.description,
                             title: 'Описание',
-                            subtitle: _descriptionController.text.isEmpty
-                                ? '-'
-                                : 'Есть',
+                            subtitle: data.description.isEmpty ? '-' : 'Есть',
                             onTap: _showDescriptionDialog),
                         const SizedBox(height: 4),
-                        _buildParamButton(
-                            icon: Icons.restaurant_menu,
-                            title: 'Состав',
-                            subtitle: '${_ingredients.length} шт.',
-                            onTap: _showIngredientsDialog),
+                        _buildListParamButton(
+                            config: _kCompositionConfig, data: data),
                         const SizedBox(height: 4),
-                        _buildParamButton(
-                            icon: Icons.cake,
-                            title: 'Начинки',
-                            subtitle: 'Не заданы',
-                            onTap: _showFillingsStub),
+                        _buildListParamButton(
+                            config: _kFillingConfig, data: data),
                         const SizedBox(height: 4),
-                        _buildParamButton(
-                            icon: Icons.inventory_2,
-                            title: 'Хранение',
-                            subtitle: 'Не заданы',
-                            onTap: _showStorageStub),
+                        _buildListParamButton(
+                            config: _kStorageConfig, data: data),
                         const SizedBox(height: 4),
-                        _buildParamButton(
-                            icon: Icons.local_shipping,
-                            title: 'Транспорт',
-                            subtitle: 'Не заданы',
-                            onTap: _showTransportStub),
+                        _buildListParamButton(
+                            config: _kTransportConfig, data: data),
                       ]))),
             ]),
           ],
@@ -833,10 +1072,21 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     );
   }
 
-  Widget _buildPhotoView() {
-    if (_imageBytes != null)
-      return Image.memory(_imageBytes!, fit: BoxFit.cover);
-    String photoPath = _photoUrlController.text.trim();
+  Widget _buildListParamButton(
+      {required _ListButtonConfig config, required ProductFormData data}) {
+    final list = data.getFullList(config.sheetName);
+    return _buildParamButton(
+      icon: config.icon,
+      title: config.title,
+      subtitle: list.isEmpty ? 'Не заданы' : '${list.length} записей',
+      onTap: () => _showListDialog(config),
+    );
+  }
+
+  Widget _buildPhotoView(ProductFormData data) {
+    if (data.imageBytes != null)
+      return Image.memory(data.imageBytes!, fit: BoxFit.cover);
+    String photoPath = data.photoUrl.trim();
     if (photoPath.isEmpty &&
         _allProducts.isNotEmpty &&
         _currentIndex < _allProducts.length) {
@@ -855,23 +1105,23 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     return _buildEmptyPhoto();
   }
 
-  Widget _buildPhotoSourceInfo() {
+  Widget _buildPhotoSourceInfo(ProductFormData data) {
     String infoText;
     IconData icon;
     Color color;
-    if (_imageBytes != null) {
+    if (data.imageBytes != null) {
       infoText = 'Локальное фото';
       icon = Icons.phone_android;
       color = Colors.blue;
-    } else if (_photoUrlController.text.startsWith('assets/')) {
+    } else if (data.photoUrl.startsWith('assets/')) {
       infoText = 'Из приложения';
       icon = Icons.apps;
       color = Colors.grey;
-    } else if (_photoUrlController.text.contains('drive.google')) {
+    } else if (data.photoUrl.contains('drive.google')) {
       infoText = 'Из облака';
       icon = Icons.cloud;
       color = Colors.green;
-    } else if (_photoUrlController.text.startsWith('http')) {
+    } else if (data.photoUrl.startsWith('http')) {
       infoText = 'С сайта';
       icon = Icons.language;
       color = Colors.orange;

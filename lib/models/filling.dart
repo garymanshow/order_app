@@ -3,43 +3,61 @@ import '../utils/parsing_utils.dart';
 import 'composition.dart';
 
 class Filling {
-  final String sheetName; // "Начинки" или "Категории прайса"
-  final String entityId; // ID начинки
+  final String
+      id; // ID начинки (добавил, так как он нужен для связи с Составом)
+  final String sheetName; // Имя листа: "Начинки"
+  final String
+      level; // Уровень: "Категории прайса" или "Прайс-лист" (из колонки "Лист")
+  final String entityId; // ID сущности: ID Категории или ID Товара
   final String name; // Название начинки
-  final double quantity; // Количество начинки на порцию
-  final String unitSymbol; // Единица измерения
+  final double quantity; // Масса начинки на изделие
+  final String unitSymbol;
   final List<Composition> ingredients; // Состав начинки
 
   Filling({
-    required this.sheetName,
-    required this.entityId,
+    this.id = '',
+    this.sheetName = 'Начинки',
+    this.level = 'Прайс-лист',
+    this.entityId = '',
     required this.name,
-    required this.quantity,
-    required this.unitSymbol,
-    required this.ingredients,
-  });
+    this.quantity = 0.0,
+    this.unitSymbol = 'г',
+    List<Composition>? ingredients,
+  }) : ingredients = ingredients ?? const [];
 
-  // Общий вес начинки в граммах
+  /// Геттер для получения отображаемого имени (совместимость с Composition)
+  String get displayName => name;
+
+  /// Общий вес начинки в граммах
   double get totalWeightGrams {
     if (unitSymbol == 'г') return quantity;
     if (unitSymbol == 'кг') return quantity * 1000;
     return quantity;
   }
 
+  /// Парсинг из JSON, который прислал GAS
   factory Filling.fromJson(Map<String, dynamic> json) {
     return Filling(
-      sheetName: ParsingUtils.safeString(json['sheetName']) ?? '',
-      entityId: ParsingUtils.safeString(json['entityId']) ?? '',
-      name: ParsingUtils.safeString(json['name']) ?? '',
-      quantity: ParsingUtils.parseDouble(json['quantity']) ?? 0.0,
-      unitSymbol: ParsingUtils.safeString(json['unitSymbol']) ?? 'г',
-      ingredients: [], // будут заполняться отдельно
+      id: json['id']?.toString() ?? json['ID']?.toString() ?? '',
+      sheetName: json['sheetName']?.toString() ?? 'Начинки',
+      level: json['Лист']?.toString() ?? 'Прайс-лист',
+      entityId:
+          json['ID сущности']?.toString() ?? json['entityId']?.toString() ?? '',
+      name: json['Наименование']?.toString() ?? json['name']?.toString() ?? '',
+      quantity:
+          ParsingUtils.parseDouble(json['Количество'] ?? json['quantity']) ??
+              0.0,
+      unitSymbol:
+          json['Ед.изм.']?.toString() ?? json['unitSymbol']?.toString() ?? 'г',
+      ingredients: [], // Инициализируем пустым, заполним позже на уровне ClientData
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'sheetName': sheetName,
+      'level': level,
       'entityId': entityId,
       'name': name,
       'quantity': quantity,
@@ -47,27 +65,26 @@ class Filling {
     };
   }
 
-  // Для Google Sheets
-  Map<String, dynamic> toMap() {
-    return {
-      'Лист': sheetName,
-      'ID сущности': entityId,
-      'Наименование': name,
-      'Количество': quantity.toString().replaceAll('.', ','),
-      'Ед.изм': unitSymbol,
-    };
-  }
-
-  factory Filling.fromMap(Map<String, dynamic> map) {
+  // Метод для создания копии с обновленным списком ингредиентов
+  Filling copyWith({
+    String? id,
+    String? sheetName,
+    String? level,
+    String? entityId,
+    String? name,
+    double? quantity,
+    String? unitSymbol,
+    List<Composition>? ingredients,
+  }) {
     return Filling(
-      sheetName: map['Лист']?.toString() ?? '',
-      entityId: map['ID сущности']?.toString() ?? '',
-      name: map['Наименование']?.toString() ?? '',
-      quantity: double.tryParse(
-              map['Количество']?.toString().replaceAll(',', '.') ?? '0') ??
-          0.0,
-      unitSymbol: map['Ед.изм']?.toString() ?? 'г',
-      ingredients: [],
+      id: id ?? this.id,
+      sheetName: sheetName ?? this.sheetName,
+      level: level ?? this.level,
+      entityId: entityId ?? this.entityId,
+      name: name ?? this.name,
+      quantity: quantity ?? this.quantity,
+      unitSymbol: unitSymbol ?? this.unitSymbol,
+      ingredients: ingredients ?? this.ingredients,
     );
   }
 }

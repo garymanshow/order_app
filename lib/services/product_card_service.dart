@@ -1,4 +1,6 @@
 // lib/services/product_card_service.dart
+import 'package:flutter/foundation.dart';
+
 import '../models/product.dart';
 import '../models/extended_product.dart';
 import '../models/client_data.dart';
@@ -30,7 +32,8 @@ class ProductCardService {
     StorageCondition? storage;
     try {
       storage = clientData.storageConditions.firstWhere(
-        (s) => s.sheetName == 'Прайс-лист' && s.entityId == product.id,
+        // ИСПРАВЛЕНО: sheetName -> level
+        (s) => s.level == 'Прайс-лист' && s.entityId == product.id,
       );
     } catch (e) {
       storage = null;
@@ -79,7 +82,7 @@ class ProductCardService {
 
     // Если у продукта нет categoryId, возвращаем значения по умолчанию
     if (product.categoryId.isEmpty) {
-      print('⚠️ Товар "${product.name}" не имеет категории');
+      debugPrint('⚠️ Товар "${product.name}" не имеет категории');
       return {
         'packagingQuantity': defaultPackagingQuantity,
         'packagingName': defaultPackagingName,
@@ -91,7 +94,7 @@ class ProductCardService {
     final category = clientData.priceCategoryIndex[product.categoryId];
 
     if (category == null) {
-      print(
+      debugPrint(
           '⚠️ Категория с ID ${product.categoryId} не найдена для товара "${product.name}"');
       return {
         'packagingQuantity': defaultPackagingQuantity,
@@ -115,7 +118,8 @@ class ProductCardService {
   ) {
     return clientData.storageConditions
         .where((s) =>
-            s.sheetName == 'Категория прайса' && s.entityId == categoryId)
+            // ИСПРАВЛЕНО: sheetName -> level
+            s.level == 'Категории прайса' && s.entityId == categoryId)
         .toList();
   }
 
@@ -170,16 +174,16 @@ class ProductCardService {
     if (product.categoryId.isNotEmpty) {
       final categoryCompositions = clientData.compositions
           .where((c) =>
-              c.sheetName == 'Категория прайса' &&
+              c.sheetName ==
+                  'Состав' && // Используем sheetName для определения типа
+              c.level == 'Категории прайса' &&
               c.entityId == product.categoryId)
           .toList();
 
       for (var comp in categoryCompositions) {
         result.add({
           'name': comp.ingredientName,
-          // 🔥 ИСПРАВЛЕНО: преобразуем double в String
           'quantity': comp.quantity.toString(),
-          // 🔥 ИСПРАВЛЕНО: используем правильное поле unitSymbol
           'unit': comp.unitSymbol,
         });
       }
@@ -187,15 +191,16 @@ class ProductCardService {
 
     // 2. Добавляем уникальный состав из товара
     final productCompositions = clientData.compositions
-        .where((c) => c.sheetName == 'Прайс-лист' && c.entityId == product.id)
+        .where((c) =>
+            c.sheetName == 'Состав' &&
+            c.level == 'Прайс-лист' &&
+            c.entityId == product.id)
         .toList();
 
     for (var comp in productCompositions) {
       result.add({
         'name': comp.ingredientName,
-        // 🔥 ИСПРАВЛЕНО: преобразуем double в String
         'quantity': comp.quantity.toString(),
-        // 🔥 ИСПРАВЛЕНО: используем правильное поле unitSymbol
         'unit': comp.unitSymbol,
       });
     }

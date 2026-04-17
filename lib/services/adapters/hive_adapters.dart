@@ -94,29 +94,83 @@ class FillingAdapter extends TypeAdapter<Filling> {
 // Адаптер для Composition
 class CompositionAdapter extends TypeAdapter<Composition> {
   @override
-  final int typeId = 2;
+  final int typeId =
+      15; // Убедитесь, что ID совпадает с регистрацией (обычно 1 или другой, проверьте registerAdapter)
 
   @override
   Composition read(BinaryReader reader) {
+    // Читаем количество полей в новой модели
+    // Для совместимости со старыми данными: reader.readFieldCount() не используется напрямую в ручной реализации,
+    // но мы читаем последовательно. Если старый кэш не содержит новых полей,
+    // нужно обрабатывать try-catch или проверять длину, если BinaryReader её дает.
+    // Проще всего: очистить кэш при деплое новой версии.
+    // Но если хотим мягко:
+
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+
     return Composition(
-      id: reader.readString(),
-      sheetName: reader.readString(),
-      entityId: reader.readString(),
-      ingredientName: reader.readString(),
-      quantity: reader.readDouble(),
-      unitSymbol: reader.readString(),
+      id: fields[0] as String? ?? '',
+      sheetName: fields[1] as String? ?? '',
+      entityId: fields[2] as String? ?? '',
+      ingredientName: fields[3] as String? ?? '',
+      quantity: fields[4] as double? ?? 0.0,
+      unitSymbol: fields[5] as String? ?? '',
+      // Новые поля (с безопасной обработкой null)
+      level: fields[6] as String? ?? 'Прайс-лист',
+      description: fields[7] as String? ?? '',
+      storagePlace: fields[8] as String? ?? '',
+      temperature: fields[9] as String? ?? '',
+      humidity: fields[10] as String? ?? '',
+      shelfLife: fields[11] as String? ?? '',
+      shelfLifeUnit: fields[12] as String? ?? '',
     );
   }
 
   @override
   void write(BinaryWriter writer, Composition obj) {
-    writer.writeString(obj.id);
-    writer.writeString(obj.sheetName);
-    writer.writeString(obj.entityId);
-    writer.writeString(obj.ingredientName);
-    writer.writeDouble(obj.quantity);
-    writer.writeString(obj.unitSymbol);
+    writer
+      ..writeByte(13) // Количество полей
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.sheetName)
+      ..writeByte(2)
+      ..write(obj.entityId)
+      ..writeByte(3)
+      ..write(obj.ingredientName)
+      ..writeByte(4)
+      ..write(obj.quantity)
+      ..writeByte(5)
+      ..write(obj.unitSymbol)
+      // Новые поля
+      ..writeByte(6)
+      ..write(obj.level)
+      ..writeByte(7)
+      ..write(obj.description)
+      ..writeByte(8)
+      ..write(obj.storagePlace)
+      ..writeByte(9)
+      ..write(obj.temperature)
+      ..writeByte(10)
+      ..write(obj.humidity)
+      ..writeByte(11)
+      ..write(obj.shelfLife)
+      ..writeByte(12)
+      ..write(obj.shelfLifeUnit);
   }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositionAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
 }
 
 // Адаптер для Product
