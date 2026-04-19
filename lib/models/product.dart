@@ -9,12 +9,10 @@ class Product {
   final String categoryId;
   final String? imageUrl;
   final String? imageBase64;
-
-  // Добавляем поле для отформатированного названия
   final String displayName;
 
   // Дополнительные поля
-  final String composition;
+  final String composition; // Используем как "Описание"
   final String weight;
   final String nutrition;
   final String storage;
@@ -22,7 +20,6 @@ class Product {
   final String categoryName;
   final int wastePercentage;
 
-  // 🔥 ИСПРАВЛЕНО: добавляем displayName в конструктор
   Product({
     required this.id,
     required this.name,
@@ -38,10 +35,9 @@ class Product {
     this.packaging = '',
     this.categoryName = '',
     this.wastePercentage = 10,
-    String? displayName, // ← добавляем опциональный параметр
-  }) : displayName = displayName ?? name; // ← если не передан, используем name
+    String? displayName,
+  }) : displayName = displayName ?? name;
 
-  // Геттер для пути к изображению
   String get assetPath => 'assets/images/products/$id.webp';
 
   Map<String, dynamic> toJson() {
@@ -65,6 +61,7 @@ class Product {
   }
 
   factory Product.fromJson(Map<String, dynamic> json) {
+    // При чтении из JSON (из Hive или кэша) поле называется composition
     return Product(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
@@ -80,20 +77,26 @@ class Product {
       packaging: json['packaging']?.toString() ?? '',
       categoryName: json['categoryName']?.toString() ?? '',
       wastePercentage: ParsingUtils.parseInt(json['wastePercentage']) ?? 10,
-      displayName:
-          json['displayName']?.toString(), // ← восстанавливаем displayName
+      displayName: json['displayName']?.toString(),
     );
   }
 
-  // 🔥 ИСПРАВЛЕНО: fromMap с форматированием названия
   factory Product.fromMap(Map<String, dynamic> map) {
     final id = map['ID']?.toString() ?? '';
     final name = map['Название']?.toString() ?? '';
     final categoryId = map['ID Категории прайса']?.toString() ?? '';
     final categoryName = map['Категория']?.toString() ?? '';
 
-    // Форматируем название
     final displayName = _formatProductName(name, categoryName);
+
+    // === ИСПРАВЛЕНИЕ ЧТЕНИЯ ОПИСАНИЯ ===
+    // 1. Сначала берем из колонки "Описание"
+    // 2. Если пусто, берем из "Состав" (для совместимости)
+    // 3. Если и там пусто - пустая строка
+    final description = map['Описание']?.toString().isNotEmpty == true
+        ? map['Описание']?.toString()
+        : map['Состав']?.toString() ?? '';
+    // ===================================
 
     return Product(
       id: id,
@@ -103,30 +106,27 @@ class Product {
       categoryId: categoryId,
       imageUrl: map['Фото']?.toString(),
       imageBase64: map['Фото_base64']?.toString(),
-      composition: map['Состав']?.toString() ?? '',
+      composition: description ?? '', // <--- ЗАПИСЫВАЕМ ОПИСАНИЕ
       weight: map['Вес']?.toString() ?? '',
       nutrition: map['Пищевая ценность']?.toString() ?? '',
       storage: map['Условия хранения']?.toString() ?? '',
       packaging: map['Упаковка']?.toString() ?? '',
       categoryName: categoryName,
       wastePercentage: _parseWastePercentage(map['Издержки']?.toString()),
-      displayName: displayName, // ← передаем отформатированное
+      displayName: displayName,
     );
   }
 
-  // 🔥 Функция форматирования названия
   static String _formatProductName(String productName, String categoryName) {
     if (categoryName.isEmpty) return productName;
 
     final prodName = productName.toLowerCase().trim();
     final catName = categoryName.toLowerCase().trim();
 
-    // Если название уже содержит категорию - оставляем как есть
     if (prodName.contains(catName)) {
       return productName;
     }
 
-    // Иначе добавляем категорию спереди
     return '$categoryName $productName';
   }
 
@@ -139,7 +139,8 @@ class Product {
       'ID Категории прайса': categoryId,
       'Фото': imageUrl ?? '',
       'Фото_base64': imageBase64 ?? '',
-      'Состав': composition,
+      'Состав':
+          composition, // При сохранении сохраняем обратно в Состав (или Описание, если нужно)
       'Вес': weight,
       'Пищевая ценность': nutrition,
       'Условия хранения': storage,

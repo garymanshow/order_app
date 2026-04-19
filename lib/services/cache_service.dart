@@ -9,12 +9,20 @@ import '../models/warehouse_operation.dart';
 import '../models/production_operation.dart';
 import '../models/unit_of_measure_sheet.dart';
 import '../models/sheet_metadata.dart';
+// === НОВЫЕ ИМПОРТЫ ===
+import '../models/storage_condition.dart';
+import '../models/transport_condition.dart';
+// =====================
 import 'adapters/hive_adapters.dart';
 
 class CacheService {
   static const String _ordersBox = 'orders';
   static const String _fillingsBox = 'fillings';
   static const String _compositionsBox = 'compositions';
+  // === НОВЫЕ КЛЮЧИ ===
+  static const String _storageConditionsBox = 'storage_conditions';
+  static const String _transportConditionsBox = 'transport_conditions';
+  // ===================
   static const String _productsBox = 'products';
   static const String _priceCategoriesBox = 'price_categories';
   static const String _warehouseOperationsBox = 'warehouse_operations';
@@ -23,6 +31,7 @@ class CacheService {
   static const String _pendingOperationsBox = 'pending_operations';
   static const String _metadataBox = 'metadata';
   static const String _contactsBox = 'admin_contacts';
+
   // 🔥 КЛЮЧИ ДЛЯ ХРАНЕНИЯ ФЛАГОВ
   static const String _keyHasBeenUsed = 'app_has_been_used';
   static const String _keyLastPhone = 'last_login_phone';
@@ -31,6 +40,10 @@ class CacheService {
   late Box<OrderItem> _orders;
   late Box<Filling> _fillings;
   late Box<Composition> _compositions;
+  // === НОВЫЕ БОКСЫ ===
+  late Box<StorageCondition> _storageConditions;
+  late Box<TransportCondition> _transportConditions;
+  // ===================
   late Box<Product> _products;
   late Box<PriceCategory> _priceCategories;
   late Box<WarehouseOperation> _warehouseOperations;
@@ -65,6 +78,14 @@ class CacheService {
     _orders = await Hive.openBox<OrderItem>(_ordersBox);
     _fillings = await Hive.openBox<Filling>(_fillingsBox);
     _compositions = await Hive.openBox<Composition>(_compositionsBox);
+
+    // === ОТКРЫТИЕ НОВЫХ БОКСОВ ===
+    _storageConditions =
+        await Hive.openBox<StorageCondition>(_storageConditionsBox);
+    _transportConditions =
+        await Hive.openBox<TransportCondition>(_transportConditionsBox);
+    // =============================
+
     _products = await Hive.openBox<Product>(_productsBox);
     _priceCategories = await Hive.openBox<PriceCategory>(_priceCategoriesBox);
     _warehouseOperations =
@@ -87,7 +108,6 @@ class CacheService {
   Future<void> saveOrders(List<OrderItem> orders) async {
     await _orders.clear();
     for (var order in orders) {
-      // Используем уникальный ключ на основе комбинации полей
       final key = '${order.clientPhone}_${order.productName}_${order.date}';
       await _orders.put(key, order);
     }
@@ -151,6 +171,39 @@ class CacheService {
     return _compositions.values
         .where((c) => c.sheetName == sheetName && c.entityId == entityId)
         .toList();
+  }
+
+  // ==================== УСЛОВИЯ ХРАНЕНИЯ (НОВОЕ) ====================
+
+  /// Сохраняет условия хранения в кэш
+  Future<void> saveStorageConditions(List<StorageCondition> conditions) async {
+    await _storageConditions.clear();
+    for (var cond in conditions) {
+      await _storageConditions.put(cond.id, cond);
+    }
+    print('🧊 Сохранено ${conditions.length} условий хранения');
+  }
+
+  /// Получает условия хранения из кэша
+  List<StorageCondition> getStorageConditions() {
+    return _storageConditions.values.toList();
+  }
+
+  // ==================== УСЛОВИЯ ТРАНСПОРТИРОВКИ (НОВОЕ) ====================
+
+  /// Сохраняет условия транспортировки в кэш
+  Future<void> saveTransportConditions(
+      List<TransportCondition> conditions) async {
+    await _transportConditions.clear();
+    for (var cond in conditions) {
+      await _transportConditions.put(cond.id, cond);
+    }
+    print('🚚 Сохранено ${conditions.length} условий транспортировки');
+  }
+
+  /// Получает условия транспортировки из кэша
+  List<TransportCondition> getTransportConditions() {
+    return _transportConditions.values.toList();
   }
 
   // ==================== ПРОДУКТЫ ====================
@@ -282,22 +335,20 @@ class CacheService {
     await _metadata.clear();
     for (var entry in metadata.entries) {
       await _metadata.put(entry.key, {
-        'lastUpdate':
-            entry.value.lastUpdate.toIso8601String(), // 👈 сохраняем как строку
+        'lastUpdate': entry.value.lastUpdate.toIso8601String(),
         'editor': entry.value.editor,
       });
     }
     print('📊 Сохранено метаданных: ${metadata.length}');
   }
 
-  /// Получает метаданные из кэша (возвращает Map<String, SheetMetadata>)
+  /// Получает метаданные из кэша
   Map<String, SheetMetadata> getMetadata() {
     final result = <String, SheetMetadata>{};
     for (var key in _metadata.keys) {
       final value = _metadata.get(key);
       if (value != null) {
         try {
-          // 👈 ВОССТАНАВЛИВАЕМ DateTime из строки
           final lastUpdateStr = value['lastUpdate'] as String?;
           final lastUpdate = lastUpdateStr != null
               ? DateTime.parse(lastUpdateStr)
@@ -309,7 +360,6 @@ class CacheService {
           );
         } catch (e) {
           print('⚠️ Ошибка парсинга метаданных для $key: $e');
-          // Создаём с текущей датой в случае ошибки
           result[key] = SheetMetadata(
             lastUpdate: DateTime.now(),
             editor: value['editor'] as String? ?? '',
@@ -408,6 +458,10 @@ class CacheService {
     await _orders.clear();
     await _fillings.clear();
     await _compositions.clear();
+    // === ОЧИСТКА НОВЫХ БОКСОВ ===
+    await _storageConditions.clear();
+    await _transportConditions.clear();
+    // ===========================
     await _products.clear();
     await _priceCategories.clear();
     await _warehouseOperations.clear();
@@ -487,7 +541,7 @@ class CacheService {
       final box = await _getBox('settings');
       final lastCheckStr = box.get(_keyLastMetadataCheck) as String?;
 
-      if (lastCheckStr == null) return true; // Никогда не проверяли
+      if (lastCheckStr == null) return true;
 
       final lastCheck = DateTime.parse(lastCheckStr);
       final now = DateTime.now();
@@ -495,7 +549,7 @@ class CacheService {
       return now.difference(lastCheck) >= const Duration(hours: 24);
     } catch (e) {
       print('⚠️ Ошибка shouldCheckMetadata: $e');
-      return true; // При ошибке — разрешаем проверку
+      return true;
     }
   }
 
@@ -551,6 +605,10 @@ class CacheService {
     return _orders.length +
         _fillings.length +
         _compositions.length +
+        // === ДОБАВЛЕНО В ПОДСЧЕТ ===
+        _storageConditions.length +
+        _transportConditions.length +
+        // ===========================
         _products.length +
         _priceCategories.length +
         _warehouseOperations.length +

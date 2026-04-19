@@ -17,6 +17,8 @@ import '../models/product.dart';
 import '../models/nutrition_info.dart';
 import '../models/user.dart';
 import '../models/sheet_metadata.dart';
+import '../models/storage_condition.dart';
+import '../models/transport_condition.dart';
 import '../screens/two_factor_screen.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
@@ -130,6 +132,11 @@ class AuthProvider with ChangeNotifier {
       final compositions = _cacheService.getCompositions();
       final priceCategories = _cacheService.getPriceCategories();
 
+      // === НОВОЕ: Загрузка новых моделей ===
+      final storageConditions = _cacheService.getStorageConditions();
+      final transportConditions = _cacheService.getTransportConditions();
+      // ====================================
+
       if (orders.isNotEmpty || products.isNotEmpty) {
         // 🔥 ИСПРАВЛЕНО: создаём ClientData через сеттеры
         _clientData = ClientData()
@@ -137,7 +144,11 @@ class AuthProvider with ChangeNotifier {
           ..orders = orders
           ..fillings = fillings
           ..compositions = compositions
-          ..priceCategories = priceCategories;
+          ..priceCategories = priceCategories
+          // === НОВОЕ: Присваиваем загруженные данные ===
+          ..storageConditions = storageConditions
+          ..transportConditions = transportConditions;
+        // =============================================
 
         _clientData?.buildIndexes();
 
@@ -147,6 +158,10 @@ class AuthProvider with ChangeNotifier {
         print('   - Начинок: ${fillings.length}');
         print('   - Составов: ${compositions.length}');
         print('   - Категорий: ${priceCategories.length}');
+        // === НОВОЕ: Логи ===
+        print('   - Усл. хранения: ${storageConditions.length}');
+        print('   - Усл. транспортировки: ${transportConditions.length}');
+        // ===================
 
         return true;
       }
@@ -351,7 +366,7 @@ class AuthProvider with ChangeNotifier {
       }
 
       // Сохраняем в Hive
-      await _saveToCache();
+      await saveToCache();
 
       // Сохраняем в SharedPreferences
       final prefs = await SharedPreferences.getInstance();
@@ -380,7 +395,7 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _saveToCache() async {
+  Future<void> saveToCache() async {
     if (_clientData == null) return;
 
     await _cacheService.saveOrders(_clientData!.orders);
@@ -388,16 +403,23 @@ class AuthProvider with ChangeNotifier {
     await _cacheService.saveFillings(_clientData!.fillings);
     await _cacheService.saveCompositions(_clientData!.compositions);
 
-    // 🔥 ЛОГ 3: Перед сохранением категорий
+    // === НОВОЕ: Сохранение условий с логами ===
+    debugPrint(
+        '🧊 ШАГ 3: Сохраняем условий хранения: ${_clientData!.storageConditions.length}');
+    await _cacheService.saveStorageConditions(_clientData!.storageConditions);
+
+    debugPrint(
+        '🚚 ШАГ 3: Сохраняем условий транспортировки: ${_clientData!.transportConditions.length}');
+    await _cacheService
+        .saveTransportConditions(_clientData!.transportConditions);
+    // ========================================
+
     debugPrint(
         '📦 ШАГ 3: Сохраняем в Hive категорий: ${_clientData!.priceCategories.length}');
     await _cacheService.savePriceCategories(_clientData!.priceCategories);
-    // 🔥 ЛОГ 4: Проверка чтения из Hive сразу после записи
+
     final cachedCats = _cacheService.getPriceCategories();
     debugPrint('📦 ШАГ 4: Прочитали из Hive категорий: ${cachedCats.length}');
-    if (cachedCats.isNotEmpty) {
-      debugPrint('📦 ШАГ 4: Первая из Hive: "${cachedCats[0].name}"');
-    }
 
     if (_metadata != null) {
       await _cacheService.saveMetadata(_metadata!);
@@ -652,121 +674,131 @@ class AuthProvider with ChangeNotifier {
     final clientData = ClientData();
     final clientDataMap = data;
 
-    // Десериализация products
-    if (clientDataMap['products'] != null) {
-      clientData.products = (clientDataMap['products'] as List?)
-              ?.map((item) => Product.fromMap(item as Map<String, dynamic>))
-              .toList() ??
-          [];
+    // === 1. ПРОДУКТЫ ===
+    // Сервер присылает 'products' или 'Прайс-лист'
+    final rawProducts =
+        clientDataMap['products'] ?? clientDataMap['Прайс-лист'];
+    if (rawProducts is List) {
+      clientData.products = rawProducts
+          .map((item) => Product.fromMap(item as Map<String, dynamic>))
+          .toList();
+      debugPrint('📦 Распарсено продуктов: ${clientData.products.length}');
     }
 
-    // Создаем карту displayNames для заказов
-    final Map<String, String> productDisplayNames = {};
-    for (var product in clientData.products) {
-      productDisplayNames[product.id] = product.displayName;
+    // === 2. КАТЕГОРИИ ===
+    // Сервер присылает 'priceCategories' или 'Категории прайса'
+    final rawCategories =
+        clientDataMap['priceCategories'] ?? clientDataMap['Категории прайса'];
+    if (rawCategories is List) {
+      clientData.priceCategories = rawCategories
+          .map((item) => PriceCategory.fromJson(item as Map<String, dynamic>))
+          .toList();
+      debugPrint(
+          '📂 Распарсено категорий: ${clientData.priceCategories.length}');
     }
 
-    // Десериализация orders
-    if (clientDataMap['orders'] != null) {
-      clientData.orders = (clientDataMap['orders'] as List?)
-              ?.map((item) => OrderItem.fromMap(
-                    item as Map<String, dynamic>,
-                    productDisplayNames: productDisplayNames,
-                  ))
-              .toList() ??
-          [];
-    }
-
-    // Десериализация compositions
-    if (clientDataMap['compositions'] != null) {
-      clientData.compositions = (clientDataMap['compositions'] as List?)
-              ?.map(
-                  (item) => Composition.fromJson(item as Map<String, dynamic>))
-              .toList() ??
-          [];
-    }
-
-    // Десериализация fillings
-    if (clientDataMap['fillings'] != null) {
-      clientData.fillings = (clientDataMap['fillings'] as List?)
-              ?.map((item) => Filling.fromJson(item as Map<String, dynamic>))
-              .toList() ??
-          [];
-    }
-
-    // Десериализация nutritionInfos
-    if (clientDataMap['nutritionInfos'] != null) {
-      clientData.nutritionInfos = (clientDataMap['nutritionInfos'] as List?)
-              ?.map((item) =>
-                  NutritionInfo.fromJson(item as Map<String, dynamic>))
-              .toList() ??
-          [];
-    }
-
-    // Десериализация deliveryConditions
-    if (clientDataMap['deliveryConditions'] != null) {
-      clientData.deliveryConditions =
-          (clientDataMap['deliveryConditions'] as List?)
-                  ?.map((item) =>
-                      DeliveryCondition.fromJson(item as Map<String, dynamic>))
-                  .toList() ??
-              [];
-    }
-
-    // Десериализация clientCategories
-    if (clientDataMap['clientCategories'] != null) {
-      clientData.clientCategories = (clientDataMap['clientCategories'] as List?)
-              ?.map((item) =>
-                  ClientCategory.fromJson(item as Map<String, dynamic>))
-              .toList() ??
-          [];
-    }
-
-    // Десериализация clients
-    if (clientDataMap['clients'] != null) {
-      clientData.clients = (clientDataMap['clients'] as List?)
-              ?.map((item) => Client.fromMap(item as Map<String, dynamic>))
-              .toList() ??
-          [];
-    }
-
-    // 🔥 Десериализация priceCategories
-    if (clientDataMap['priceCategories'] != null) {
-      try {
-        final rawList = clientDataMap['priceCategories'];
-        if (rawList is List) {
-          debugPrint('📋 Найдено сырых категорий: ${rawList.length}');
-
-          clientData.priceCategories = rawList.map((item) {
-            if (item is Map<String, dynamic>) {
-              return PriceCategory.fromJson(item);
-            }
-            throw Exception('Неверный формат элемента категории');
-          }).toList();
-
-          debugPrint(
-              '✅ Успешно распарсено категорий: ${clientData.priceCategories.length}');
-          if (clientData.priceCategories.isNotEmpty) {
-            debugPrint(
-                '   🏷️ Пример: "${clientData.priceCategories[0].name}" (ID: ${clientData.priceCategories[0].id})');
-          }
-        } else {
-          debugPrint('⚠️ priceCategories не является списком List');
-          clientData.priceCategories = [];
-        }
-      } catch (e, stackTrace) {
-        debugPrint('❌ КРИТИЧЕСКАЯ ОШИБКА парсинга priceCategories: $e');
-        debugPrint('Stack: $stackTrace');
-        clientData.priceCategories = []; // Чтобы приложение не упало
+    // === 3. ЗАКАЗЫ ===
+    if (clientDataMap['orders'] is List) {
+      // Создаем карту имен продуктов для заказов
+      final Map<String, String> productDisplayNames = {};
+      for (var p in clientData.products) {
+        productDisplayNames[p.id] = p.displayName;
       }
-    } else {
-      debugPrint('⚠️ Ключ priceCategories отсутствует в ответе сервера');
-      clientData.priceCategories = [];
+
+      clientData.orders = (clientDataMap['orders'] as List)
+          .map((item) => OrderItem.fromMap(
+                item as Map<String, dynamic>,
+                productDisplayNames: productDisplayNames,
+              ))
+          .toList();
     }
 
-    // Десериализация cart
-    if (clientDataMap['cart'] != null && clientDataMap['cart'] is Map) {
-      clientData.cart = clientDataMap['cart'] as Map<String, dynamic>;
+    // === 4. СОСТАВ (Универсально) ===
+    // Собираем из всех возможных ключей
+    List<Composition> allCompositions = [];
+
+    // Состав
+    if (clientDataMap['Состав'] is List) {
+      allCompositions.addAll((clientDataMap['Состав'] as List)
+          .map((item) => Composition.fromJson(item as Map<String, dynamic>)));
+    }
+    // Начинки
+    if (clientDataMap['Начинки'] is List) {
+      allCompositions.addAll((clientDataMap['Начинки'] as List)
+          .map((item) => Composition.fromJson(item as Map<String, dynamic>)));
+    }
+    // Транспорт
+    if (clientDataMap['Условия транспортировки'] is List) {
+      allCompositions.addAll((clientDataMap['Условия транспортировки'] as List)
+          .map((item) => Composition.fromJson(item as Map<String, dynamic>)));
+    }
+    // Хранение
+    if (clientDataMap['Условия хранения'] is List) {
+      allCompositions.addAll((clientDataMap['Условия хранения'] as List)
+          .map((item) => Composition.fromJson(item as Map<String, dynamic>)));
+    }
+
+    clientData.compositions = allCompositions;
+    debugPrint(
+        '📝 Всего элементов Composition (состав/условия): ${allCompositions.length}');
+
+    // === 5. НАЧИНКИ (Filling) ===
+    // Если начинки приходят отдельным списком, парсим их (если нужно отдельно от compositions)
+    if (clientDataMap['fillings'] is List) {
+      clientData.fillings = (clientDataMap['fillings'] as List)
+          .map((item) => Filling.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    // === 6. НОВЫЕ МОДЕЛИ (Матрешка) ===
+    // Парсим отдельно для удобства доступа через конкретные списки
+
+    // Условия хранения
+    if (clientDataMap['Условия хранения'] is List) {
+      clientData.storageConditions = (clientDataMap['Условия хранения'] as List)
+          .map(
+              (item) => StorageCondition.fromJson(item as Map<String, dynamic>))
+          .toList();
+      debugPrint(
+          '🧊 Распарсено условий хранения: ${clientData.storageConditions.length}');
+    }
+
+    // Условия транспортировки
+    if (clientDataMap['Условия транспортировки'] is List) {
+      clientData.transportConditions =
+          (clientDataMap['Условия транспортировки'] as List)
+              .map((item) =>
+                  TransportCondition.fromJson(item as Map<String, dynamic>))
+              .toList();
+      debugPrint(
+          '🚚 Распарсено условий транспортировки: ${clientData.transportConditions.length}');
+    }
+
+    // === 7. Остальное (КБЖУ, Клиенты и т.д.) ===
+    if (clientDataMap['nutritionInfos'] is List) {
+      clientData.nutritionInfos = (clientDataMap['nutritionInfos'] as List)
+          .map((item) => NutritionInfo.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    if (clientDataMap['deliveryConditions'] is List) {
+      clientData.deliveryConditions =
+          (clientDataMap['deliveryConditions'] as List)
+              .map((item) =>
+                  DeliveryCondition.fromJson(item as Map<String, dynamic>))
+              .toList();
+    }
+
+    if (clientDataMap['clientCategories'] is List) {
+      clientData.clientCategories = (clientDataMap['clientCategories'] as List)
+          .map((item) => ClientCategory.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    if (clientDataMap['clients'] is List) {
+      clientData.clients = (clientDataMap['clients'] as List)
+          .map((item) => Client.fromMap(item as Map<String, dynamic>))
+          .toList();
     }
 
     clientData.buildIndexes();

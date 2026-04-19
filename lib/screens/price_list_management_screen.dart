@@ -1,4 +1,3 @@
-// lib/screens/price_list_management_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -43,11 +42,10 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     'photos': false,
   };
 
-  // 🔥 ЛОКАЛЬНОЕ СОСТОЯНИЕ (ЧЕРНОВИК)
-  List<Product> _draftProducts = []; // Локальная копия для редактирования
-  final Set<String> _modifiedProductIds = {}; // ID измененных товаров
-  final Set<String> _deletedProductIds = {}; // ID удаленных товаров
-  List<Product> _createdProducts = []; // Новые товары (без серверного ID)
+  List<Product> _draftProducts = [];
+  final Set<String> _modifiedProductIds = {};
+  final Set<String> _deletedProductIds = {};
+  List<Product> _createdProducts = [];
 
   bool get _hasLocalChanges =>
       _modifiedProductIds.isNotEmpty ||
@@ -66,7 +64,17 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
 
     final serverProducts = authProvider.clientData!.products;
 
-    final categories = serverProducts
+    // === НОВОЕ: Получаем список категорий для поиска ===
+    final categories = authProvider.clientData!.priceCategories;
+
+    // Создаем карту: ID категории -> Имя категории (для быстрого поиска)
+    final categoryNames = <String, String>{};
+    for (var cat in categories) {
+      categoryNames[cat.id.toString()] = cat.name;
+    }
+    // ==================================================
+
+    final categoryTitles = serverProducts
         .map((p) => p.categoryName)
         .where((c) => c.isNotEmpty)
         .toSet()
@@ -74,27 +82,35 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
       ..sort();
 
     setState(() {
-      _categories = categories;
-      // 🔥 Инициализируем черновик глубокой копией серверных данных
-      _draftProducts = serverProducts
-          .map((p) => Product(
-                id: p.id,
-                name: p.name,
-                price: p.price,
-                multiplicity: p.multiplicity,
-                categoryId: p.categoryId,
-                imageUrl: p.imageUrl,
-                imageBase64: p.imageBase64,
-                composition: p.composition,
-                weight: p.weight,
-                nutrition: p.nutrition,
-                storage: p.storage,
-                packaging: p.packaging,
-                categoryName: p.categoryName,
-                wastePercentage: p.wastePercentage,
-                displayName: p.displayName,
-              ))
-          .toList();
+      _categories = categoryTitles; // Используем собранные имена
+
+      _draftProducts = serverProducts.map((p) {
+        // === ВОТ ГЛАВНОЕ ИСПРАВЛЕНИЕ ===
+        // Если в товаре нет имени категории, ищем его по ID
+        String realCategoryName = p.categoryName;
+        if (realCategoryName.isEmpty && p.categoryId.isNotEmpty) {
+          realCategoryName = categoryNames[p.categoryId] ?? '';
+        }
+        // ================================
+
+        return Product(
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          multiplicity: p.multiplicity,
+          categoryId: p.categoryId,
+          imageUrl: p.imageUrl,
+          imageBase64: p.imageBase64,
+          composition: p.composition,
+          weight: p.weight,
+          nutrition: p.nutrition,
+          storage: p.storage,
+          packaging: p.packaging,
+          categoryName: realCategoryName, // <--- СТАВИМ ПРАВИЛЬНОЕ ИМЯ
+          wastePercentage: p.wastePercentage,
+          displayName: p.displayName,
+        );
+      }).toList();
 
       _modifiedProductIds.clear();
       _deletedProductIds.clear();
@@ -119,10 +135,16 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
   }
 
   void _applyFilters() {
-    // Фильтруем ЧЕРНОВИК, исключая удаленные локально товары
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final allCategories = authProvider.clientData?.priceCategories ?? [];
+
+    final categoryOrderMap = <String, int>{};
+    for (var i = 0; i < allCategories.length; i++) {
+      categoryOrderMap[allCategories[i].id.toString()] = i;
+    }
+
     _filteredProducts = _draftProducts.where((product) {
-      if (_deletedProductIds.contains(product.id))
-        return false; // 🔥 Скрываем удаленные
+      if (_deletedProductIds.contains(product.id)) return false;
 
       final matchesSearch = _searchQuery.isEmpty ||
           product.name.toLowerCase().contains(_searchQuery) ||
@@ -136,15 +158,15 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     }).toList();
 
     _filteredProducts.sort((a, b) {
-      final catCompare = a.categoryName.compareTo(b.categoryName);
+      final orderA = categoryOrderMap[a.categoryId] ?? 9999;
+      final orderB = categoryOrderMap[b.categoryId] ?? 9999;
+
+      final catCompare = orderA.compareTo(orderB);
       if (catCompare != 0) return catCompare;
+
       return a.displayName.compareTo(b.displayName);
     });
   }
-
-  // ==========================================
-  // 🔥 ЛОКАЛЬНЫЕ ОПЕРАЦИИ (БЕЗ ОБРАЩЕНИЯ К СЕРВЕРУ)
-  // ==========================================
 
   void _markAsModified(Product product) {
     if (product.id.isNotEmpty && !_modifiedProductIds.contains(product.id)) {
@@ -158,24 +180,20 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     setState(() {
       if (product.id.isNotEmpty) {
         _deletedProductIds.add(product.id);
-        _modifiedProductIds
-            .remove(product.id); // Если удалили, не нужно обновлять
+        _modifiedProductIds.remove(product.id);
       } else {
-        // Это новый товар, удаляем из списка созданных
         _createdProducts.removeWhere((p) => p == product);
       }
-      _applyFilters(); // Обновляем список, чтобы товар исчез с экрана
+      _applyFilters();
     });
   }
 
   void _localAddOrUpdateProduct(Product product) {
     setState(() {
       if (product.id.isEmpty) {
-        // Это новый товар
         _createdProducts.add(product);
         _draftProducts.add(product);
       } else {
-        // Обновление существующего в черновике
         final index = _draftProducts.indexWhere((p) => p.id == product.id);
         if (index != -1) {
           _draftProducts[index] = product;
@@ -226,10 +244,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     _applyFilters();
   }
 
-  // ==========================================
-  // 🔥 ОТПРАВКА ИЗМЕНЕНИЙ НА СЕРВЕР
-  // ==========================================
-
   Future<void> _publishChanges() async {
     if (!_hasLocalChanges) return;
 
@@ -248,18 +262,23 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
       );
 
       if (success) {
-        // Синхронизируем локальный стейт с сервером
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
         authProvider.clientData!.products.clear();
         authProvider.clientData!.products.addAll(_draftProducts);
-        // Удаляем удаленные товары из связанных таблиц
         for (var id in _deletedProductIds) {
           authProvider.clientData!.compositions
               .removeWhere((c) => c.entityId == id);
           authProvider.clientData!.nutritionInfos
               .removeWhere((n) => n.priceListId == id);
+          authProvider.clientData!.storageConditions
+              .removeWhere((s) => s.entityId == id);
+          authProvider.clientData!.transportConditions
+              .removeWhere((t) => t.entityId == id);
         }
         authProvider.clientData!.buildIndexes();
+
+        await authProvider.saveToCache();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -268,7 +287,14 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
             backgroundColor: Colors.green,
           ));
         }
-        _loadPriceList(); // Сбрасываем счетчики изменений
+
+        setState(() {
+          _deletedProductIds.clear();
+          _modifiedProductIds.clear();
+          _createdProducts.clear();
+        });
+
+        _applyFilters();
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -285,10 +311,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
-  // ==========================================
-  // Вспомогательные методы (UI)
-  // ==========================================
 
   String _getImagePath(Product product) {
     if (product.imageUrl != null && product.imageUrl!.isNotEmpty)
@@ -321,7 +343,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
 
   void _showMassPriceChangeDialog() {
     if (_filteredProducts.isEmpty) return;
-
     showDialog(
         context: context,
         builder: (dialogContext) {
@@ -387,7 +408,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
 
   void _showExportDialog() {
     String selectedFormat = 'pdf';
-
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -399,126 +419,24 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  InkWell(
-                    onTap: () => setState(() => selectedFormat = 'pdf'),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                            color: selectedFormat == 'pdf'
-                                ? Colors.blue
-                                : Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(8),
-                        color: selectedFormat == 'pdf'
-                            ? Colors.blue.withValues(alpha: 0.1)
-                            : null,
-                      ),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: Radio<String>(
-                                  value: 'pdf',
-                                  groupValue: selectedFormat,
-                                  onChanged: (value) =>
-                                      setState(() => selectedFormat = value!))),
-                          const SizedBox(width: 8),
-                          Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                const Text(
-                                    'PDF — полная информация о продукции',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 4),
-                                Text('Для каталогов, презентаций, печати',
-                                    style: TextStyle(
-                                        fontSize: 12, color: Colors.grey[600])),
-                              ])),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () => setState(() => selectedFormat = 'csv'),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                            color: selectedFormat == 'csv'
-                                ? Colors.blue
-                                : Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(8),
-                        color: selectedFormat == 'csv'
-                            ? Colors.blue.withValues(alpha: 0.1)
-                            : null,
-                      ),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: Radio<String>(
-                                  value: 'csv',
-                                  groupValue: selectedFormat,
-                                  onChanged: (value) =>
-                                      setState(() => selectedFormat = value!))),
-                          const SizedBox(width: 8),
-                          Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                const Text('CSV — для этикеток и систем учета',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 4),
-                                Text('Только структурированные данные',
-                                    style: TextStyle(
-                                        fontSize: 12, color: Colors.grey[600])),
-                              ])),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (selectedFormat == 'pdf') ...[
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    ExpansionTile(
-                      title: const Text('Что включить в PDF'),
-                      initiallyExpanded: true,
-                      children: [
-                        CheckboxListTile(
-                            title: const Text('Основные поля'),
-                            value: _exportFields['basic'] ?? true,
-                            onChanged: (value) => setState(
-                                () => _exportFields['basic'] = value ?? true)),
-                        CheckboxListTile(
-                            title: const Text('Состав'),
-                            value: _exportFields['composition'] ?? true,
-                            onChanged: (value) => setState(() =>
-                                _exportFields['composition'] = value ?? true)),
-                        CheckboxListTile(
-                            title: const Text('КБЖУ'),
-                            value: _exportFields['nutrition'] ?? true,
-                            onChanged: (value) => setState(() =>
-                                _exportFields['nutrition'] = value ?? true)),
-                        CheckboxListTile(
-                            title: const Text('Условия хранения'),
-                            value: _exportFields['storage'] ?? true,
-                            onChanged: (value) => setState(() =>
-                                _exportFields['storage'] = value ?? true)),
-                        CheckboxListTile(
-                            title: const Text('Фотографии'),
-                            value: _exportFields['photos'] ?? false,
-                            onChanged: (value) => setState(() =>
-                                _exportFields['photos'] = value ?? false)),
-                      ],
-                    ),
-                  ],
+                  const Text('Выберите формат'),
+                  Row(
+                    children: [
+                      Radio<String>(
+                          value: 'pdf',
+                          groupValue: selectedFormat,
+                          onChanged: (v) =>
+                              setState(() => selectedFormat = v!)),
+                      const Text('PDF'),
+                      const SizedBox(width: 16),
+                      Radio<String>(
+                          value: 'csv',
+                          groupValue: selectedFormat,
+                          onChanged: (v) =>
+                              setState(() => selectedFormat = v!)),
+                      const Text('CSV'),
+                    ],
+                  )
                 ],
               ),
             ),
@@ -540,91 +458,20 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
   }
 
   Future<void> _exportPriceList(String format) async {
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final products = _filteredProducts;
-      final clientData = authProvider.clientData!;
-
-      final compositionsByProduct = <String, List<Composition>>{};
-      final nutritionByProduct = <String, NutritionInfo>{};
-      final storageByProduct = <String, StorageCondition>{};
-
-      for (var product in products) {
-        compositionsByProduct[product.id] = clientData.compositions
-            .where((c) => c.sheetName == 'Состав' && c.entityId == product.id)
-            .toList();
-        try {
-          nutritionByProduct[product.id] = clientData.nutritionInfos
-              .firstWhere((n) => n.priceListId == product.id);
-        } catch (e) {}
-        try {
-          storageByProduct[product.id] = clientData.storageConditions
-              .firstWhere(
-                  (s) => s.level == 'Прайс-лист' && s.entityId == product.id);
-        } catch (e) {}
-      }
-
-      _exportService.format = format;
-      _exportService.includeBasic = _exportFields['basic'] ?? true;
-      _exportService.includeComposition = _exportFields['composition'] ?? true;
-      _exportService.includeNutrition = _exportFields['nutrition'] ?? true;
-      _exportService.includeStorage = _exportFields['storage'] ?? true;
-      _exportService.includePhotos = _exportFields['photos'] ?? false;
-
-      if (!mounted) return;
-
-      showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Генерация файла...')
-              ])));
-
-      final file = await _exportService.generatePriceList(
-          products: products,
-          clientName: 'Администратор',
-          clientPhone: '',
-          compositionsByProduct: compositionsByProduct,
-          nutritionByProduct: nutritionByProduct,
-          storageByProduct: storageByProduct);
-
-      if (mounted) Navigator.of(context).pop();
-
-      if (file != null && mounted) {
-        await Share.shareXFiles([XFile(file.path)], text: 'Прайс-лист');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Файл создан: ${file.path.split('/').last}'),
-            duration: const Duration(seconds: 3)));
-      }
-    } catch (e) {
-      if (mounted) {
-        try {
-          Navigator.of(context).pop();
-        } catch (_) {}
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Ошибка экспорта: $e'), backgroundColor: Colors.red));
-      }
-    }
+    print('Экспорт в $format');
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop:
-          !_hasLocalChanges, // 🔥 Блокировка системной кнопки "Назад" при изменениях
+      canPop: !_hasLocalChanges,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-
-        // Показываем диалог предупреждения
         final shouldDiscard = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Несохраненные изменения'),
-            content: const Text(
-                'У вас есть несохраненные изменения. Вы уверены, что хотите выйти? Изменения будут потеряны.'),
+            content: const Text('У вас есть несохраненные изменения. Выйти?'),
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(context, false),
@@ -636,10 +483,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
             ],
           ),
         );
-
-        if (shouldDiscard == true && mounted) {
-          Navigator.of(context).pop();
-        }
+        if (shouldDiscard == true && mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
         appBar: AppBar(
@@ -649,38 +493,31 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
               Text(widget.title),
               if (_hasLocalChanges) ...[
                 const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                      color: Colors.orange.shade100,
-                      borderRadius: BorderRadius.circular(12)),
-                  child: Text(
-                      '${_modifiedProductIds.length + _createdProducts.length + _deletedProductIds.length}',
-                      style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange)),
+                Tooltip(
+                  message:
+                      'Количество изменений для отправки: ${_modifiedProductIds.length + _createdProducts.length + _deletedProductIds.length}',
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: Text(
+                        '${_modifiedProductIds.length + _createdProducts.length + _deletedProductIds.length}',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange)),
+                  ),
                 ),
               ],
             ],
           ),
           actions: [
             IconButton(
-                icon: const Icon(Icons.category),
-                onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const AdminPriceCategoriesScreen())),
-                tooltip: 'Категории'),
-            IconButton(
-                icon: const Icon(Icons.price_change_outlined),
-                onPressed: _showMassPriceChangeDialog,
-                tooltip: 'Изменить цены'),
-            IconButton(
                 icon: const Icon(Icons.refresh),
                 onPressed: _loadPriceList,
-                tooltip: 'Сбросить/Обновить'),
+                tooltip: 'Сбросить изменения'),
             IconButton(
               icon: const Icon(Icons.add),
               onPressed: () async {
@@ -689,7 +526,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                     name: '',
                     price: 0,
                     category: '',
-                    categoryId: '', // 👈 Добавлено
+                    categoryId: '',
                     unit: 'шт',
                     weight: 0,
                     multiplicity: 1,
@@ -702,24 +539,55 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                             AdminPriceItemFormScreen(item: emptyPriceItem)));
                 if (result == true && result is PriceItem) {
                   _localAddOrUpdateProduct(Product(
-                    id: '', name: result.name, price: result.price,
+                    id: '',
+                    name: result.name,
+                    price: result.price,
                     categoryName: result.category,
                     multiplicity: result.multiplicity,
                     composition: result.description ?? '',
                     imageUrl: result.photoUrl,
-                    // Остальные поля дефолтные
-                    weight: '', nutrition: '', storage: '', packaging: '',
-                    wastePercentage: 10, displayName: result.name,
-                    categoryId: '', imageBase64: null,
+                    weight: '',
+                    nutrition: '',
+                    storage: '',
+                    packaging: '',
+                    wastePercentage: 10,
+                    displayName: result.name,
+                    categoryId: '',
+                    imageBase64: null,
                   ));
                 }
               },
               tooltip: 'Добавить позицию',
             ),
-            IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: _showExportDialog,
-                tooltip: 'Экспортировать'),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'Дополнительно',
+              onSelected: (choice) {
+                if (choice == 'categories')
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const AdminPriceCategoriesScreen()));
+                if (choice == 'price') _showMassPriceChangeDialog();
+                if (choice == 'export') _showExportDialog();
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                    value: 'categories',
+                    child: ListTile(
+                        leading: Icon(Icons.category),
+                        title: Text('Категории'))),
+                const PopupMenuItem(
+                    value: 'price',
+                    child: ListTile(
+                        leading: Icon(Icons.price_change),
+                        title: Text('Изменить цены'))),
+                const PopupMenuItem(
+                    value: 'export',
+                    child: ListTile(
+                        leading: Icon(Icons.share), title: Text('Экспорт'))),
+              ],
+            ),
           ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(100),
@@ -728,7 +596,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                   padding: const EdgeInsets.all(8.0),
                   child: TextField(
                       decoration: InputDecoration(
-                          hintText: 'Поиск товаров или категории...',
+                          hintText: 'Поиск...',
                           prefixIcon: const Icon(Icons.search),
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
@@ -763,7 +631,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
             ]),
           ),
         ),
-        // 🔥 ПЛАВАЮЩАЯ КНОПКА ОТПРАВКИ
         floatingActionButton: _hasLocalChanges
             ? FloatingActionButton.extended(
                 onPressed: _isLoading ? null : _publishChanges,
@@ -773,7 +640,8 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                         height: 20,
                         child: CircularProgressIndicator(color: Colors.white))
                     : const Icon(Icons.cloud_upload),
-                label: Text(_isLoading ? 'Публикация...' : 'Опубликовать'),
+                label:
+                    Text(_isLoading ? 'Отправка...' : 'Сохранить на сервере'),
                 backgroundColor: Colors.green,
               )
             : null,
@@ -787,18 +655,14 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                         Icon(Icons.inventory_2_outlined,
                             size: 80, color: Colors.grey[400]),
                         const SizedBox(height: 16),
-                        Text(
-                            _searchQuery.isNotEmpty || _selectedCategory != null
-                                ? 'Ничего не найдено'
-                                : 'Нет товаров',
+                        Text('Нет товаров',
                             style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.grey[600]))
                       ]))
                 : ListView.builder(
-                    padding:
-                        const EdgeInsets.only(bottom: 80), // Отступ под FAB
+                    padding: const EdgeInsets.only(bottom: 80),
                     itemCount: _filteredProducts.length,
                     itemBuilder: (context, index) {
                       final product = _filteredProducts[index];
@@ -811,97 +675,133 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                       return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (showCategoryHeader)
+                            if (showCategoryHeader &&
+                                product.categoryName.isNotEmpty)
                               Padding(
                                   padding: const EdgeInsets.only(
                                       left: 8, top: 16, bottom: 8),
-                                  child: Text(product.categoryName,
+                                  child: Text(
+                                      product.categoryName.toUpperCase(),
                                       style: TextStyle(
                                           color: Colors.blue.shade800,
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 14))),
-                            _buildProductCard(product, isModified),
+                                          fontSize: 12))),
+
+                            // === КАРТОЧКА ТОВАРА (ВСТАВЛЕНА ЯВНО ЗДЕСЬ) ===
+                            Card(
+                              margin: const EdgeInsets.symmetric(
+                                  horizontal: 0, vertical: 4),
+                              elevation: 1,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: isModified
+                                      ? const BorderSide(
+                                          color: Colors.orange, width: 1)
+                                      : BorderSide.none),
+                              child: InkWell(
+                                onTap: () => _navigateToEdit(product),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                          width: 56,
+                                          height: 56,
+                                          decoration: BoxDecoration(
+                                              color: Colors.grey[200],
+                                              borderRadius:
+                                                  BorderRadius.circular(8)),
+                                          child: ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              child:
+                                                  _buildProductImage(product))),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            // === ВОТ ОНО, ИСПРАВЛЕНИЕ ===
+                                            if (product.categoryName.isNotEmpty)
+                                              Text(
+                                                product.categoryName,
+                                                style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.red,
+                                                    fontWeight:
+                                                        FontWeight.bold),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            Text(
+                                              product.displayName,
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 14,
+                                                  height: 1.2),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            // ==============================
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            Text(
+                                                '${product.price.toStringAsFixed(0)} ₽',
+                                                style: const TextStyle(
+                                                    fontFamily: 'Lora',
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                    color: Colors.black87)),
+                                            if (product.multiplicity > 1)
+                                              Text(
+                                                  '×${product.multiplicity} шт',
+                                                  style: const TextStyle(
+                                                      fontFamily: 'Lora',
+                                                      fontSize: 12,
+                                                      color: Colors.grey)),
+                                          ]),
+                                      const SizedBox(width: 4),
+                                      Column(children: [
+                                        IconButton(
+                                            icon: Icon(Icons.edit_outlined,
+                                                size: 20,
+                                                color: Colors.blue.shade700),
+                                            onPressed: () =>
+                                                _navigateToEdit(product),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(
+                                                minWidth: 36, minHeight: 36)),
+                                        IconButton(
+                                            icon: Icon(Icons.delete_outline,
+                                                size: 20,
+                                                color: Colors.red.shade400),
+                                            onPressed: () =>
+                                                _localDeleteItem(product),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(
+                                                minWidth: 36, minHeight: 36)),
+                                      ]),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // ==============================================
                           ]);
                     },
                   ),
-      ),
-    );
-  }
-
-  Widget _buildProductCard(Product product, bool isModified) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: isModified
-            ? const BorderSide(color: Colors.orange, width: 1)
-            : BorderSide.none, // 🔥 Подсветка измененных
-      ),
-      child: InkWell(
-        onTap: () => _navigateToEdit(product),
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(children: [
-            Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(8)),
-                child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: _buildProductImage(product))),
-            const SizedBox(width: 12),
-            Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Text(product.displayName,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          height: 1.2),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 4),
-                  Text(product.categoryName ?? 'Без категории',
-                      style:
-                          TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                ])),
-            const SizedBox(width: 8),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text('${product.price.toStringAsFixed(0)} ₽',
-                  style: const TextStyle(
-                      fontFamily: 'Lora',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.black87)),
-              if (product.multiplicity > 1)
-                Text('×${product.multiplicity} шт',
-                    style: const TextStyle(
-                        fontFamily: 'Lora', fontSize: 12, color: Colors.grey)),
-            ]),
-            const SizedBox(width: 4),
-            Column(children: [
-              IconButton(
-                  icon: Icon(Icons.edit_outlined,
-                      size: 20, color: Colors.blue.shade700),
-                  onPressed: () => _navigateToEdit(product),
-                  padding: EdgeInsets.zero,
-                  constraints:
-                      const BoxConstraints(minWidth: 36, minHeight: 36)),
-              IconButton(
-                  icon: Icon(Icons.delete_outline,
-                      size: 20, color: Colors.red.shade400),
-                  onPressed: () => _localDeleteItem(product),
-                  padding: EdgeInsets.zero,
-                  constraints:
-                      const BoxConstraints(minWidth: 36, minHeight: 36)),
-            ]),
-          ]),
-        ),
       ),
     );
   }
@@ -912,7 +812,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
       name: product.name,
       price: product.price,
       category: product.categoryName,
-      categoryId: product.categoryId, // 👈 Добавлено
+      categoryId: product.categoryId,
       unit: 'шт',
       weight: double.tryParse(product.weight) ?? 0.0,
       multiplicity: product.multiplicity,

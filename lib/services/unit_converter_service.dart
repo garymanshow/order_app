@@ -176,4 +176,91 @@ class UnitConverterService {
   static double lToMl(double l) {
     return l * 1000;
   }
+
+  // === РАБОТА СО ВРЕМЕНЕМ И СРОКАМИ ГОДНОСТИ ===
+
+  /// Конвертирует значение времени в дни (базовая единица для хранения)
+  /// Поддерживает: часы, дни, недели, месяцы, годы
+  static double convertTimeToDays(double value, String unitSymbol) {
+    final lowerSymbol = unitSymbol.toLowerCase();
+
+    // Маппинг коэффициентов к дням
+    // Можно вынести в UnitOfMeasureSheet, если добавить их в таблицу
+    final Map<String, double> timeFactors = {
+      'ч': 1 / 24, // час
+      'час': 1 / 24,
+      'hour': 1 / 24,
+      'д': 1, // день
+      'дн': 1,
+      'день': 1,
+      'day': 1,
+      'сут': 1,
+      'нед': 7, // неделя
+      'неделя': 7,
+      'week': 7,
+      'мес': 30, // месяц (усредненно)
+      'месяц': 30,
+      'month': 30,
+      'г': 365, // год
+      'год': 365,
+      'year': 365,
+    };
+
+    final factor = timeFactors[lowerSymbol] ?? 1.0;
+    return value * factor;
+  }
+
+  /// Проверяет срок годности и возвращает статус
+  /// Возвращает: normal, warning, expired
+  static ShelfLifeStatus checkShelfLife({
+    required DateTime productionDate,
+    required double shelfLifeValue,
+    required String shelfLifeUnit,
+  }) {
+    // 1. Конвертируем срок годности в дни
+    final shelfLifeInDays = convertTimeToDays(shelfLifeValue, shelfLifeUnit);
+
+    // 2. Вычисляем дату истечения срока
+    final expirationDate =
+        productionDate.add(Duration(days: shelfLifeInDays.round()));
+
+    // 3. Сравниваем с текущей датой
+    final now = DateTime.now();
+    final difference = expirationDate.difference(now);
+
+    if (difference.isNegative) {
+      return ShelfLifeStatus.expired;
+    } else if (difference.inDays <= 3) {
+      // Предупреждение, если осталось меньше 3 дней
+      return ShelfLifeStatus.warning;
+    } else {
+      return ShelfLifeStatus.normal;
+    }
+  }
+
+  /// Форматирует оставшееся время в читаемый вид (например, "2 дня", "3 месяца")
+  static String formatRemainingTime(DateTime expirationDate) {
+    final now = DateTime.now();
+    final difference = expirationDate.difference(now);
+
+    if (difference.isNegative) return 'Истек';
+
+    if (difference.inDays > 30) {
+      final months = (difference.inDays / 30).floor();
+      return '$months мес.';
+    } else if (difference.inDays > 0) {
+      return '${difference.inDays} дн.';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} час.';
+    } else {
+      return 'Меньше часа';
+    }
+  }
+}
+
+/// Enum для статуса срока годности
+enum ShelfLifeStatus {
+  normal, // Зеленый
+  warning, // Оранжевый
+  expired, // Красный
 }
