@@ -19,7 +19,7 @@ import 'screens/manager/manager_dashboard_screen.dart';
 import 'screens/admin/admin_warehouse_screen.dart';
 
 // Services
-import 'services/api_service.dart'; // 🔥 Добавлен импорт
+import 'services/api_service.dart';
 import 'services/env_service.dart';
 import 'services/cache_service.dart';
 import 'services/image_preloader.dart';
@@ -52,26 +52,22 @@ void main() async {
   await Hive.initFlutter();
   print('✅ Hive инициализирован');
 
+  // 👇 ВРЕМЕННО ВКЛЮЧАЕМ ОЧИСТКУ ДЛЯ УСТРАНЕНИЯ ОШИБКИ "connection is closing"
+  // Это удалит старую базу, которая могла повредиться.
+  // После первого успешного запуска ЭТУ СТРОКУ НУЖНО СНОВА ЗАКОММЕНТИРОВАТЬ.
+  //await Hive.deleteFromDisk();
+  //print('🔥 Hive очищен (deleteFromDisk)');
+
   cacheService = await CacheService.getInstance();
   print('✅ CacheService инициализирован');
 
-  // 🔥 ВОССТАНАВЛИВАЕМ UnitService
-  // Он будет использовать кэш из CacheService, не делая лишних запросов
   final unitService = UnitService(ApiService());
 
-  // 🔥 СОЗДАЁМ SilentSyncService
-  // AuthProvider будет передан внутрь позже, при создании провайдера
   final silentSync = SilentSyncService(
     ApiService(),
     cacheService,
-    // AuthProvider передадим через сеттер после создания
   );
 
-// 👇 ТОЛЬКО ДЛЯ ОТЛАДКИ - ОЧИСТКА КЭША ПРИ СТАРТЕ
-//  await Hive.deleteFromDisk();
-// 👆 УБЕРИТЕ ЭТУ СТРОКУ ПОСЛЕ ПЕРВОГО УСПЕШНОГО ЗАПУСКА
-
-  // 🔥 СРАЗУ ПОКАЗЫВАЕМ ПРИЛОЖЕНИЕ
   runApp(MyApp(silentSync: silentSync, unitService: unitService));
 
   // 🔥 НЕ КРИТИЧНОЕ — В ФОНЕ
@@ -111,10 +107,9 @@ void main() async {
 
 // 🔥 ОБНОВЛЁННЫЙ MyApp: принимает silentSync и unitService
 class MyApp extends StatelessWidget {
-  final SilentSyncService? silentSync; // ← Параметр 1
-  final UnitService? unitService; // ← Параметр 2 (НОВЫЙ)
+  final SilentSyncService? silentSync;
+  final UnitService? unitService;
 
-  // 🔥 Конструктор принимает оба параметра
   const MyApp({super.key, this.silentSync, this.unitService});
 
   @override
@@ -129,7 +124,6 @@ class MyApp extends StatelessWidget {
               navigatorKey: navigatorKey,
             );
 
-            // 🔥 ИНЪЕКЦИЯ: передаём сервис в провайдер
             if (silentSync != null) {
               silentSync!.setAuthProvider(provider);
               provider.setSilentSync(silentSync!);
@@ -141,11 +135,8 @@ class MyApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(create: (context) => CartProvider()),
-
-        // 🔥 ДОБАВЛЯЕМ провайдер UnitService (если передан)
         if (unitService != null)
           Provider<UnitService>.value(value: unitService!),
-
         Provider<CacheService>.value(value: cacheService),
         Provider<SyncService>.value(value: syncService),
         StreamProvider<ConnectivityResult>(
@@ -157,7 +148,6 @@ class MyApp extends StatelessWidget {
           initialData: ConnectivityResult.none,
         ),
       ],
-      // Передаём silentSync дальше (unitService не нужен в MyAppContent)
       child: MyAppContent(silentSync: silentSync),
     );
   }
@@ -175,11 +165,9 @@ class MyAppContent extends StatelessWidget {
     final connectivityResult = Provider.of<ConnectivityResult>(context);
 
     // 🔥 РЕГИСТРИРУЕМ НАБЛЮДАТЕЛЯ ЖИЗНЕННОГО ЦИКЛА
-    // Это позволит ловить возврат приложения в активный режим
     WidgetsBinding.instance.addObserver(
       _AppLifecycleObserver(
         onResume: () async {
-          // При возврате в приложение → проверяем обновления
           await authProvider.checkForUpdates();
         },
       ),
@@ -194,7 +182,7 @@ class MyAppContent extends StatelessWidget {
     return NetworkIndicator(
       child: MaterialApp(
         navigatorKey: navigatorKey,
-        title: 'Вкусные моменты',
+        title: 'Вкусные Моменты',
         theme: _buildThemeData(Brightness.light),
         darkTheme: _buildThemeData(Brightness.dark),
         themeMode: themeProvider.themeMode,
@@ -229,7 +217,7 @@ class MyAppContent extends StatelessWidget {
     );
   }
 
-  // 🔥 ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ТЕМ (без изменений)
+  // 🔥 ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ТЕМ
   ThemeData _buildThemeData(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
     final scaffoldColor = isDark ? const Color(0xFF121212) : Colors.white;
@@ -306,7 +294,6 @@ class MyAppContent extends StatelessWidget {
 }
 
 // 🔥 НОВЫЙ КЛАСС: Наблюдатель за жизненным циклом приложения
-// Добавляем его в конец файла lib/main.dart
 class _AppLifecycleObserver extends WidgetsBindingObserver {
   final Future<void> Function()? onResume;
 
@@ -314,7 +301,6 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Когда приложение возвращается на передний план
     if (state == AppLifecycleState.resumed) {
       onResume?.call();
     }

@@ -1,4 +1,3 @@
-// lib/services/adapters/hive_adapters.dart
 import 'package:hive/hive.dart';
 import '../../models/order_item.dart';
 import '../../models/filling.dart';
@@ -8,6 +7,10 @@ import '../../models/price_category.dart';
 import '../../models/warehouse_operation.dart';
 import '../../models/production_operation.dart';
 import '../../models/unit_of_measure_sheet.dart';
+// === НОВЫЕ ИМПОРТЫ ===
+import '../../models/storage_condition.dart';
+import '../../models/transport_condition.dart';
+// =====================
 
 void registerHiveAdapters() {
   // Регистрируем адаптеры для всех моделей
@@ -19,6 +22,11 @@ void registerHiveAdapters() {
   Hive.registerAdapter(WarehouseOperationAdapter());
   Hive.registerAdapter(ProductionOperationAdapter());
   Hive.registerAdapter(UnitOfMeasureSheetAdapter());
+
+  // === НОВАЯ РЕГИСТРАЦИЯ ===
+  Hive.registerAdapter(StorageConditionAdapter());
+  Hive.registerAdapter(TransportConditionAdapter());
+  // =========================
 
   print('✅ Все Hive адаптеры зарегистрированы');
 }
@@ -94,18 +102,10 @@ class FillingAdapter extends TypeAdapter<Filling> {
 // Адаптер для Composition
 class CompositionAdapter extends TypeAdapter<Composition> {
   @override
-  final int typeId =
-      15; // Убедитесь, что ID совпадает с регистрацией (обычно 1 или другой, проверьте registerAdapter)
+  final int typeId = 15;
 
   @override
   Composition read(BinaryReader reader) {
-    // Читаем количество полей в новой модели
-    // Для совместимости со старыми данными: reader.readFieldCount() не используется напрямую в ручной реализации,
-    // но мы читаем последовательно. Если старый кэш не содержит новых полей,
-    // нужно обрабатывать try-catch или проверять длину, если BinaryReader её дает.
-    // Проще всего: очистить кэш при деплое новой версии.
-    // Но если хотим мягко:
-
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
@@ -118,7 +118,6 @@ class CompositionAdapter extends TypeAdapter<Composition> {
       ingredientName: fields[3] as String? ?? '',
       quantity: fields[4] as double? ?? 0.0,
       unitSymbol: fields[5] as String? ?? '',
-      // Новые поля (с безопасной обработкой null)
       level: fields[6] as String? ?? 'Прайс-лист',
       description: fields[7] as String? ?? '',
       storagePlace: fields[8] as String? ?? '',
@@ -145,7 +144,6 @@ class CompositionAdapter extends TypeAdapter<Composition> {
       ..write(obj.quantity)
       ..writeByte(5)
       ..write(obj.unitSymbol)
-      // Новые поля
       ..writeByte(6)
       ..write(obj.level)
       ..writeByte(7)
@@ -352,5 +350,65 @@ class UnitOfMeasureSheetAdapter extends TypeAdapter<UnitOfMeasureSheet> {
     writer.writeString(obj.category);
     writer.writeDouble(obj.toBase);
     writer.writeString(obj.baseUnit);
+  }
+}
+
+// === НОВЫЕ АДАПТЕРЫ ===
+
+// Адаптер для StorageCondition
+class StorageConditionAdapter extends TypeAdapter<StorageCondition> {
+  @override
+  final int typeId = 10; // Уникальный ID
+
+  @override
+  StorageCondition read(BinaryReader reader) {
+    return StorageCondition(
+      id: reader.readString(),
+      level: reader.readString(),
+      entityId: reader.readString(),
+      storageLocation: reader.readString(),
+      temperature: reader.readString(),
+      humidity: reader.readString(),
+      shelfLife: reader.readString(),
+      unit: reader.readString(),
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, StorageCondition obj) {
+    writer.writeString(obj.id);
+    writer.writeString(obj.level);
+    writer.writeString(obj.entityId);
+    writer.writeString(obj.storageLocation);
+    writer.writeString(obj.temperature);
+    writer.writeString(obj.humidity);
+    writer.writeString(obj.shelfLife);
+    writer.writeString(obj.unit);
+  }
+}
+
+// Адаптер для TransportCondition
+class TransportConditionAdapter extends TypeAdapter<TransportCondition> {
+  @override
+  final int typeId = 11; // Уникальный ID
+
+  @override
+  TransportCondition read(BinaryReader reader) {
+    return TransportCondition(
+      id: reader.readString(),
+      sheetName: reader.readString(),
+      entityId: reader.readString(),
+      level: reader.readString(),
+      description: reader.readString(),
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, TransportCondition obj) {
+    writer.writeString(obj.id);
+    writer.writeString(obj.sheetName);
+    writer.writeString(obj.entityId);
+    writer.writeString(obj.level);
+    writer.writeString(obj.description);
   }
 }

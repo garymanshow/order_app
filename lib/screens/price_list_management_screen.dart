@@ -5,6 +5,7 @@ import '../models/composition.dart';
 import '../models/nutrition_info.dart';
 import '../models/storage_condition.dart';
 import '../models/product.dart';
+import '../models/price_category.dart';
 import '../models/price_item.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
@@ -42,6 +43,11 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     'photos': false,
   };
 
+  // Локальное состояние категорий
+  List<PriceCategory> _draftCategories = [];
+  final Set<String> _modifiedCategoryIds = {};
+  final Set<String> _deletedCategoryIds = {};
+
   List<Product> _draftProducts = [];
   final Set<String> _modifiedProductIds = {};
   final Set<String> _deletedProductIds = {};
@@ -62,6 +68,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     if (authProvider.clientData == null) return;
 
+    final serverCategories = authProvider.clientData!.priceCategories;
     final serverProducts = authProvider.clientData!.products;
 
     // === НОВОЕ: Получаем список категорий для поиска ===
@@ -83,6 +90,9 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
 
     setState(() {
       _categories = categoryTitles; // Используем собранные имена
+
+      // Инициализируем черновик категорий
+      _draftCategories = serverCategories.toList();
 
       _draftProducts = serverProducts.map((p) {
         // === ВОТ ГЛАВНОЕ ИСПРАВЛЕНИЕ ===
@@ -112,9 +122,14 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
         );
       }).toList();
 
+      // Сброс флагов
       _modifiedProductIds.clear();
       _deletedProductIds.clear();
       _createdProducts.clear();
+
+      // Сброс флагов категорий
+      _modifiedCategoryIds.clear();
+      _deletedCategoryIds.clear();
     });
 
     _applyFilters();
@@ -250,20 +265,44 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final success = await _apiService.batchOperations(
-        created: _createdProducts.isNotEmpty ? _createdProducts : null,
-        updated: _modifiedProductIds.isNotEmpty
-            ? _draftProducts
-                .where((p) => _modifiedProductIds.contains(p.id))
-                .toList()
-            : null,
-        deleted:
-            _deletedProductIds.isNotEmpty ? _deletedProductIds.toList() : null,
-      );
+      bool success = true;
+
+      // === ЧАСТЬ 1: ОТПРАВКА ТОВАРОВ ===
+      // Проверяем, есть ли изменения в товарах
+      final hasProductChanges = _modifiedProductIds.isNotEmpty ||
+          _deletedProductIds.isNotEmpty ||
+          _createdProducts.isNotEmpty;
+
+      if (hasProductChanges) {
+        final productSuccess = await _apiService.batchOperations(
+          created: _createdProducts.isNotEmpty ? _createdProducts : null,
+          updated: _modifiedProductIds.isNotEmpty
+              ? _draftProducts
+                  .where((p) => _modifiedProductIds.contains(p.id))
+                  .toList()
+              : null,
+          deleted: _deletedProductIds.isNotEmpty
+              ? _deletedProductIds.toList()
+              : null,
+        );
+
+        if (!productSuccess) success = false;
+      }
+
+      // === ЧАСТЬ 2: ОТПРАВКА КАТЕГОРИЙ ===
+      // Если в будущем мы добавим _modifiedCategoryIds и пр., отправляем и их
+      // Пока что заглушка, но структура готова
+      /*
+      if (_hasCategoryChanges) {
+         final categorySuccess = await _apiService.saveCategories(_draftCategories);
+         if (!categorySuccess) success = false;
+      }
+      */
 
       if (success) {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
+        // 1. Синхронизируем товары
         authProvider.clientData!.products.clear();
         authProvider.clientData!.products.addAll(_draftProducts);
         for (var id in _deletedProductIds) {
@@ -276,14 +315,19 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
           authProvider.clientData!.transportConditions
               .removeWhere((t) => t.entityId == id);
         }
+
+        // 2. Синхронизируем категории (если бы мы их меняли)
+        // authProvider.clientData!.priceCategories = _draftCategories;
+
+        // 3. Перестраиваем индексы
         authProvider.clientData!.buildIndexes();
 
+        // 4. Сохраняем в Hive
         await authProvider.saveToCache();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                'Изменения опубликованы: +${_createdProducts.length} ~${_modifiedProductIds.length} 🗑${_deletedProductIds.length}'),
+            content: Text('Изменения сохранены'),
             backgroundColor: Colors.green,
           ));
         }
@@ -559,24 +603,15 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
               },
               tooltip: 'Добавить позицию',
             ),
+            // === ОБНОВЛЕННОЕ МЕНЮ (БЕЗ КАТЕГОРИЙ) ===
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
               tooltip: 'Дополнительно',
               onSelected: (choice) {
-                if (choice == 'categories')
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const AdminPriceCategoriesScreen()));
                 if (choice == 'price') _showMassPriceChangeDialog();
                 if (choice == 'export') _showExportDialog();
               },
               itemBuilder: (ctx) => [
-                const PopupMenuItem(
-                    value: 'categories',
-                    child: ListTile(
-                        leading: Icon(Icons.category),
-                        title: Text('Категории'))),
                 const PopupMenuItem(
                     value: 'price',
                     child: ListTile(
@@ -672,22 +707,103 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                       final isModified =
                           _modifiedProductIds.contains(product.id);
 
+                      // Получаем ID категории для текущего товара
+                      // Нам нужен ID для передачи на экран редактирования категории
+                      final categoryId = product.categoryId;
+
                       return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // === НОВЫЙ ВИД ЗАГОЛОВКА КАТЕГОРИИ ===
                             if (showCategoryHeader &&
                                 product.categoryName.isNotEmpty)
-                              Padding(
-                                  padding: const EdgeInsets.only(
-                                      left: 8, top: 16, bottom: 8),
-                                  child: Text(
-                                      product.categoryName.toUpperCase(),
-                                      style: TextStyle(
-                                          color: Colors.blue.shade800,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12))),
+                              Container(
+                                color: Colors.blue
+                                    .shade50, // Легкая подложка для выделения
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4.0, vertical: 2.0),
+                                child: Row(
+                                  children: [
+                                    // Левая часть: Кнопка перехода к категории
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: () {
+                                          // Переходим на экран управления категориями
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const AdminPriceCategoriesScreen(),
+                                            ),
+                                          );
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(8.0),
+                                          child: Text(
+                                            product.categoryName.toUpperCase(),
+                                            style: TextStyle(
+                                                color: Colors.blue.shade800,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Правая часть: Меню действий с категорией
+                                    PopupMenuButton<String>(
+                                      icon: Icon(Icons.more_vert,
+                                          size: 18,
+                                          color: Colors.blue.shade800),
+                                      tooltip: 'Действия с категорией',
+                                      onSelected: (choice) {
+                                        if (choice == 'edit') {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const AdminPriceCategoriesScreen(),
+                                            ),
+                                          );
+                                        }
+                                        if (choice == 'delete') {
+                                          // TODO: Реализовать удаление категории (с проверкой на пустоту)
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                                content: Text(
+                                                    'Удаление категорий пока не реализовано в этом меню')),
+                                          );
+                                        }
+                                      },
+                                      itemBuilder: (ctx) => [
+                                        const PopupMenuItem(
+                                            value: 'edit',
+                                            child: ListTile(
+                                              leading: Icon(Icons.edit),
+                                              title: Text(
+                                                  'Редактировать категорию'),
+                                              contentPadding: EdgeInsets.only(
+                                                  left: 0, right: 16),
+                                            )),
+                                        const PopupMenuItem(
+                                            value: 'delete',
+                                            child: ListTile(
+                                              leading: Icon(Icons.delete,
+                                                  color: Colors.red),
+                                              title: Text('Удалить категорию',
+                                                  style: TextStyle(
+                                                      color: Colors.red)),
+                                              contentPadding: EdgeInsets.only(
+                                                  left: 0, right: 16),
+                                            )),
+                                        // Можно добавить "Добавить товар в эту категорию"
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
 
-                            // === КАРТОЧКА ТОВАРА (ВСТАВЛЕНА ЯВНО ЗДЕСЬ) ===
+                            // === КАРТОЧКА ТОВАРА ===
                             Card(
                               margin: const EdgeInsets.symmetric(
                                   horizontal: 0, vertical: 4),
@@ -727,15 +843,14 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                                           mainAxisAlignment:
                                               MainAxisAlignment.center,
                                           children: [
-                                            // === ВОТ ОНО, ИСПРАВЛЕНИЕ ===
                                             if (product.categoryName.isNotEmpty)
                                               Text(
                                                 product.categoryName,
                                                 style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.red,
+                                                    fontSize: 11,
+                                                    color: Colors.grey.shade600,
                                                     fontWeight:
-                                                        FontWeight.bold),
+                                                        FontWeight.w500),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                               ),
@@ -748,7 +863,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                                               maxLines: 2,
                                               overflow: TextOverflow.ellipsis,
                                             ),
-                                            // ==============================
                                           ],
                                         ),
                                       ),
@@ -798,7 +912,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                                 ),
                               ),
                             ),
-                            // ==============================================
                           ]);
                     },
                   ),

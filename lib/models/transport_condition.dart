@@ -2,22 +2,28 @@
 
 class TransportCondition {
   final String id;
-  final String level; // "Категории прайса" или "Прайс-лист"
-  final String entityId; // ID Категории или Товара
-  final String description; // Текст условия
+  final String sheetName; // Не используется в текущей логике, дублирует level
+  final String entityId;
+  final String level; // "Категории прайса" и т.д. (Колонка "Лист")
+  final String description;
 
   TransportCondition({
     this.id = '',
-    required this.level,
+    required this.sheetName,
     required this.entityId,
+    required this.level,
     this.description = '',
   });
 
   factory TransportCondition.fromJson(Map<String, dynamic> json) {
+    final levelValue = json['Лист']?.toString() ?? '';
+    final entityIdValue = json['ID сущности']?.toString() ?? '';
+
     return TransportCondition(
-      id: json['id']?.toString() ?? json['ID']?.toString() ?? '',
-      level: json['Лист']?.toString() ?? '',
-      entityId: json['ID сущности']?.toString() ?? '',
+      id: json['ID']?.toString() ?? 'tc_${levelValue}_$entityIdValue',
+      sheetName: levelValue, // В данной модели sheetName совпадает с level
+      entityId: entityIdValue,
+      level: levelValue,
       description: json['Описание']?.toString() ?? '',
     );
   }
@@ -25,8 +31,9 @@ class TransportCondition {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'level': level,
+      'sheetName': sheetName,
       'entityId': entityId,
+      'level': level,
       'description': description,
     };
   }

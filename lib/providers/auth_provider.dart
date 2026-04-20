@@ -665,7 +665,6 @@ class AuthProvider with ChangeNotifier {
   }
 
   // ================== ДЕСЕРИАЛИЗАЦИЯ ==================
-
   ClientData _deserializeClientData(dynamic data) {
     if (data == null || data is! Map<String, dynamic>) {
       return ClientData();
@@ -675,7 +674,6 @@ class AuthProvider with ChangeNotifier {
     final clientDataMap = data;
 
     // === 1. ПРОДУКТЫ ===
-    // Сервер присылает 'products' или 'Прайс-лист'
     final rawProducts =
         clientDataMap['products'] ?? clientDataMap['Прайс-лист'];
     if (rawProducts is List) {
@@ -686,7 +684,6 @@ class AuthProvider with ChangeNotifier {
     }
 
     // === 2. КАТЕГОРИИ ===
-    // Сервер присылает 'priceCategories' или 'Категории прайса'
     final rawCategories =
         clientDataMap['priceCategories'] ?? clientDataMap['Категории прайса'];
     if (rawCategories is List) {
@@ -699,12 +696,10 @@ class AuthProvider with ChangeNotifier {
 
     // === 3. ЗАКАЗЫ ===
     if (clientDataMap['orders'] is List) {
-      // Создаем карту имен продуктов для заказов
       final Map<String, String> productDisplayNames = {};
       for (var p in clientData.products) {
         productDisplayNames[p.id] = p.displayName;
       }
-
       clientData.orders = (clientDataMap['orders'] as List)
           .map((item) => OrderItem.fromMap(
                 item as Map<String, dynamic>,
@@ -713,68 +708,60 @@ class AuthProvider with ChangeNotifier {
           .toList();
     }
 
-    // === 4. СОСТАВ (Универсально) ===
-    // Собираем из всех возможных ключей
-    List<Composition> allCompositions = [];
-
-    // Состав
-    if (clientDataMap['Состав'] is List) {
-      allCompositions.addAll((clientDataMap['Состав'] as List)
-          .map((item) => Composition.fromJson(item as Map<String, dynamic>)));
-    }
-    // Начинки
-    if (clientDataMap['Начинки'] is List) {
-      allCompositions.addAll((clientDataMap['Начинки'] as List)
-          .map((item) => Composition.fromJson(item as Map<String, dynamic>)));
-    }
-    // Транспорт
-    if (clientDataMap['Условия транспортировки'] is List) {
-      allCompositions.addAll((clientDataMap['Условия транспортировки'] as List)
-          .map((item) => Composition.fromJson(item as Map<String, dynamic>)));
-    }
-    // Хранение
-    if (clientDataMap['Условия хранения'] is List) {
-      allCompositions.addAll((clientDataMap['Условия хранения'] as List)
-          .map((item) => Composition.fromJson(item as Map<String, dynamic>)));
-    }
-
-    clientData.compositions = allCompositions;
-    debugPrint(
-        '📝 Всего элементов Composition (состав/условия): ${allCompositions.length}');
-
-    // === 5. НАЧИНКИ (Filling) ===
-    // Если начинки приходят отдельным списком, парсим их (если нужно отдельно от compositions)
-    if (clientDataMap['fillings'] is List) {
-      clientData.fillings = (clientDataMap['fillings'] as List)
-          .map((item) => Filling.fromJson(item as Map<String, dynamic>))
+    // === 4. СОСТАВ (Composition) ===
+    // ИспользуемComposition.fromJson, так как модель универсальная
+    final rawCompositions =
+        clientDataMap['compositions'] ?? clientDataMap['Состав'];
+    if (rawCompositions is List) {
+      clientData.compositions = rawCompositions
+          .map((item) => Composition.fromJson(item as Map<String, dynamic>))
           .toList();
+      debugPrint(
+          '📝 Распарсено Composition: ${clientData.compositions.length}');
     }
 
-    // === 6. НОВЫЕ МОДЕЛИ (Матрешка) ===
-    // Парсим отдельно для удобства доступа через конкретные списки
+    // === 5. НАЧИНКИ (Filling / Composition) ===
+    // Начинки парсим как Composition, чтобы они попали в общие списки
+    final rawFillings = clientDataMap['fillings'] ?? clientDataMap['Начинки'];
+    if (rawFillings is List) {
+      final fillingsList = rawFillings
+          .map((item) => Composition.fromJson(item as Map<String, dynamic>))
+          .toList();
+      clientData.compositions.addAll(fillingsList);
+      debugPrint('🧩 Распарсено Начинок: ${fillingsList.length}');
+    }
 
-    // Условия хранения
-    if (clientDataMap['Условия хранения'] is List) {
-      clientData.storageConditions = (clientDataMap['Условия хранения'] as List)
+    // === 6. УСЛОВИЯ ХРАНЕНИЯ (StorageCondition) ===
+    // ИСПРАВЛЕНО: Проверяем правильный ключ 'Условия хранения'
+    final rawStorage =
+        clientDataMap['storageConditions'] ?? clientDataMap['Условия хранения'];
+    if (rawStorage is List) {
+      clientData.storageConditions = rawStorage
           .map(
               (item) => StorageCondition.fromJson(item as Map<String, dynamic>))
           .toList();
       debugPrint(
-          '🧊 Распарсено условий хранения: ${clientData.storageConditions.length}');
+          '🧊 Распарсено StorageCondition: ${clientData.storageConditions.length}');
+      // Добавляем в общий список Composition для универсального доступа
+      // clientData.compositions.addAll(clientData.storageConditions.map((s) => s.toComposition()));
     }
 
-    // Условия транспортировки
-    if (clientDataMap['Условия транспортировки'] is List) {
-      clientData.transportConditions =
-          (clientDataMap['Условия транспортировки'] as List)
-              .map((item) =>
-                  TransportCondition.fromJson(item as Map<String, dynamic>))
-              .toList();
+    // === 7. УСЛОВИЯ ТРАНСПОРТИРОВКИ (TransportCondition) ===
+    // ИСПРАВЛЕНО: Ключ в JSON от GAS идет слитно: "условиятранспортировки"
+    final rawTransport = clientDataMap['transportConditions'] ??
+        clientDataMap['Условия транспортировки'] ??
+        clientDataMap['условиятранспортировки']; // <-- ВОТ ОН!
+
+    if (rawTransport is List) {
+      clientData.transportConditions = rawTransport
+          .map((item) =>
+              TransportCondition.fromJson(item as Map<String, dynamic>))
+          .toList();
       debugPrint(
-          '🚚 Распарсено условий транспортировки: ${clientData.transportConditions.length}');
+          '🚚 Распарсено TransportCondition: ${clientData.transportConditions.length}');
     }
 
-    // === 7. Остальное (КБЖУ, Клиенты и т.д.) ===
+    // === 8. Остальное ===
     if (clientDataMap['nutritionInfos'] is List) {
       clientData.nutritionInfos = (clientDataMap['nutritionInfos'] as List)
           .map((item) => NutritionInfo.fromJson(item as Map<String, dynamic>))
@@ -802,6 +789,7 @@ class AuthProvider with ChangeNotifier {
     }
 
     clientData.buildIndexes();
+    debugPrint('✅ Десериализация ClientData завершена');
     return clientData;
   }
 

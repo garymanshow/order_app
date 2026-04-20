@@ -1,22 +1,18 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../providers/auth_provider.dart';
-import '../../services/api_service.dart';
 import '../../models/product.dart';
-import '../../models/client_data.dart';
 import '../../models/price_item.dart';
 import '../../models/price_category.dart';
-import '../../models/unit_of_measure.dart';
 import '../../models/composition.dart';
+import '../../models/storage_condition.dart';
+import '../../models/transport_condition.dart';
+import '../../services/api_service.dart';
 
-// ==========================================
-// КОНФИГУРАЦИЯ КНОПОК
-// ==========================================
+// Конфигурация кнопок списков
 class _ListButtonConfig {
   final String title;
   final IconData icon;
@@ -39,13 +35,9 @@ class _ListButtonConfig {
   });
 }
 
-// ==========================================
-// МОДЕЛЬ ДАННЫХ ФОРМЫ
-// ==========================================
+// Модель данных формы
 class ProductFormData {
   final String productId;
-
-  // Основные поля
   String name;
   double price;
   int multiplicity;
@@ -58,7 +50,6 @@ class ProductFormData {
   String weight;
   int wastePercentage;
 
-  // Динамические списки (Матрешка)
   Map<String, List<Composition>> baseLists = {};
   Map<String, List<Composition>> ownLists = {};
 
@@ -76,15 +67,9 @@ class ProductFormData {
     this.weight = '0',
     this.wastePercentage = 10,
   });
-
-  List<Composition> getFullList(String key) {
-    return [...(baseLists[key] ?? []), ...(ownLists[key] ?? [])];
-  }
 }
 
-// ==========================================
-// МОДЕЛЬ ОЧЕРЕДИ ИЗМЕНЕНИЙ
-// ==========================================
+// Модель очереди изменений
 class PendingChange {
   final String sheetName;
   final String entityId;
@@ -99,9 +84,6 @@ class PendingChange {
   });
 }
 
-// ==========================================
-// ЭКРАН ФОРМЫ
-// ==========================================
 class AdminPriceItemFormScreen extends StatefulWidget {
   final PriceItem? item;
   final String? initialCategoryId;
@@ -123,7 +105,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
 
-  // Константы конфигурации кнопок
   static const _kTransportConfig = _ListButtonConfig(
     title: 'Условия транспортировки',
     icon: Icons.local_shipping,
@@ -161,9 +142,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     showUnit: true,
   );
 
-  // Переменные состояния
   List<PriceCategory> _categories = [];
-  List<UnitOfMeasure> _units = [];
   List<Product> _allProducts = [];
 
   late PageController _pageController;
@@ -172,15 +151,17 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   final Map<String, ProductFormData> _formDataMap = {};
   bool _isSaving = false;
   bool _hasLocalChanges = false;
-
-  // Очередь изменений
   final List<PendingChange> _pendingChanges = [];
 
-  final Map<String, String> _unitCategoryLabels = {
-    'weight': '⚖️ Вес',
-    'volume': '🧪 Объем',
-    'piece': '📦 Штуки',
-  };
+  // ПЕРЕМЕННЫЕ ДЛЯ ОТОБРАЖЕНИЯ "ХВОСТОВ"
+  List<Composition> _ownCompositions = [];
+  List<Composition> _baseCompositions = [];
+  List<Composition> _ownFillings = [];
+  List<Composition> _baseFillings = [];
+  List<StorageCondition> _ownStorage = [];
+  List<StorageCondition> _baseStorage = [];
+  List<TransportCondition> _ownTransport = [];
+  List<TransportCondition> _baseTransport = [];
 
   ProductFormData get _currentData {
     if (_currentIndex < 0 || _currentIndex >= _allProducts.length) {
@@ -221,17 +202,12 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     super.dispose();
   }
 
-  // ==========================================
-  // ЗАГРУЗКА ДАННЫХ
-  // ==========================================
-
   Future<void> _loadInitialData() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final clientData = authProvider.clientData;
     if (clientData == null) return;
     setState(() {
       _categories = clientData.priceCategories;
-      _units = clientData.unitsOfMeasure;
       _allProducts = clientData.products;
     });
   }
@@ -242,6 +218,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final clientData = authProvider.clientData;
 
+    // === 1. Первичная инициализация формы (если еще не было) ===
     if (!_formDataMap.containsKey(product.id)) {
       PriceCategory? productCategory;
       if (product.categoryId.isNotEmpty) {
@@ -275,13 +252,15 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         _kFillingConfig,
         _kCompositionConfig
       ];
+      final String? catIdStr = productCategory?.id.toString();
+
       for (var config in configs) {
-        if (productCategory != null && clientData != null) {
+        if (catIdStr != null && clientData != null) {
           data.baseLists[config.sheetName] = clientData.compositions
               .where((c) =>
                   c.sheetName == config.sheetName &&
                   c.level == config.levelCategory &&
-                  c.entityId == productCategory?.id.toString())
+                  c.entityId == catIdStr)
               .toList();
         }
         if (clientData != null) {
@@ -295,12 +274,117 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       }
       _formDataMap[product.id] = data;
     }
-    setState(() => _hasLocalChanges = false);
-  }
 
-  // ==========================================
-  // СОХРАНЕНИЕ (ЛОКАЛЬНОЕ)
-  // ==========================================
+    // === 2. Загрузка "Хвостов" для отображения ===
+
+    // Получаем текущую категорию товара
+    PriceCategory? currentCategory;
+    String? catIdStr;
+    if (product.categoryId.isNotEmpty) {
+      try {
+        currentCategory = _categories
+            .firstWhere((c) => c.id.toString() == product.categoryId);
+        catIdStr = currentCategory.id.toString();
+      } catch (_) {
+        currentCategory = null;
+        catIdStr = null;
+      }
+    }
+
+    // --- А. НАЧИНКИ (Fillings) ---
+    // 1. Свои начинки (уровень "Прайс-лист")
+    _ownFillings = clientData?.compositions
+            .where((c) =>
+                c.sheetName == 'Начинки' &&
+                c.entityId == product.id &&
+                c.level == 'Прайс-лист')
+            .toList() ??
+        [];
+
+    // 2. Начинки от категории (уровень "Категории прайса")
+    _baseFillings = (catIdStr != null && clientData != null)
+        ? clientData.compositions
+            .where((c) =>
+                c.sheetName == 'Начинки' &&
+                c.entityId == catIdStr &&
+                c.level == 'Категории прайса')
+            .toList()
+        : [];
+
+    // --- Б. СОСТАВ (Composition) ---
+    // 1. Состав начинок, входящих в товар (уровень "Начинки")
+    // Логика: Берем ID всех начинок (своих + от категории) и ищем состав для них
+    final allFillingIds = [..._ownFillings, ..._baseFillings]
+        .map((f) => f.entityId)
+        .toSet(); // Используем entityId как ID начинки
+
+    final fillingCompositions = (clientData != null)
+        ? clientData.compositions
+            .where((c) =>
+                c.sheetName == 'Состав' &&
+                c.level == 'Начинки' &&
+                allFillingIds.contains(c.entityId))
+            .toList()
+        : <Composition>[];
+
+    // 2. Состав от категории (уровень "Категории прайса")
+    final categoryCompositions = (catIdStr != null && clientData != null)
+        ? clientData.compositions
+            .where((c) =>
+                c.sheetName == 'Состав' &&
+                c.entityId == catIdStr &&
+                c.level == 'Категории прайса')
+            .toList()
+        : [];
+
+    // 3. Свой состав товара (уровень "Прайс-лист")
+    final ownProductCompositions = clientData?.compositions
+            .where((c) =>
+                c.sheetName == 'Состав' &&
+                c.entityId == product.id &&
+                c.level == 'Прайс-лист')
+            .toList() ??
+        [];
+
+    // ИТОГО по составу: Суммируем все найденные уровни
+    _baseCompositions = [...fillingCompositions, ...categoryCompositions];
+    _ownCompositions = ownProductCompositions;
+
+    // --- В. УСЛОВИЯ ХРАНЕНИЯ ---
+    _ownStorage = clientData?.storageConditions
+            .where((c) => c.entityId == product.id && c.level == 'Прайс-лист')
+            .toList() ??
+        [];
+    _baseStorage = (catIdStr != null && clientData != null)
+        ? clientData.storageConditions
+            .where(
+                (c) => c.entityId == catIdStr && c.level == 'Категории прайса')
+            .toList()
+        : [];
+
+    // --- Г. УСЛОВИЯ ТРАНСПОРТИРОВКИ ---
+    _ownTransport = clientData?.transportConditions
+            .where((c) => c.entityId == product.id && c.level == 'Прайс-лист')
+            .toList() ??
+        [];
+    _baseTransport = (catIdStr != null && clientData != null)
+        ? clientData.transportConditions
+            .where(
+                (c) => c.entityId == catIdStr && c.level == 'Категории прайса')
+            .toList()
+        : [];
+
+    // Лог для проверки
+    debugPrint('🧩 ИТОГО для ${product.name}:');
+    debugPrint(
+        '   Начинок: Своих=${_ownFillings.length}, От кат=${_baseFillings.length}');
+    debugPrint(
+        '   Состав: Своего=${_ownCompositions.length}, Базового=${_baseCompositions.length}');
+
+    setState(() {
+      _hasLocalChanges = false;
+    });
+  }
 
   void _saveItemLocally() {
     if (!_formKey.currentState!.validate()) return;
@@ -361,10 +445,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     });
   }
 
-  // ==========================================
-  // ОТПРАВКА НА СЕРВЕР (ПАКЕТНАЯ)
-  // ==========================================
-
   Future<void> _commitChanges() async {
     if (_pendingChanges.isEmpty) return;
 
@@ -382,11 +462,12 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       if (userPhone == null || userPhone.isEmpty) {
         throw Exception('Не удалось определить телефон пользователя');
       }
+
       bool allSuccess = true;
 
       for (var change in uniqueChanges.values) {
         final success = await _apiService.saveConditions(
-          phone: userPhone, // <--- Передаем телефон
+          phone: userPhone,
           sheetName: change.sheetName,
           entityId: change.entityId,
           level: change.level,
@@ -395,31 +476,27 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         if (!success) allSuccess = false;
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-          'client_data', jsonEncode(authProvider.clientData!.toJson()));
+      await authProvider.saveToCache();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(allSuccess
-                ? 'Все изменения сохранены'
-                : 'Часть изменений не удалась'),
+                ? 'Все изменения успешно сохранены на сервере'
+                : 'Часть изменений не сохранилась'),
             backgroundColor: allSuccess ? Colors.green : Colors.orange));
       }
       _pendingChanges.clear();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Ошибка отправки: $e'), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  // ==========================================
   // ДИАЛОГИ
-  // ==========================================
 
   void _showImageSourceDialog() {
     showModalBottomSheet(
@@ -441,8 +518,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                   Navigator.pop(context);
                   _pickFile();
                 }),
-            if (_currentData.photoUrl.isNotEmpty ||
-                _currentData.imageBytes != null)
+            if (_currentData.photoUrl.isNotEmpty)
               ListTile(
                   leading: const Icon(Icons.delete, color: Colors.red),
                   title: const Text('Удалить фото'),
@@ -538,40 +614,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                     _showCategoryDialog();
                   }),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                  value: _currentData.unit.isEmpty ? null : _currentData.unit,
-                  decoration: const InputDecoration(
-                      labelText: 'Ед. изм. *', border: OutlineInputBorder()),
-                  items: ['weight', 'volume', 'piece']
-                      .map((catKey) {
-                        final units =
-                            _units.where((u) => u.category == catKey).toList();
-                        if (units.isEmpty) return <DropdownMenuItem<String>>[];
-                        return [
-                          DropdownMenuItem(
-                              enabled: false,
-                              value: 'h_$catKey',
-                              child: Text(_unitCategoryLabels[catKey] ?? catKey,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Theme.of(context).primaryColor))),
-                          ...units.map((u) => DropdownMenuItem(
-                              value: u.symbol,
-                              child: Text('${u.symbol} (${u.name})',
-                                  style:
-                                      const TextStyle(color: Colors.white)))),
-                        ];
-                      })
-                      .expand((x) => x)
-                      .toList(),
-                  onChanged: (val) {
-                    if (val != null && !val.startsWith('h_'))
-                      setState(() {
-                        _currentData.unit = val;
-                        _hasLocalChanges = true;
-                      });
-                  }),
-              const SizedBox(height: 12),
               TextFormField(
                   initialValue: _currentData.weight,
                   decoration: const InputDecoration(
@@ -626,7 +668,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
             ));
   }
 
-  // === УНИВЕРСАЛЬНЫЙ ДИАЛОГ СПИСКОВ ===
   void _showListDialog(_ListButtonConfig config) {
     final data = _currentData;
     List<Composition> baseList = data.baseLists[config.sheetName] ?? [];
@@ -815,10 +856,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         });
   }
 
-  // ==========================================
-  // BUILD
-  // ==========================================
-
   @override
   Widget build(BuildContext context) {
     if (_allProducts.isEmpty) {
@@ -860,8 +897,11 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           ),
         ],
       ),
-      body: WillPopScope(
-        onWillPop: () async {
+      body: PopScope(
+        canPop: !_hasLocalChanges,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+
           if (_hasLocalChanges) {
             final saveLocal = await showDialog<bool>(
               context: context,
@@ -906,8 +946,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
               _pendingChanges.clear();
             }
           }
-
-          return true;
         },
         child: PageView.builder(
           controller: _pageController,
@@ -920,41 +958,76 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           itemBuilder: (context, index) {
             return _isSaving
                 ? const Center(child: CircularProgressIndicator())
-                : Padding(
+                : SingleChildScrollView(
                     padding: const EdgeInsets.all(16.0),
                     child: Form(
                       key: ValueKey('form_$index'),
-                      child: ListView(children: [
-                        _buildGeneralBlock(),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                            onPressed: _isSaving ? null : _saveItemLocally,
-                            icon: const Icon(Icons.save),
-                            label: Text(
-                                _hasLocalChanges
-                                    ? 'Сохранить позицию'
-                                    : 'Нет изменений',
-                                style: const TextStyle(fontSize: 16)),
-                            style: ElevatedButton.styleFrom(
-                                minimumSize: const Size(double.infinity, 50),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12)),
-                                backgroundColor: _hasLocalChanges
-                                    ? Colors.green
-                                    : Colors.grey)),
-                      ]),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildGeneralBlock(),
+                          const SizedBox(height: 16),
+
+                          // БЛОКИ "ХВОСТОВ"
+                          _buildExpansionTile(
+                            title: 'Состав',
+                            icon: Icons.restaurant_menu,
+                            ownCount: _ownCompositions.length,
+                            baseCount: _baseCompositions.length,
+                            content: _buildCompositionContent(),
+                          ),
+                          const SizedBox(height: 8),
+
+                          _buildExpansionTile(
+                            title: 'Начинки',
+                            icon: Icons.cake,
+                            ownCount: _ownFillings.length,
+                            baseCount: _baseFillings.length,
+                            content: _buildFillingsContent(),
+                          ),
+                          const SizedBox(height: 8),
+
+                          _buildExpansionTile(
+                            title: 'Условия хранения',
+                            icon: Icons.inventory_2,
+                            ownCount: _ownStorage.length,
+                            baseCount: _baseStorage.length,
+                            content: _buildStorageContent(),
+                          ),
+                          const SizedBox(height: 8),
+
+                          _buildExpansionTile(
+                            title: 'Условия транспортировки',
+                            icon: Icons.local_shipping,
+                            ownCount: _ownTransport.length,
+                            baseCount: _baseTransport.length,
+                            content: _buildTransportContent(),
+                          ),
+
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                              onPressed: _isSaving ? null : _saveItemLocally,
+                              icon: const Icon(Icons.save),
+                              label: Text(
+                                  _hasLocalChanges
+                                      ? 'Сохранить позицию'
+                                      : 'Нет изменений',
+                                  style: const TextStyle(fontSize: 16)),
+                              style: ElevatedButton.styleFrom(
+                                  minimumSize: const Size(double.infinity, 50),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12)),
+                                  backgroundColor: _hasLocalChanges
+                                      ? Colors.green
+                                      : Colors.grey)),
+                        ],
+                      ),
                     ),
                   );
           },
         ),
       ),
     );
-  }
-
-  void _goToPage(int index) {
-    if (_hasLocalChanges) _saveItemLocally();
-    _pageController.animateToPage(index,
-        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
   }
 
   Widget _buildGeneralBlock() {
@@ -981,24 +1054,18 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                   flex: 2,
                   child: AspectRatio(
                       aspectRatio: 1.0,
-                      child: Column(children: [
-                        Expanded(
-                            child: GestureDetector(
-                                onTap: _showImageSourceDialog,
-                                child: Container(
-                                    width: double.infinity,
-                                    decoration: BoxDecoration(
-                                        color: Colors.grey[200],
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                            color: Colors.grey.shade300)),
-                                    child: ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(7.0),
-                                        child: _buildPhotoView(data))))),
-                        const SizedBox(height: 4),
-                        _buildPhotoSourceInfo(data),
-                      ]))),
+                      child: GestureDetector(
+                          onTap: _showImageSourceDialog,
+                          child: Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border:
+                                      Border.all(color: Colors.grey.shade300)),
+                              child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(7.0),
+                                  child: _buildPhotoView(data)))))),
               const SizedBox(width: 12),
               Expanded(
                   flex: 1,
@@ -1052,34 +1119,11 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                             title: 'Описание',
                             subtitle: data.description.isEmpty ? '-' : 'Есть',
                             onTap: _showDescriptionDialog),
-                        const SizedBox(height: 4),
-                        _buildListParamButton(
-                            config: _kCompositionConfig, data: data),
-                        const SizedBox(height: 4),
-                        _buildListParamButton(
-                            config: _kFillingConfig, data: data),
-                        const SizedBox(height: 4),
-                        _buildListParamButton(
-                            config: _kStorageConfig, data: data),
-                        const SizedBox(height: 4),
-                        _buildListParamButton(
-                            config: _kTransportConfig, data: data),
                       ]))),
             ]),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildListParamButton(
-      {required _ListButtonConfig config, required ProductFormData data}) {
-    final list = data.getFullList(config.sheetName);
-    return _buildParamButton(
-      icon: config.icon,
-      title: config.title,
-      subtitle: list.isEmpty ? 'Не заданы' : '${list.length} записей',
-      onTap: () => _showListDialog(config),
     );
   }
 
@@ -1105,50 +1149,8 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     return _buildEmptyPhoto();
   }
 
-  Widget _buildPhotoSourceInfo(ProductFormData data) {
-    String infoText;
-    IconData icon;
-    Color color;
-    if (data.imageBytes != null) {
-      infoText = 'Локальное фото';
-      icon = Icons.phone_android;
-      color = Colors.blue;
-    } else if (data.photoUrl.startsWith('assets/')) {
-      infoText = 'Из приложения';
-      icon = Icons.apps;
-      color = Colors.grey;
-    } else if (data.photoUrl.contains('drive.google')) {
-      infoText = 'Из облака';
-      icon = Icons.cloud;
-      color = Colors.green;
-    } else if (data.photoUrl.startsWith('http')) {
-      infoText = 'С сайта';
-      icon = Icons.language;
-      color = Colors.orange;
-    } else {
-      infoText = 'Нет фото';
-      icon = Icons.image_not_supported;
-      color = Colors.grey;
-    }
-    return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Icon(icon, size: 12, color: color),
-      const SizedBox(width: 4),
-      Text(infoText,
-          style: TextStyle(
-              fontSize: 10, color: color, fontWeight: FontWeight.w500))
-    ]);
-  }
-
-  Widget _buildEmptyPhoto() => Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.add_a_photo, size: 40, color: Colors.grey[600]),
-        const SizedBox(height: 8),
-        Text('Добавить фото',
-            style: TextStyle(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-                fontSize: 16))
-      ]));
+  Widget _buildEmptyPhoto() =>
+      Center(child: Icon(Icons.add_a_photo, size: 40, color: Colors.grey[600]));
 
   Widget _buildParamButton(
       {required IconData icon,
@@ -1182,5 +1184,184 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                   ])),
               Icon(Icons.chevron_right, size: 14, color: Colors.grey[400])
             ])));
+  }
+
+  // ВСПОМОГАТЕЛЬНЫЕ БЛОКИ
+
+  Widget _buildExpansionTile({
+    required String title,
+    required IconData icon,
+    required int ownCount,
+    required int baseCount,
+    required Widget content,
+  }) {
+    return Card(
+      elevation: 1,
+      margin: EdgeInsets.zero,
+      child: ExpansionTile(
+        leading: Icon(icon, color: Theme.of(context).primaryColor),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(
+          'Своих: $ownCount, От категории: $baseCount',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: content,
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompositionContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_baseCompositions.isNotEmpty) ...[
+          const Text('Унаследовано от категории:',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: Colors.grey)),
+          const SizedBox(height: 4),
+          ..._baseCompositions.map((c) => _buildMiniItemCard(
+              c.displayName, '${c.quantity} ${c.unitSymbol}')),
+          const Divider(height: 24),
+        ],
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Собственный состав:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            IconButton(
+              icon: const Icon(Icons.edit, size: 18),
+              onPressed: () => _showListDialog(_kCompositionConfig),
+              tooltip: 'Редактировать',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            )
+          ],
+        ),
+        const SizedBox(height: 4),
+        if (_ownCompositions.isEmpty)
+          const Text('Не указан',
+              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic))
+        else
+          ..._ownCompositions.map((c) => _buildMiniItemCard(
+              c.displayName, '${c.quantity} ${c.unitSymbol}')),
+      ],
+    );
+  }
+
+  Widget _buildFillingsContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_baseFillings.isNotEmpty) ...[
+          const Text('Унаследовано:',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: Colors.grey)),
+          ..._baseFillings.map((c) => _buildMiniItemCard(c.displayName, '')),
+          const Divider(height: 24),
+        ],
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Собственные: ${_ownFillings.length}'),
+            IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () => _showListDialog(_kFillingConfig))
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStorageContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_baseStorage.isNotEmpty) ...[
+          const Text('Унаследовано:',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: Colors.grey)),
+          ..._baseStorage.map((s) => _buildMiniItemCard(s.storageLocation,
+              '${s.temperature}°C, ${s.shelfLife} ${s.unit}')),
+          const Divider(height: 24),
+        ],
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Собственные: ${_ownStorage.length}'),
+            IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () => _showListDialog(_kStorageConfig))
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTransportContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_baseTransport.isNotEmpty) ...[
+          const Text('Унаследовано:',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: Colors.grey)),
+          ..._baseTransport.map((t) => _buildMiniItemCard(t.description, '')),
+          const Divider(height: 24),
+        ],
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Собственные: ${_ownTransport.length}'),
+            IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () => _showListDialog(_kTransportConfig))
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMiniItemCard(String title, String subtitle) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+              child: Text(title,
+                  style: const TextStyle(fontSize: 13),
+                  overflow: TextOverflow.ellipsis)),
+          if (subtitle.isNotEmpty)
+            Text(subtitle,
+                style:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  void _goToPage(int index) {
+    if (_hasLocalChanges) _saveItemLocally();
+    _pageController.animateToPage(index,
+        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
   }
 }
