@@ -218,7 +218,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final clientData = authProvider.clientData;
 
-    // === 1. Первичная инициализация формы (если еще не было) ===
     if (!_formDataMap.containsKey(product.id)) {
       PriceCategory? productCategory;
       if (product.categoryId.isNotEmpty) {
@@ -252,6 +251,8 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         _kFillingConfig,
         _kCompositionConfig
       ];
+
+      final String productIdStr = product.id.toString();
       final String? catIdStr = productCategory?.id.toString();
 
       for (var config in configs) {
@@ -268,16 +269,17 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
               .where((c) =>
                   c.sheetName == config.sheetName &&
                   c.level == config.levelProduct &&
-                  c.entityId == product.id)
+                  c.entityId == productIdStr)
               .toList();
         }
       }
       _formDataMap[product.id] = data;
     }
 
-    // === 2. Загрузка "Хвостов" для отображения ===
+    // === ЗАГРУЗКА "ХВОСТОВ" ДЛЯ ОТОБРАЖЕНИЯ ===
 
-    // Получаем текущую категорию товара
+    final String productIdStr = product.id.toString();
+
     PriceCategory? currentCategory;
     String? catIdStr;
     if (product.categoryId.isNotEmpty) {
@@ -291,17 +293,46 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       }
     }
 
-    // --- А. НАЧИНКИ (Fillings) ---
-    // 1. Свои начинки (уровень "Прайс-лист")
-    _ownFillings = clientData?.compositions
+    // === ДИАГНОСТИКА ===
+    debugPrint('🔎 ДИАГНОСТИКА ФИЛЬТРАЦИИ для ${product.name}:');
+    debugPrint('   Ищем ID товара: $productIdStr');
+    debugPrint('   Ищем ID кат: $catIdStr');
+
+    // Проверяем, что вообще есть в compositions
+    if (clientData != null && clientData.compositions.isNotEmpty) {
+      final sample = clientData.compositions.first;
+      debugPrint(
+          '   Пример записи в comp: entityId="${sample.entityId}" | sheet="${sample.sheetName}" | level="${sample.level}"');
+    } else {
+      debugPrint('   ВНИМАНИЕ: compositions пуст!');
+    }
+    // ==================
+
+    // Состав
+    _ownCompositions = clientData?.compositions
             .where((c) =>
-                c.sheetName == 'Начинки' &&
-                c.entityId == product.id &&
+                c.sheetName == 'Состав' &&
+                c.entityId == productIdStr &&
                 c.level == 'Прайс-лист')
             .toList() ??
         [];
+    _baseCompositions = (catIdStr != null && clientData != null)
+        ? clientData.compositions
+            .where((c) =>
+                c.sheetName == 'Состав' &&
+                c.entityId == catIdStr &&
+                c.level == 'Категории прайса')
+            .toList()
+        : [];
 
-    // 2. Начинки от категории (уровень "Категории прайса")
+    // Начинки
+    _ownFillings = clientData?.compositions
+            .where((c) =>
+                c.sheetName == 'Начинки' &&
+                c.entityId == productIdStr &&
+                c.level == 'Прайс-лист')
+            .toList() ??
+        [];
     _baseFillings = (catIdStr != null && clientData != null)
         ? clientData.compositions
             .where((c) =>
@@ -311,60 +342,39 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
             .toList()
         : [];
 
-    // --- Б. СОСТАВ (Composition) ---
-    // 1. Состав начинок, входящих в товар (уровень "Начинки")
-    // Логика: Берем ID всех начинок (своих + от категории) и ищем состав для них
-    final allFillingIds = [..._ownFillings, ..._baseFillings]
-        .map((f) => f.entityId)
-        .toSet(); // Используем entityId как ID начинки
-
-    final fillingCompositions = (clientData != null)
-        ? clientData.compositions
-            .where((c) =>
-                c.sheetName == 'Состав' &&
-                c.level == 'Начинки' &&
-                allFillingIds.contains(c.entityId))
-            .toList()
-        : <Composition>[];
-
-    // 2. Состав от категории (уровень "Категории прайса")
-    final categoryCompositions = (catIdStr != null && clientData != null)
-        ? clientData.compositions
-            .where((c) =>
-                c.sheetName == 'Состав' &&
-                c.entityId == catIdStr &&
-                c.level == 'Категории прайса')
-            .toList()
-        : [];
-
-    // 3. Свой состав товара (уровень "Прайс-лист")
-    final ownProductCompositions = clientData?.compositions
-            .where((c) =>
-                c.sheetName == 'Состав' &&
-                c.entityId == product.id &&
-                c.level == 'Прайс-лист')
-            .toList() ??
-        [];
-
-    // ИТОГО по составу: Суммируем все найденные уровни
-    _baseCompositions = [...fillingCompositions, ...categoryCompositions];
-    _ownCompositions = ownProductCompositions;
-
-    // --- В. УСЛОВИЯ ХРАНЕНИЯ ---
+    // Хранение
+    // Ищем СВОИ условия
     _ownStorage = clientData?.storageConditions
-            .where((c) => c.entityId == product.id && c.level == 'Прайс-лист')
+            .where((c) => c.entityId == productIdStr && c.level == 'Прайс-лист')
             .toList() ??
         [];
-    _baseStorage = (catIdStr != null && clientData != null)
-        ? clientData.storageConditions
-            .where(
-                (c) => c.entityId == catIdStr && c.level == 'Категории прайса')
-            .toList()
-        : [];
 
-    // --- Г. УСЛОВИЯ ТРАНСПОРТИРОВКИ ---
+    // Ищем БАЗОВЫЕ условия (от категории)
+    if (catIdStr != null && clientData != null) {
+      final rawList = clientData.storageConditions;
+      debugPrint('   Всего storageConditions в базе: ${rawList.length}');
+
+      // Пробуем найти хоть что-то с этим ID
+      final foundById = rawList.where((c) => c.entityId == catIdStr).toList();
+      debugPrint('   Найдено storage по ID ($catIdStr): ${foundById.length}');
+
+      // Теперь фильтруем по level
+      _baseStorage =
+          foundById.where((c) => c.level == 'Категории прайса').toList();
+
+      // Если 0, выводим какие level есть у найденных
+      if (foundById.isNotEmpty && _baseStorage.isEmpty) {
+        debugPrint('   ВНИМАНИЕ: Найдены записи по ID, но level не совпал!');
+        debugPrint(
+            '   Level в записях: ${foundById.map((e) => e.level).toSet().toList()}');
+      }
+    } else {
+      _baseStorage = [];
+    }
+
+    // Транспорт
     _ownTransport = clientData?.transportConditions
-            .where((c) => c.entityId == product.id && c.level == 'Прайс-лист')
+            .where((c) => c.entityId == productIdStr && c.level == 'Прайс-лист')
             .toList() ??
         [];
     _baseTransport = (catIdStr != null && clientData != null)
@@ -374,12 +384,14 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
             .toList()
         : [];
 
-    // Лог для проверки
-    debugPrint('🧩 ИТОГО для ${product.name}:');
+    // ЛОГ
+    debugPrint('🧩 ИТОГО:');
     debugPrint(
         '   Начинок: Своих=${_ownFillings.length}, От кат=${_baseFillings.length}');
     debugPrint(
         '   Состав: Своего=${_ownCompositions.length}, Базового=${_baseCompositions.length}');
+    debugPrint(
+        '🧊 Хранение: Своих=${_ownStorage.length}, Базового=${_baseStorage.length}');
 
     setState(() {
       _hasLocalChanges = false;
