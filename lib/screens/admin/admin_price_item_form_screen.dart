@@ -309,6 +309,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     // ==================
 
     // Состав
+    // Ищем свои (ID товара + Прайс-лист)
     _ownCompositions = clientData?.compositions
             .where((c) =>
                 c.sheetName == 'Состав' &&
@@ -316,12 +317,10 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                 c.level == 'Прайс-лист')
             .toList() ??
         [];
+    // Ищем базовые (ID категории). Level не проверяем, т.к. если ID категории совпал, это база.
     _baseCompositions = (catIdStr != null && clientData != null)
         ? clientData.compositions
-            .where((c) =>
-                c.sheetName == 'Состав' &&
-                c.entityId == catIdStr &&
-                c.level == 'Категории прайса')
+            .where((c) => c.sheetName == 'Состав' && c.entityId == catIdStr)
             .toList()
         : [];
 
@@ -335,42 +334,21 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         [];
     _baseFillings = (catIdStr != null && clientData != null)
         ? clientData.compositions
-            .where((c) =>
-                c.sheetName == 'Начинки' &&
-                c.entityId == catIdStr &&
-                c.level == 'Категории прайса')
+            .where((c) => c.sheetName == 'Начинки' && c.entityId == catIdStr)
             .toList()
         : [];
 
     // Хранение
-    // Ищем СВОИ условия
     _ownStorage = clientData?.storageConditions
             .where((c) => c.entityId == productIdStr && c.level == 'Прайс-лист')
             .toList() ??
         [];
-
-    // Ищем БАЗОВЫЕ условия (от категории)
-    if (catIdStr != null && clientData != null) {
-      final rawList = clientData.storageConditions;
-      debugPrint('   Всего storageConditions в базе: ${rawList.length}');
-
-      // Пробуем найти хоть что-то с этим ID
-      final foundById = rawList.where((c) => c.entityId == catIdStr).toList();
-      debugPrint('   Найдено storage по ID ($catIdStr): ${foundById.length}');
-
-      // Теперь фильтруем по level
-      _baseStorage =
-          foundById.where((c) => c.level == 'Категории прайса').toList();
-
-      // Если 0, выводим какие level есть у найденных
-      if (foundById.isNotEmpty && _baseStorage.isEmpty) {
-        debugPrint('   ВНИМАНИЕ: Найдены записи по ID, но level не совпал!');
-        debugPrint(
-            '   Level в записях: ${foundById.map((e) => e.level).toSet().toList()}');
-      }
-    } else {
-      _baseStorage = [];
-    }
+    // Базовые: ID категории совпал — значит это база. Level не важен.
+    _baseStorage = (catIdStr != null && clientData != null)
+        ? clientData.storageConditions
+            .where((c) => c.entityId == catIdStr)
+            .toList()
+        : [];
 
     // Транспорт
     _ownTransport = clientData?.transportConditions
@@ -379,8 +357,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         [];
     _baseTransport = (catIdStr != null && clientData != null)
         ? clientData.transportConditions
-            .where(
-                (c) => c.entityId == catIdStr && c.level == 'Категории прайса')
+            .where((c) => c.entityId == catIdStr)
             .toList()
         : [];
 

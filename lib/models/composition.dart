@@ -59,22 +59,51 @@ class Composition {
   }
 
   factory Composition.fromJson(Map<String, dynamic> json) {
+    // Универсальное получение ID (может быть числом или строкой)
+    String parseId(dynamic value) {
+      if (value == null) return '';
+      return value.toString();
+    }
+
+    // Получаем ID сущности
+    final entityId = parseId(json['ID сущности'] ?? json['entityId']);
+
+    // Определяем sheetName (приоритет русскому ключу)
+    final sheetName = (json['Лист'] ?? json['sheetName'] ?? '').toString();
+
+    // Парсим название ингредиента
+    final ingredientName = (json['Ингредиент'] ??
+            json['ingredientName'] ??
+            json['Наименование'] ??
+            '')
+        .toString();
+
     return Composition(
-      id: ParsingUtils.safeString(json['id']) ??
-          DateTime.now().millisecondsSinceEpoch.toString(),
-      sheetName: ParsingUtils.safeString(json['sheetName']) ?? '',
-      level: ParsingUtils.safeString(json['level']) ?? 'Прайс-лист',
-      entityId: ParsingUtils.safeString(json['entityId']) ?? '',
-      description: ParsingUtils.safeString(json['description']) ?? '',
-      ingredientName: ParsingUtils.safeString(json['ingredientName']) ?? '',
-      quantity: ParsingUtils.parseDouble(json['quantity']) ?? 0.0,
-      unitSymbol: ParsingUtils.safeString(json['unitSymbol']) ?? '',
-      // Новые поля
-      storagePlace: ParsingUtils.safeString(json['storagePlace']) ?? '',
-      temperature: ParsingUtils.safeString(json['temperature']) ?? '',
-      humidity: ParsingUtils.safeString(json['humidity']) ?? '',
-      shelfLife: ParsingUtils.safeString(json['shelfLife']) ?? '',
-      shelfLifeUnit: ParsingUtils.safeString(json['shelfLifeUnit']) ?? '',
+      id: parseId(json['ID'] ?? json['id']),
+      sheetName: sheetName,
+      entityId: entityId,
+      ingredientName: ingredientName,
+      // Количество может прийти строкой "10" или числом 10
+      quantity: double.tryParse(
+              (json['Количество'] ?? json['quantity'] ?? 0).toString()) ??
+          0.0,
+      unitSymbol:
+          (json['Ед.изм.'] ?? json['unitSymbol'] ?? json['Ед.изм'] ?? '')
+              .toString(),
+
+      // Новые поля для условий хранения
+      level: (json['Лист'] ?? json['level'] ?? '')
+          .toString(), // Часто level совпадает с Лист
+      description: (json['Описание'] ?? json['description'] ?? '').toString(),
+      storagePlace:
+          (json['Место хранения'] ?? json['storagePlace'] ?? '').toString(),
+      temperature:
+          (json['Температура'] ?? json['temperature'] ?? '').toString(),
+      humidity: (json['Влажность'] ?? json['humidity'] ?? '').toString(),
+      shelfLife: (json['Срок'] ?? json['shelfLife'] ?? '').toString(),
+      shelfLifeUnit:
+          (json['Ед.изм.'] ?? json['shelfLifeUnit'] ?? json['unit'] ?? '')
+              .toString(), // Для срока ед.изм часто та же колонка
     );
   }
 
