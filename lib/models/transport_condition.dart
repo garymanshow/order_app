@@ -5,7 +5,7 @@ class TransportCondition {
   final String sheetName; // Не используется в текущей логике, дублирует level
   final String entityId;
   final String level; // "Категории прайса" и т.д. (Колонка "Лист")
-  final String description;
+  String description;
 
   TransportCondition({
     this.id = '',

@@ -12,7 +12,6 @@ import '../../models/storage_condition.dart';
 import '../../models/transport_condition.dart';
 import '../../services/api_service.dart';
 
-// Конфигурация кнопок списков
 class _ListButtonConfig {
   final String title;
   final IconData icon;
@@ -22,6 +21,7 @@ class _ListButtonConfig {
   final bool showQuantity;
   final bool showUnit;
   final bool isStorage;
+  final bool isTransport;
 
   const _ListButtonConfig({
     required this.title,
@@ -32,10 +32,10 @@ class _ListButtonConfig {
     this.showQuantity = false,
     this.showUnit = false,
     this.isStorage = false,
+    this.isTransport = false,
   });
 }
 
-// Модель данных формы
 class ProductFormData {
   final String productId;
   String name;
@@ -50,8 +50,14 @@ class ProductFormData {
   String weight;
   int wastePercentage;
 
-  Map<String, List<Composition>> baseLists = {};
-  Map<String, List<Composition>> ownLists = {};
+  Map<String, List<Composition>> baseCompositions = {};
+  Map<String, List<Composition>> ownCompositions = {};
+
+  List<StorageCondition> baseStorage = [];
+  List<StorageCondition> ownStorage = [];
+
+  List<TransportCondition> baseTransport = [];
+  List<TransportCondition> ownTransport = [];
 
   ProductFormData({
     required this.productId,
@@ -69,7 +75,6 @@ class ProductFormData {
   });
 }
 
-// Модель очереди изменений
 class PendingChange {
   final String sheetName;
   final String entityId;
@@ -111,6 +116,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     sheetName: 'Условия транспортировки',
     levelCategory: 'Категории прайса',
     levelProduct: 'Прайс-лист',
+    isTransport: true,
   );
 
   static const _kStorageConfig = _ListButtonConfig(
@@ -144,7 +150,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
   List<PriceCategory> _categories = [];
   List<Product> _allProducts = [];
-
   late PageController _pageController;
   int _currentIndex = 0;
 
@@ -153,20 +158,18 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   bool _hasLocalChanges = false;
   final List<PendingChange> _pendingChanges = [];
 
-  // ПЕРЕМЕННЫЕ ДЛЯ ОТОБРАЖЕНИЯ "ХВОСТОВ"
-  List<Composition> _ownCompositions = [];
-  List<Composition> _baseCompositions = [];
-  List<Composition> _ownFillings = [];
-  List<Composition> _baseFillings = [];
-  List<StorageCondition> _ownStorage = [];
-  List<StorageCondition> _baseStorage = [];
-  List<TransportCondition> _ownTransport = [];
-  List<TransportCondition> _baseTransport = [];
+  int _ownCompositionsCount = 0;
+  int _baseCompositionsCount = 0;
+  int _ownFillingsCount = 0;
+  int _baseFillingsCount = 0;
+  int _ownStorageCount = 0;
+  int _baseStorageCount = 0;
+  int _ownTransportCount = 0;
+  int _baseTransportCount = 0;
 
   ProductFormData get _currentData {
-    if (_currentIndex < 0 || _currentIndex >= _allProducts.length) {
+    if (_currentIndex < 0 || _currentIndex >= _allProducts.length)
       return ProductFormData(productId: '');
-    }
     final id = _allProducts[_currentIndex].id;
     return _formDataMap.putIfAbsent(id, () => ProductFormData(productId: id));
   }
@@ -175,9 +178,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: 0);
-    _loadInitialData().then((_) {
-      _initPageIndex();
-    });
+    _loadInitialData().then((_) => _initPageIndex());
   }
 
   void _initPageIndex() {
@@ -222,162 +223,122 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       PriceCategory? productCategory;
       if (product.categoryId.isNotEmpty) {
         try {
-          productCategory = _categories.firstWhere(
-            (c) => c.id.toString() == product.categoryId,
-          );
-        } catch (_) {
-          productCategory = null;
-        }
+          productCategory = _categories
+              .firstWhere((c) => c.id.toString() == product.categoryId);
+        } catch (_) {}
       }
 
       final data = ProductFormData(
         productId: product.id,
         name: product.name,
         price: product.price,
-        multiplicity: product.multiplicity,
+        multiplicity:
+            productCategory?.packagingQuantity ?? product.multiplicity,
         photoUrl: product.imageUrl ?? '',
         description: product.composition ?? '',
         categoryId: productCategory?.id.toString() ?? product.categoryId,
-        categoryName: productCategory?.name ?? product.categoryName ?? '',
+        categoryName: productCategory?.name ?? product.categoryName,
         unit: productCategory?.unit ?? 'г',
         weight: productCategory?.weight.toString() ?? product.weight,
         wastePercentage:
             productCategory?.wastePercentage ?? product.wastePercentage,
       );
 
-      final configs = [
-        _kTransportConfig,
-        _kStorageConfig,
-        _kFillingConfig,
-        _kCompositionConfig
-      ];
-
       final String productIdStr = product.id.toString();
-      final String? catIdStr = productCategory?.id.toString();
+      final String catIdStr = productCategory?.id.toString() ?? '';
 
-      for (var config in configs) {
-        if (catIdStr != null && clientData != null) {
-          data.baseLists[config.sheetName] = clientData.compositions
+      if (clientData != null) {
+        // 1. Начинки категории
+        data.baseCompositions[_kFillingConfig.sheetName] = catIdStr.isNotEmpty
+            ? clientData.compositions
+                .where((c) =>
+                    c.sheetName == _kFillingConfig.sheetName &&
+                    c.entityId.toString() == catIdStr &&
+                    c.level == _kFillingConfig.levelCategory)
+                .toList()
+            : [];
+        data.ownCompositions[_kFillingConfig.sheetName] = clientData
+            .compositions
+            .where((c) =>
+                c.sheetName == _kFillingConfig.sheetName &&
+                c.entityId.toString() == productIdStr &&
+                c.level == _kFillingConfig.levelProduct)
+            .toList();
+
+        // 2. Состав: берем ID найденных начинок и ищем их ингредиенты
+        List<Composition> baseCompList = [];
+        if (data.baseCompositions[_kFillingConfig.sheetName]!.isNotEmpty) {
+          final fillingIds = data.baseCompositions[_kFillingConfig.sheetName]!
+              .map((f) => f.id.toString())
+              .toList();
+          baseCompList = clientData.compositions
               .where((c) =>
-                  c.sheetName == config.sheetName &&
-                  c.level == config.levelCategory &&
-                  c.entityId == catIdStr)
+                  c.sheetName == _kCompositionConfig.sheetName &&
+                  fillingIds.contains(c.entityId.toString()) &&
+                  c.level == _kCompositionConfig.levelCategory)
               .toList();
         }
-        if (clientData != null) {
-          data.ownLists[config.sheetName] = clientData.compositions
-              .where((c) =>
-                  c.sheetName == config.sheetName &&
-                  c.level == config.levelProduct &&
-                  c.entityId == productIdStr)
-              .toList();
-        }
+        data.baseCompositions[_kCompositionConfig.sheetName] = baseCompList;
+        data.ownCompositions[_kCompositionConfig.sheetName] = clientData
+            .compositions
+            .where((c) =>
+                c.sheetName == _kCompositionConfig.sheetName &&
+                c.entityId.toString() == productIdStr &&
+                c.level == _kCompositionConfig.levelProduct)
+            .toList();
+
+        // 3. Хранение и Транспорт
+        data.ownStorage = clientData.storageConditions
+            .where((c) =>
+                c.entityId.toString() == productIdStr &&
+                c.level == _kStorageConfig.levelProduct)
+            .toList();
+        data.baseStorage = catIdStr.isNotEmpty
+            ? clientData.storageConditions
+                .where((c) =>
+                    c.entityId.toString() == catIdStr &&
+                    c.level == _kStorageConfig.levelCategory)
+                .toList()
+            : [];
+        data.ownTransport = clientData.transportConditions
+            .where((c) =>
+                c.entityId.toString() == productIdStr &&
+                c.level == _kTransportConfig.levelProduct)
+            .toList();
+        data.baseTransport = catIdStr.isNotEmpty
+            ? clientData.transportConditions
+                .where((c) =>
+                    c.entityId.toString() == catIdStr &&
+                    c.level == _kTransportConfig.levelCategory)
+                .toList()
+            : [];
       }
       _formDataMap[product.id] = data;
     }
-
-    // === ЗАГРУЗКА "ХВОСТОВ" ДЛЯ ОТОБРАЖЕНИЯ ===
-
-    final String productIdStr = product.id.toString();
-
-    PriceCategory? currentCategory;
-    String? catIdStr;
-    if (product.categoryId.isNotEmpty) {
-      try {
-        currentCategory = _categories
-            .firstWhere((c) => c.id.toString() == product.categoryId);
-        catIdStr = currentCategory.id.toString();
-      } catch (_) {
-        currentCategory = null;
-        catIdStr = null;
-      }
-    }
-
-    // === ДИАГНОСТИКА ===
-    debugPrint('🔎 ДИАГНОСТИКА ФИЛЬТРАЦИИ для ${product.name}:');
-    debugPrint('   Ищем ID товара: $productIdStr');
-    debugPrint('   Ищем ID кат: $catIdStr');
-
-    // Проверяем, что вообще есть в compositions
-    if (clientData != null && clientData.compositions.isNotEmpty) {
-      final sample = clientData.compositions.first;
-      debugPrint(
-          '   Пример записи в comp: entityId="${sample.entityId}" | sheet="${sample.sheetName}" | level="${sample.level}"');
-    } else {
-      debugPrint('   ВНИМАНИЕ: compositions пуст!');
-    }
-    // ==================
-
-    // Состав
-    // Ищем свои (ID товара + Прайс-лист)
-    _ownCompositions = clientData?.compositions
-            .where((c) =>
-                c.sheetName == 'Состав' &&
-                c.entityId == productIdStr &&
-                c.level == 'Прайс-лист')
-            .toList() ??
-        [];
-    // Ищем базовые (ID категории). Level не проверяем, т.к. если ID категории совпал, это база.
-    _baseCompositions = (catIdStr != null && clientData != null)
-        ? clientData.compositions
-            .where((c) => c.sheetName == 'Состав' && c.entityId == catIdStr)
-            .toList()
-        : [];
-
-    // Начинки
-    _ownFillings = clientData?.compositions
-            .where((c) =>
-                c.sheetName == 'Начинки' &&
-                c.entityId == productIdStr &&
-                c.level == 'Прайс-лист')
-            .toList() ??
-        [];
-    _baseFillings = (catIdStr != null && clientData != null)
-        ? clientData.compositions
-            .where((c) => c.sheetName == 'Начинки' && c.entityId == catIdStr)
-            .toList()
-        : [];
-
-    // Хранение
-    _ownStorage = clientData?.storageConditions
-            .where((c) => c.entityId == productIdStr && c.level == 'Прайс-лист')
-            .toList() ??
-        [];
-    // Базовые: ID категории совпал — значит это база. Level не важен.
-    _baseStorage = (catIdStr != null && clientData != null)
-        ? clientData.storageConditions
-            .where((c) => c.entityId == catIdStr)
-            .toList()
-        : [];
-
-    // Транспорт
-    _ownTransport = clientData?.transportConditions
-            .where((c) => c.entityId == productIdStr && c.level == 'Прайс-лист')
-            .toList() ??
-        [];
-    _baseTransport = (catIdStr != null && clientData != null)
-        ? clientData.transportConditions
-            .where((c) => c.entityId == catIdStr)
-            .toList()
-        : [];
-
-    // ЛОГ
-    debugPrint('🧩 ИТОГО:');
-    debugPrint(
-        '   Начинок: Своих=${_ownFillings.length}, От кат=${_baseFillings.length}');
-    debugPrint(
-        '   Состав: Своего=${_ownCompositions.length}, Базового=${_baseCompositions.length}');
-    debugPrint(
-        '🧊 Хранение: Своих=${_ownStorage.length}, Базового=${_baseStorage.length}');
-
+    _refreshTails();
     setState(() {
       _hasLocalChanges = false;
     });
   }
 
+  void _refreshTails() {
+    final data = _currentData;
+    _ownCompositionsCount =
+        (data.ownCompositions[_kCompositionConfig.sheetName] ?? []).length;
+    _baseCompositionsCount =
+        (data.baseCompositions[_kCompositionConfig.sheetName] ?? []).length;
+    _ownFillingsCount =
+        (data.ownCompositions[_kFillingConfig.sheetName] ?? []).length;
+    _baseFillingsCount =
+        (data.baseCompositions[_kFillingConfig.sheetName] ?? []).length;
+    _ownStorageCount = data.ownStorage.length;
+    _baseStorageCount = data.baseStorage.length;
+    _ownTransportCount = data.ownTransport.length;
+    _baseTransportCount = data.baseTransport.length;
+  }
+
   void _saveItemLocally() {
     if (!_formKey.currentState!.validate()) return;
-
     final data = _currentData;
     final product = _allProducts[_currentIndex];
 
@@ -397,37 +358,90 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       wastePercentage: data.wastePercentage,
       displayName: data.name,
     );
-
     final pIndex = _allProducts.indexWhere((p) => p.id == product.id);
     if (pIndex != -1) _allProducts[pIndex] = updatedProduct;
 
-    final configs = [
-      _kTransportConfig,
-      _kStorageConfig,
-      _kFillingConfig,
-      _kCompositionConfig
-    ];
-    for (var config in configs) {
-      final newOwnList = data.ownLists[config.sheetName] ?? [];
+    for (var config in [_kCompositionConfig, _kFillingConfig]) {
       _pendingChanges.add(PendingChange(
-        sheetName: config.sheetName,
-        entityId: product.id,
-        level: config.levelProduct,
-        items: newOwnList.map((c) => c.toJson()).toList(),
-      ));
+          sheetName: config.sheetName,
+          entityId: product.id,
+          level: config.levelProduct,
+          items: (data.ownCompositions[config.sheetName] ?? [])
+              .map((c) => c.toJson())
+              .toList()));
+      if (data.categoryId.isNotEmpty) {
+        _pendingChanges.add(PendingChange(
+            sheetName: config.sheetName,
+            entityId: data.categoryId,
+            level: config.levelCategory,
+            items: (data.baseCompositions[config.sheetName] ?? [])
+                .map((c) => c.toJson())
+                .toList()));
+      }
     }
+    _pendingChanges.add(PendingChange(
+        sheetName: _kStorageConfig.sheetName,
+        entityId: product.id,
+        level: _kStorageConfig.levelProduct,
+        items: data.ownStorage.map((c) => c.toJson()).toList()));
+    if (data.categoryId.isNotEmpty)
+      _pendingChanges.add(PendingChange(
+          sheetName: _kStorageConfig.sheetName,
+          entityId: data.categoryId,
+          level: _kStorageConfig.levelCategory,
+          items: data.baseStorage.map((c) => c.toJson()).toList()));
+    _pendingChanges.add(PendingChange(
+        sheetName: _kTransportConfig.sheetName,
+        entityId: product.id,
+        level: _kTransportConfig.levelProduct,
+        items: data.ownTransport.map((c) => c.toJson()).toList()));
+    if (data.categoryId.isNotEmpty)
+      _pendingChanges.add(PendingChange(
+          sheetName: _kTransportConfig.sheetName,
+          entityId: data.categoryId,
+          level: _kTransportConfig.levelCategory,
+          items: data.baseTransport.map((c) => c.toJson()).toList()));
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final clientData = authProvider.clientData!;
-    for (var config in configs) {
+    for (var config in [_kCompositionConfig, _kFillingConfig]) {
       clientData.compositions.removeWhere((c) =>
           c.sheetName == config.sheetName &&
-          c.level == config.levelProduct &&
-          c.entityId == product.id);
-      clientData.compositions.addAll(data.ownLists[config.sheetName] ?? []);
+          c.entityId.toString() == product.id.toString() &&
+          c.level == config.levelProduct);
+      clientData.compositions
+          .addAll(data.ownCompositions[config.sheetName] ?? []);
+      if (data.categoryId.isNotEmpty) {
+        clientData.compositions.removeWhere((c) =>
+            c.sheetName == config.sheetName &&
+            c.entityId.toString() == data.categoryId &&
+            c.level == config.levelCategory);
+        clientData.compositions
+            .addAll(data.baseCompositions[config.sheetName] ?? []);
+      }
     }
-    clientData.buildIndexes();
+    clientData.storageConditions.removeWhere((c) =>
+        c.entityId.toString() == product.id.toString() &&
+        c.level == _kStorageConfig.levelProduct);
+    clientData.storageConditions.addAll(data.ownStorage);
+    if (data.categoryId.isNotEmpty) {
+      clientData.storageConditions.removeWhere((c) =>
+          c.entityId.toString() == data.categoryId &&
+          c.level == _kStorageConfig.levelCategory);
+      clientData.storageConditions.addAll(data.baseStorage);
+    }
+    clientData.transportConditions.removeWhere((c) =>
+        c.entityId.toString() == product.id.toString() &&
+        c.level == _kTransportConfig.levelProduct);
+    clientData.transportConditions.addAll(data.ownTransport);
+    if (data.categoryId.isNotEmpty) {
+      clientData.transportConditions.removeWhere((c) =>
+          c.entityId.toString() == data.categoryId &&
+          c.level == _kTransportConfig.levelCategory);
+      clientData.transportConditions.addAll(data.baseTransport);
+    }
 
+    clientData.buildIndexes();
     setState(() {
       _hasLocalChanges = false;
       _isSaving = false;
@@ -436,91 +450,77 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
   Future<void> _commitChanges() async {
     if (_pendingChanges.isEmpty) return;
-
     setState(() => _isSaving = true);
-
     final Map<String, PendingChange> uniqueChanges = {};
     for (var change in _pendingChanges) {
-      uniqueChanges['${change.sheetName}_${change.entityId}'] = change;
+      uniqueChanges['${change.sheetName}_${change.entityId}_${change.level}'] =
+          change;
     }
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final String? userPhone = authProvider.currentUser?.phone;
-
-      if (userPhone == null || userPhone.isEmpty) {
-        throw Exception('Не удалось определить телефон пользователя');
-      }
-
+      if (userPhone == null || userPhone.isEmpty)
+        throw Exception('Нет телефона');
       bool allSuccess = true;
-
       for (var change in uniqueChanges.values) {
         final success = await _apiService.saveConditions(
-          phone: userPhone,
-          sheetName: change.sheetName,
-          entityId: change.entityId,
-          level: change.level,
-          items: change.items,
-        );
+            phone: userPhone,
+            sheetName: change.sheetName,
+            entityId: change.entityId,
+            level: change.level,
+            items: change.items);
         if (!success) allSuccess = false;
       }
-
       await authProvider.saveToCache();
-
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(allSuccess
-                ? 'Все изменения успешно сохранены на сервере'
-                : 'Часть изменений не сохранилась'),
-            backgroundColor: allSuccess ? Colors.green : Colors.orange));
-      }
+            content: Text(allSuccess ? 'Сохранено' : 'Ошибка'),
+            backgroundColor: allSuccess ? Colors.green : Colors.red));
       _pendingChanges.clear();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Ошибка отправки: $e'), backgroundColor: Colors.red));
-      }
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  // ДИАЛОГИ
+  // --- ДИАЛОГИ ---
 
   void _showImageSourceDialog() {
     showModalBottomSheet(
         context: context,
-        builder: (context) {
-          return SafeArea(
-              child: Wrap(children: [
-            ListTile(
-                leading: const Icon(Icons.link),
-                title: const Text('Вставить URL'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showUrlDialog();
-                }),
-            ListTile(
-                leading: const Icon(Icons.folder_open),
-                title: const Text('Выбрать файл'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickFile();
-                }),
-            if (_currentData.photoUrl.isNotEmpty)
+        builder: (context) => SafeArea(
+                child: Wrap(children: [
               ListTile(
-                  leading: const Icon(Icons.delete, color: Colors.red),
-                  title: const Text('Удалить фото'),
+                  leading: const Icon(Icons.link),
+                  title: const Text('URL'),
                   onTap: () {
-                    setState(() {
-                      _currentData.photoUrl = '';
-                      _currentData.imageBytes = null;
-                      _hasLocalChanges = true;
-                    });
                     Navigator.pop(context);
+                    _showUrlDialog();
                   }),
-          ]));
-        });
+              ListTile(
+                  leading: const Icon(Icons.folder_open),
+                  title: const Text('Файл'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFile();
+                  }),
+              if (_currentData.photoUrl.isNotEmpty)
+                ListTile(
+                    leading: const Icon(Icons.delete, color: Colors.red),
+                    title: const Text('Удалить'),
+                    onTap: () {
+                      setState(() {
+                        _currentData.photoUrl = '';
+                        _currentData.imageBytes = null;
+                        _hasLocalChanges = true;
+                      });
+                      Navigator.pop(context);
+                    })
+            ])));
   }
 
   Future<void> _pickFile() async {
@@ -544,111 +544,130 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     showDialog(
         context: context,
         builder: (context) => AlertDialog(
-              title: const Text('URL изображения'),
-              content: TextField(
-                  controller: tempController,
-                  decoration: const InputDecoration(hintText: 'https://...')),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Отмена')),
-                TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _currentData.photoUrl = tempController.text.trim();
-                        _currentData.imageBytes = null;
-                        _hasLocalChanges = true;
-                      });
-                      Navigator.pop(context);
-                    },
-                    child: const Text('ОК')),
-              ],
-            ));
+                title: const Text('URL'),
+                content: TextField(controller: tempController),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Отмена')),
+                  TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _currentData.photoUrl = tempController.text.trim();
+                          _currentData.imageBytes = null;
+                          _hasLocalChanges = true;
+                        });
+                        Navigator.pop(context);
+                      },
+                      child: const Text('ОК'))
+                ]));
   }
 
   void _showCategoryDialog() {
     showDialog(
         context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('Категория и параметры'),
-            contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 0.0),
-            content: SingleChildScrollView(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<String>(
-                  value: _currentData.categoryName.isEmpty
-                      ? null
-                      : _currentData.categoryName,
-                  decoration: const InputDecoration(
-                      labelText: 'Категория *', border: OutlineInputBorder()),
-                  items: _categories
-                      .map((c) => DropdownMenuItem(
-                          value: c.name,
-                          child: Text(c.name,
-                              style: const TextStyle(color: Colors.white))))
-                      .toList(),
-                  onChanged: (val) {
-                    if (val == null) return;
-                    setState(() {
-                      _currentData.categoryName = val;
-                      final cat = _categories.firstWhere((c) => c.name == val);
-                      _currentData.categoryId = cat.id.toString();
-                      if (cat.weight > 0)
-                        _currentData.weight = cat.weight.toString();
-                      if (cat.unit.isNotEmpty) _currentData.unit = cat.unit;
-                      _currentData.wastePercentage = cat.wastePercentage;
-                      _hasLocalChanges = true;
-                    });
-                    Navigator.pop(context);
-                    _showCategoryDialog();
-                  }),
-              const SizedBox(height: 12),
-              TextFormField(
-                  initialValue: _currentData.weight,
-                  decoration: const InputDecoration(
-                      labelText: 'Вес', border: OutlineInputBorder()),
-                  keyboardType: TextInputType.number,
-                  onChanged: (val) {
-                    _currentData.weight = val;
-                    _hasLocalChanges = true;
-                  }),
-              const SizedBox(height: 12),
-              TextFormField(
-                  initialValue: _currentData.wastePercentage.toString(),
-                  decoration: const InputDecoration(
-                      labelText: 'Процент издержек (%)',
-                      border: OutlineInputBorder()),
-                  keyboardType: TextInputType.number,
-                  onChanged: (val) {
-                    _currentData.wastePercentage = int.tryParse(val) ?? 10;
-                    _hasLocalChanges = true;
-                  }),
-            ])),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Готово'))
-            ],
-          );
-        });
-  }
-
-  void _showDescriptionDialog() {
-    final tempController =
-        TextEditingController(text: _currentData.description);
-    showDialog(
-        context: context,
         builder: (context) => AlertDialog(
-              title: const Text('Описание'),
-              content: TextField(
-                  controller: tempController,
-                  maxLines: 5,
-                  decoration:
-                      const InputDecoration(border: OutlineInputBorder()),
-                  onChanged: (val) {
-                    _currentData.description = val;
-                    _hasLocalChanges = true;
-                  }),
+              title: const Text('Категория'),
+              contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 0.0),
+              content: SingleChildScrollView(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                DropdownButtonFormField<String>(
+                    initialValue: _currentData.categoryName.isEmpty
+                        ? null
+                        : _currentData.categoryName,
+                    decoration: const InputDecoration(
+                        labelText: 'Категория *', border: OutlineInputBorder()),
+                    items: _categories
+                        .map((c) => DropdownMenuItem(
+                            value: c.name,
+                            child: Text(c.name,
+                                style: const TextStyle(color: Colors.white))))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val == null) return;
+                      setState(() {
+                        _currentData.categoryName = val;
+                        final cat =
+                            _categories.firstWhere((c) => c.name == val);
+                        _currentData.categoryId = cat.id.toString();
+                        if (cat.weight > 0) {
+                          _currentData.weight = cat.weight.toString();
+                        }
+                        if (cat.unit.isNotEmpty) {
+                          _currentData.unit = cat.unit;
+                        }
+                        _currentData.wastePercentage = cat.wastePercentage;
+                        _currentData.multiplicity = cat.packagingQuantity;
+                        final clientData =
+                            Provider.of<AuthProvider>(context, listen: false)
+                                .clientData;
+                        final String catIdStr = cat.id.toString();
+                        if (catIdStr.isNotEmpty && clientData != null) {
+                          _currentData
+                                  .baseCompositions[_kFillingConfig.sheetName] =
+                              clientData.compositions
+                                  .where((c) =>
+                                      c.sheetName ==
+                                          _kFillingConfig.sheetName &&
+                                      c.entityId.toString() == catIdStr &&
+                                      c.level == _kFillingConfig.levelCategory)
+                                  .toList();
+                          final fillingIds = _currentData
+                              .baseCompositions[_kFillingConfig.sheetName]!
+                              .map((f) => f.id.toString())
+                              .toList();
+                          _currentData.baseCompositions[
+                              _kCompositionConfig
+                                  .sheetName] = clientData.compositions
+                              .where((c) =>
+                                  c.sheetName ==
+                                      _kCompositionConfig.sheetName &&
+                                  fillingIds.contains(c.entityId.toString()) &&
+                                  c.level == _kCompositionConfig.levelCategory)
+                              .toList();
+                          _currentData.baseStorage = clientData
+                              .storageConditions
+                              .where((c) =>
+                                  c.entityId.toString() == catIdStr &&
+                                  c.level == _kStorageConfig.levelCategory)
+                              .toList();
+                          _currentData.baseTransport = clientData
+                              .transportConditions
+                              .where((c) =>
+                                  c.entityId.toString() == catIdStr &&
+                                  c.level == _kTransportConfig.levelCategory)
+                              .toList();
+                        } else {
+                          _currentData.baseCompositions.clear();
+                          _currentData.baseStorage = [];
+                          _currentData.baseTransport = [];
+                        }
+                        _refreshTails();
+                        _hasLocalChanges = true;
+                      });
+                      Navigator.pop(context);
+                      _showCategoryDialog();
+                    }),
+                const SizedBox(height: 12),
+                TextFormField(
+                    initialValue: _currentData.weight,
+                    decoration: const InputDecoration(labelText: 'Вес'),
+                    keyboardType: TextInputType.number,
+                    onChanged: (val) {
+                      _currentData.weight = val;
+                      _hasLocalChanges = true;
+                    }),
+                const SizedBox(height: 12),
+                TextFormField(
+                    initialValue: _currentData.wastePercentage.toString(),
+                    decoration:
+                        const InputDecoration(labelText: 'Издержки (%)'),
+                    keyboardType: TextInputType.number,
+                    onChanged: (val) {
+                      _currentData.wastePercentage = int.tryParse(val) ?? 10;
+                      _hasLocalChanges = true;
+                    }),
+              ])),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context),
@@ -657,193 +676,342 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
             ));
   }
 
-  void _showListDialog(_ListButtonConfig config) {
+  void _showDescriptionDialog() {
+    final tempController =
+        TextEditingController(text: _currentData.description);
+    showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('Описание'),
+                content: TextField(
+                    controller: tempController,
+                    maxLines: 5,
+                    onChanged: (val) {
+                      _currentData.description = val;
+                      _hasLocalChanges = true;
+                    }),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Готово'))
+                ]));
+  }
+
+  void _showListActionSheet(_ListButtonConfig config) {
     final data = _currentData;
-    List<Composition> baseList = data.baseLists[config.sheetName] ?? [];
-    List<Composition> ownList =
-        List.from(data.ownLists[config.sheetName] ?? []);
+    int baseCount = 0;
+    int ownCount = 0;
+    if (config.isStorage) {
+      baseCount = data.baseStorage.length;
+      ownCount = data.ownStorage.length;
+    } else if (config.isTransport) {
+      baseCount = data.baseTransport.length;
+      ownCount = data.ownTransport.length;
+    } else {
+      baseCount = (data.baseCompositions[config.sheetName] ?? []).length;
+      ownCount = (data.ownCompositions[config.sheetName] ?? []).length;
+    }
+
+    final String categoryLabel = config.sheetName == 'Состав'
+        ? 'Состав начинок (${data.categoryName})'
+        : 'Для категории ${data.categoryName}';
+    final String productLabel =
+        data.name.isNotEmpty ? data.name : 'Собственные';
+
+    showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(12))),
+        builder: (context) => SafeArea(
+                child: Wrap(children: [
+              Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(config.title,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold))),
+              ListTile(
+                  leading: const Icon(Icons.lock_outline),
+                  title: Text(categoryLabel),
+                  subtitle: Text('$baseCount записей'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showListDialog(config, isBase: true);
+                  }),
+              ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(productLabel),
+                  subtitle: Text('$ownCount записей'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showListDialog(config, isBase: false);
+                  }),
+              const SizedBox(height: 8),
+              ListTile(
+                  leading: const Icon(Icons.close),
+                  title: const Text('Отмена'),
+                  onTap: () => Navigator.pop(context)),
+            ])));
+  }
+
+  void _showListDialog(_ListButtonConfig config, {bool isBase = false}) {
+    final data = _currentData;
+    List<dynamic> sourceList = [];
+    if (config.isStorage) {
+      sourceList = isBase ? data.baseStorage : data.ownStorage;
+    } else if (config.isTransport) {
+      sourceList = isBase ? data.baseTransport : data.ownTransport;
+    } else {
+      sourceList = isBase
+          ? (data.baseCompositions[config.sheetName] ?? [])
+          : (data.ownCompositions[config.sheetName] ?? []);
+    }
+
+    List<dynamic> editableList = List.from(sourceList);
+
+    final String dialogTitle = isBase
+        ? (config.sheetName == 'Состав'
+            ? 'Состав начинок (${data.categoryName})'
+            : '${config.title} (Для ${data.categoryName})')
+        : '${config.title} (${data.name})';
 
     showDialog(
         context: context,
-        builder: (context) {
-          return StatefulBuilder(builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text(config.title),
-              content: SizedBox(
-                width: double.maxFinite,
-                height: 500,
-                child: Column(
-                  children: [
-                    if (baseList.isNotEmpty)
-                      ExpansionTile(
-                        title: Text("Унаследовано от категории",
-                            style: TextStyle(
-                                color: Colors.grey[600], fontSize: 14)),
-                        initiallyExpanded: true,
-                        children: [
-                          Container(
-                            color: Colors.grey[100],
-                            constraints: const BoxConstraints(maxHeight: 150),
-                            child: ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: baseList.length,
-                              itemBuilder: (context, index) {
-                                final item = baseList[index];
-                                return ListTile(
-                                  dense: true,
-                                  leading: const Icon(Icons.lock_outline,
-                                      size: 16, color: Colors.grey),
-                                  title: Text(
-                                      config.isStorage
-                                          ? item.formattedStorage
-                                          : item.displayName,
-                                      style:
-                                          const TextStyle(color: Colors.grey)),
-                                  subtitle: config.showQuantity
-                                      ? Text(
-                                          '${item.quantity} ${item.unitSymbol}')
-                                      : null,
-                                );
-                              },
-                            ),
-                          ),
-                          const Divider(),
-                        ],
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
-                      child: Text("Индивидуальные условия",
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).primaryColor)),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: ownList.length + 1,
-                        itemBuilder: (context, index) {
-                          if (index == ownList.length) {
-                            return ListTile(
-                              title: TextButton.icon(
-                                icon: const Icon(Icons.add),
-                                label: const Text('Добавить строку'),
-                                onPressed: () {
-                                  setDialogState(() {
-                                    ownList.add(Composition(
-                                      id: DateTime.now()
-                                          .millisecondsSinceEpoch
-                                          .toString(),
-                                      sheetName: config.sheetName,
-                                      level: config.levelProduct,
-                                      entityId: data.productId,
-                                    ));
-                                  });
-                                },
-                              ),
-                            );
-                          }
-
-                          final item = ownList[index];
-                          return Dismissible(
-                            key: ValueKey(item.id),
-                            onDismissed: (_) =>
-                                setDialogState(() => ownList.removeAt(index)),
-                            background: Container(
-                                color: Colors.red,
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.only(right: 20),
-                                child: const Icon(Icons.delete,
-                                    color: Colors.white)),
-                            child: Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Column(
-                                  children: [
-                                    TextField(
-                                      controller: TextEditingController(
-                                          text: config.isStorage
-                                              ? item.storagePlace
-                                              : item.displayName),
-                                      decoration: InputDecoration(
-                                          labelText: config.isStorage
-                                              ? 'Место хранения / Описание'
-                                              : 'Название',
-                                          border: const OutlineInputBorder(),
-                                          contentPadding:
-                                              const EdgeInsets.all(8)),
-                                      onChanged: (val) {
-                                        if (config.isStorage) {
-                                          item.storagePlace = val;
-                                          item.description = val;
-                                        } else {
-                                          item.description = val;
-                                          item.ingredientName = val;
-                                        }
-                                      },
-                                    ),
-                                    if (config.showQuantity || config.showUnit)
-                                      Row(
-                                        children: [
-                                          if (config.showQuantity)
-                                            Expanded(
-                                              child: TextField(
-                                                controller:
-                                                    TextEditingController(
-                                                        text: item.quantity
-                                                            .toString()),
-                                                decoration:
-                                                    const InputDecoration(
-                                                        labelText: 'Кол-во'),
-                                                keyboardType:
-                                                    TextInputType.number,
-                                                onChanged: (val) => item
-                                                        .quantity =
-                                                    double.tryParse(val) ?? 0,
-                                              ),
-                                            ),
-                                          if (config.showUnit)
-                                            Expanded(
-                                              child: TextField(
-                                                controller:
-                                                    TextEditingController(
-                                                        text: item.unitSymbol),
-                                                decoration:
-                                                    const InputDecoration(
-                                                        labelText: 'Ед.изм.'),
-                                                onChanged: (val) =>
-                                                    item.unitSymbol = val,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
+        builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+                  title: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                          child: Text(dialogTitle,
+                              style: const TextStyle(fontSize: 16))),
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline,
+                            color: Colors.green, size: 28),
+                        onPressed: () {
+                          setDialogState(() {
+                            if (config.isStorage) {
+                              editableList.add(StorageCondition(
+                                  level: isBase
+                                      ? config.levelCategory
+                                      : config.levelProduct,
+                                  entityId: isBase
+                                      ? data.categoryId
+                                      : data.productId));
+                            } else if (config.isTransport) {
+                              editableList.add(TransportCondition(
+                                  sheetName: config.sheetName,
+                                  entityId:
+                                      isBase ? data.categoryId : data.productId,
+                                  level: isBase
+                                      ? config.levelCategory
+                                      : config.levelProduct));
+                            } else {
+                              editableList.add(Composition(
+                                  id: DateTime.now()
+                                      .millisecondsSinceEpoch
+                                      .toString(),
+                                  sheetName: config.sheetName,
+                                  level: isBase
+                                      ? config.levelCategory
+                                      : config.levelProduct,
+                                  entityId: isBase
+                                      ? data.categoryId
+                                      : data.productId));
+                            }
+                          });
                         },
                       ),
-                    ),
+                    ],
+                  ),
+                  content: SizedBox(
+                      width: double.maxFinite,
+                      height: 500,
+                      child: Column(children: [
+                        if (isBase)
+                          Padding(
+                              padding: const EdgeInsets.only(bottom: 12.0),
+                              child: Row(children: [
+                                Icon(Icons.info_outline,
+                                    size: 16, color: Colors.grey[600]),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                    child: Text(
+                                        'Влияет на все товары категории',
+                                        style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 12)))
+                              ])),
+                        Expanded(
+                            child: editableList.isEmpty
+                                ? Center(
+                                    child: Text(
+                                        'Нет записей.\nНажмите + для добавления.',
+                                        textAlign: TextAlign.center,
+                                        style:
+                                            TextStyle(color: Colors.grey[400])))
+                                : ListView.separated(
+                                    itemCount: editableList.length,
+                                    separatorBuilder: (context, index) =>
+                                        const Divider(height: 16),
+                                    itemBuilder: (context, index) {
+                                      final item = editableList[index];
+                                      return Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                                child: _buildEditableFields(
+                                                    config, item)),
+                                            IconButton(
+                                                icon: Icon(Icons.delete_outline,
+                                                    color: Colors.red[300],
+                                                    size: 20),
+                                                onPressed: () => setDialogState(
+                                                    () => editableList
+                                                        .removeAt(index))),
+                                          ]);
+                                    })),
+                      ])),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Отмена')),
+                    ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            if (config.isStorage) {
+                              if (isBase) {
+                                data.baseStorage =
+                                    editableList.cast<StorageCondition>();
+                              } else {
+                                data.ownStorage =
+                                    editableList.cast<StorageCondition>();
+                              }
+                            } else if (config.isTransport) {
+                              if (isBase) {
+                                data.baseTransport =
+                                    editableList.cast<TransportCondition>();
+                              } else {
+                                data.ownTransport =
+                                    editableList.cast<TransportCondition>();
+                              }
+                            } else {
+                              if (isBase) {
+                                data.baseCompositions[config.sheetName] =
+                                    editableList.cast<Composition>();
+                              } else {
+                                data.ownCompositions[config.sheetName] =
+                                    editableList.cast<Composition>();
+                              }
+                            }
+                            _refreshTails();
+                            _hasLocalChanges = true;
+                          });
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Сохранить')),
                   ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Отмена')),
-                ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        data.ownLists[config.sheetName] = ownList;
-                        _hasLocalChanges = true;
-                      });
-                      Navigator.pop(context);
-                    },
-                    child: const Text('Сохранить')),
-              ],
-            );
-          });
-        });
+                )));
   }
+
+  Widget _buildEditableFields(_ListButtonConfig config, dynamic item) {
+    if (item is StorageCondition) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+            controller: TextEditingController(text: item.storageLocation),
+            decoration:
+                const InputDecoration(labelText: 'Место', isDense: true),
+            onChanged: (v) {
+              item.storageLocation = v;
+            }),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+              flex: 2,
+              child: TextField(
+                  controller: TextEditingController(text: item.temperature),
+                  decoration: const InputDecoration(
+                      labelText: 'Температура', isDense: true),
+                  onChanged: (v) {
+                    item.temperature = v;
+                  })),
+          const SizedBox(width: 8),
+          Expanded(
+              flex: 2,
+              child: TextField(
+                  controller: TextEditingController(text: item.shelfLife),
+                  decoration:
+                      const InputDecoration(labelText: 'Срок', isDense: true),
+                  onChanged: (v) {
+                    item.shelfLife = v;
+                  })),
+          const SizedBox(width: 8),
+          Expanded(
+              flex: 1,
+              child: TextField(
+                  controller: TextEditingController(text: item.unit),
+                  decoration: const InputDecoration(
+                      labelText: 'Ед.изм.', isDense: true),
+                  onChanged: (v) {
+                    item.unit = v;
+                  })),
+        ]),
+      ]);
+    }
+    if (item is TransportCondition) {
+      return TextField(
+          controller: TextEditingController(text: item.description),
+          decoration: const InputDecoration(
+              labelText: 'Описание условия', isDense: true),
+          maxLines: 2,
+          onChanged: (v) {
+            item.description = v;
+          });
+    }
+    if (item is Composition) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+            controller: TextEditingController(text: item.displayName),
+            decoration:
+                const InputDecoration(labelText: 'Название', isDense: true),
+            onChanged: (v) {
+              item.description = v;
+              item.ingredientName = v;
+            }),
+        if (config.showQuantity || config.showUnit)
+          Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Row(children: [
+                if (config.showQuantity)
+                  Expanded(
+                      child: TextField(
+                          controller: TextEditingController(
+                              text: item.quantity.toString()),
+                          decoration: const InputDecoration(
+                              labelText: 'Кол-во', isDense: true),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) {
+                            item.quantity = double.tryParse(v) ?? 0;
+                          })),
+                if (config.showQuantity && config.showUnit)
+                  const SizedBox(width: 8),
+                if (config.showUnit)
+                  Expanded(
+                      child: TextField(
+                          controller:
+                              TextEditingController(text: item.unitSymbol),
+                          decoration: const InputDecoration(
+                              labelText: 'Ед.изм.', isDense: true),
+                          onChanged: (v) {
+                            item.unitSymbol = v;
+                          })),
+              ])),
+      ]);
+    }
+    return const SizedBox.shrink();
+  }
+
+  // --- UI ---
 
   @override
   Widget build(BuildContext context) {
@@ -852,84 +1020,64 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           appBar: AppBar(title: const Text('Загрузка...')),
           body: const Center(child: CircularProgressIndicator()));
     }
-
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(
               icon: const Icon(Icons.arrow_back_ios),
               onPressed:
                   _currentIndex > 0 ? () => _goToPage(_currentIndex - 1) : null,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-            ),
-            Text('${_currentIndex + 1} / ${_allProducts.length}'),
-            IconButton(
+              constraints: const BoxConstraints()),
+          Text('${_currentIndex + 1} / ${_allProducts.length}'),
+          IconButton(
               icon: const Icon(Icons.arrow_forward_ios),
               onPressed: _currentIndex < _allProducts.length - 1
                   ? () => _goToPage(_currentIndex + 1)
                   : null,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-            ),
-          ],
-        ),
-        backgroundColor: Theme.of(context).primaryColor,
+              constraints: const BoxConstraints()),
+        ]),
         actions: [
           IconButton(
-            icon: Icon(Icons.save,
-                color: _hasLocalChanges ? Colors.orange : null),
-            onPressed: _isSaving ? null : _saveItemLocally,
-            tooltip: 'Сохранить позицию',
-          ),
+              icon: Icon(Icons.save,
+                  color: _hasLocalChanges ? Colors.orange : null),
+              onPressed: _isSaving ? null : _saveItemLocally)
         ],
       ),
       body: PopScope(
         canPop: !_hasLocalChanges,
         onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
-
           if (_hasLocalChanges) {
-            final saveLocal = await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Сохранить изменения?'),
-                content: const Text(
-                    'У вас есть несохраненные изменения на этой позиции.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Нет')),
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Да')),
-                ],
-              ),
-            );
-            if (saveLocal == true) _saveItemLocally();
+            final save = await showDialog<bool>(
+                context: context,
+                builder: (ctx) =>
+                    AlertDialog(title: const Text('Сохранить?'), actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Нет')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Да'))
+                    ]));
+            if (save == true) {
+              _saveItemLocally();
+            }
           }
-
           if (_pendingChanges.isNotEmpty) {
-            final commit = await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Отправить изменения?'),
-                content: Text(
-                    'Есть ${_pendingChanges.length} ожидающих изменений. Отправить их на сервер?'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Стереть')),
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Отправить')),
-                ],
-              ),
-            );
-
-            if (commit == true) {
+            final send = await showDialog<bool>(
+                context: context,
+                builder: (ctx) =>
+                    AlertDialog(title: const Text('Отправить?'), actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Стереть')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Отправить'))
+                    ]));
+            if (send == true) {
               await _commitChanges();
             } else {
               _pendingChanges.clear();
@@ -937,84 +1085,21 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           }
         },
         child: PageView.builder(
-          controller: _pageController,
-          itemCount: _allProducts.length,
-          onPageChanged: (index) {
-            if (_hasLocalChanges) _saveItemLocally();
-            _loadDataForIndex(index);
-            setState(() => _currentIndex = index);
-          },
-          itemBuilder: (context, index) {
-            return _isSaving
+            controller: _pageController,
+            itemCount: _allProducts.length,
+            onPageChanged: (i) {
+              if (_hasLocalChanges) {
+                _saveItemLocally();
+              }
+              _loadDataForIndex(i);
+              setState(() => _currentIndex = i);
+            },
+            itemBuilder: (c, i) => _isSaving
                 ? const Center(child: CircularProgressIndicator())
                 : SingleChildScrollView(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.all(16),
                     child: Form(
-                      key: ValueKey('form_$index'),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildGeneralBlock(),
-                          const SizedBox(height: 16),
-
-                          // БЛОКИ "ХВОСТОВ"
-                          _buildExpansionTile(
-                            title: 'Состав',
-                            icon: Icons.restaurant_menu,
-                            ownCount: _ownCompositions.length,
-                            baseCount: _baseCompositions.length,
-                            content: _buildCompositionContent(),
-                          ),
-                          const SizedBox(height: 8),
-
-                          _buildExpansionTile(
-                            title: 'Начинки',
-                            icon: Icons.cake,
-                            ownCount: _ownFillings.length,
-                            baseCount: _baseFillings.length,
-                            content: _buildFillingsContent(),
-                          ),
-                          const SizedBox(height: 8),
-
-                          _buildExpansionTile(
-                            title: 'Условия хранения',
-                            icon: Icons.inventory_2,
-                            ownCount: _ownStorage.length,
-                            baseCount: _baseStorage.length,
-                            content: _buildStorageContent(),
-                          ),
-                          const SizedBox(height: 8),
-
-                          _buildExpansionTile(
-                            title: 'Условия транспортировки',
-                            icon: Icons.local_shipping,
-                            ownCount: _ownTransport.length,
-                            baseCount: _baseTransport.length,
-                            content: _buildTransportContent(),
-                          ),
-
-                          const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                              onPressed: _isSaving ? null : _saveItemLocally,
-                              icon: const Icon(Icons.save),
-                              label: Text(
-                                  _hasLocalChanges
-                                      ? 'Сохранить позицию'
-                                      : 'Нет изменений',
-                                  style: const TextStyle(fontSize: 16)),
-                              style: ElevatedButton.styleFrom(
-                                  minimumSize: const Size(double.infinity, 50),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12)),
-                                  backgroundColor: _hasLocalChanges
-                                      ? Colors.green
-                                      : Colors.grey)),
-                        ],
-                      ),
-                    ),
-                  );
-          },
-        ),
+                        key: ValueKey('f_$i'), child: _buildGeneralBlock()))),
       ),
     );
   }
@@ -1022,117 +1107,154 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   Widget _buildGeneralBlock() {
     final data = _currentData;
     return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextFormField(
-                initialValue: data.name,
-                decoration:
-                    const InputDecoration(labelText: 'Название товара *'),
-                validator: (v) => v!.isEmpty ? 'Введите название' : null,
-                onChanged: (val) {
-                  data.name = val;
-                  _hasLocalChanges = true;
-                }),
-            const SizedBox(height: 12),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                  flex: 2,
-                  child: AspectRatio(
-                      aspectRatio: 1.0,
-                      child: GestureDetector(
-                          onTap: _showImageSourceDialog,
-                          child: Container(
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                  color: Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(8),
-                                  border:
-                                      Border.all(color: Colors.grey.shade300)),
-                              child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(7.0),
-                                  child: _buildPhotoView(data)))))),
-              const SizedBox(width: 12),
-              Expanded(
-                  flex: 1,
-                  child: SingleChildScrollView(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                        TextFormField(
-                            initialValue: data.price.toString(),
-                            decoration: const InputDecoration(
-                                labelText: 'Цена *',
-                                isDense: true,
-                                contentPadding:
-                                    EdgeInsets.symmetric(vertical: 12)),
-                            keyboardType: TextInputType.number,
-                            validator: (v) => v!.isEmpty ? 'Укажите' : null,
-                            onChanged: (val) {
-                              data.price = double.tryParse(val) ?? 0;
-                              _hasLocalChanges = true;
-                            }),
-                        const SizedBox(height: 4),
-                        TextFormField(
-                            initialValue: data.multiplicity.toString(),
-                            decoration: const InputDecoration(
-                                labelText: 'Кратность',
-                                isDense: true,
-                                contentPadding:
-                                    EdgeInsets.symmetric(vertical: 12)),
-                            keyboardType: TextInputType.number,
-                            onChanged: (val) {
-                              data.multiplicity = int.tryParse(val) ?? 1;
-                              _hasLocalChanges = true;
-                            }),
-                        const Divider(height: 16, thickness: 1),
-                        _buildParamButton(
-                            icon: Icons.category,
-                            title: 'Категория',
-                            subtitle: data.categoryName.isEmpty
-                                ? '-'
-                                : data.categoryName,
-                            onTap: _showCategoryDialog),
-                        const SizedBox(height: 4),
-                        _buildParamButton(
-                            icon: Icons.scale,
-                            title: 'Вес',
-                            subtitle: '${data.weight} ${data.unit}',
-                            onTap: _showCategoryDialog),
-                        const SizedBox(height: 4),
-                        _buildParamButton(
-                            icon: Icons.description,
-                            title: 'Описание',
-                            subtitle: data.description.isEmpty ? '-' : 'Есть',
-                            onTap: _showDescriptionDialog),
-                      ]))),
-            ]),
-          ],
-        ),
-      ),
-    );
+        elevation: 2,
+        child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(children: [
+              TextFormField(
+                  initialValue: data.name,
+                  decoration: const InputDecoration(labelText: 'Название *'),
+                  validator: (v) => v!.isEmpty ? 'Введите' : null,
+                  onChanged: (v) {
+                    data.name = v;
+                    _hasLocalChanges = true;
+                  }),
+              const SizedBox(height: 12),
+              IntrinsicHeight(
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    Expanded(
+                        flex: 2,
+                        child: Column(children: [
+                          ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 350),
+                              child: GestureDetector(
+                                  onTap: _showImageSourceDialog,
+                                  child: Container(
+                                      width: double.infinity,
+                                      decoration: BoxDecoration(
+                                          color: Colors.grey[200],
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          border: Border.all(
+                                              color: Colors.grey.shade300)),
+                                      child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(7),
+                                          child: _buildPhotoView(data))))),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                              onPressed: _isSaving ? null : _saveItemLocally,
+                              icon: const Icon(Icons.save, size: 18),
+                              label: Text(
+                                  _hasLocalChanges
+                                      ? 'Сохранить'
+                                      : 'Нет изменений',
+                                  style: const TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                  minimumSize: const Size(double.infinity, 40),
+                                  backgroundColor: _hasLocalChanges
+                                      ? Colors.green
+                                      : Colors.grey)),
+                        ])),
+                    const SizedBox(width: 12),
+                    Expanded(
+                        flex: 1,
+                        child: SingleChildScrollView(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                              TextFormField(
+                                  initialValue: data.price.toString(),
+                                  decoration: const InputDecoration(
+                                      labelText: 'Цена *', isDense: true),
+                                  keyboardType: TextInputType.number,
+                                  validator: (v) =>
+                                      v!.isEmpty ? 'Укажите' : null,
+                                  onChanged: (v) {
+                                    data.price = double.tryParse(v) ?? 0;
+                                    _hasLocalChanges = true;
+                                  }),
+                              const SizedBox(height: 4),
+                              TextFormField(
+                                  initialValue: data.multiplicity.toString(),
+                                  decoration: const InputDecoration(
+                                      labelText: 'Кратность', isDense: true),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (v) {
+                                    data.multiplicity = int.tryParse(v) ?? 1;
+                                    _hasLocalChanges = true;
+                                  }),
+                              const Divider(height: 16, thickness: 1),
+                              _buildParamButton(
+                                  icon: Icons.category,
+                                  title: 'Категория',
+                                  subtitle: data.categoryName.isEmpty
+                                      ? '-'
+                                      : data.categoryName,
+                                  onTap: _showCategoryDialog),
+                              const SizedBox(height: 4),
+                              _buildParamButton(
+                                  icon: Icons.scale,
+                                  title: 'Вес',
+                                  subtitle: '${data.weight} ${data.unit}',
+                                  onTap: _showCategoryDialog),
+                              const SizedBox(height: 4),
+                              _buildParamButton(
+                                  icon: Icons.description,
+                                  title: 'Описание',
+                                  subtitle:
+                                      data.description.isEmpty ? '-' : 'Есть',
+                                  onTap: _showDescriptionDialog),
+                              const SizedBox(height: 12),
+                              const Divider(height: 1, thickness: 1),
+                              const SizedBox(height: 8),
+                              _buildListButton(
+                                  icon: Icons.restaurant_menu,
+                                  title:
+                                      'Состав ($_ownCompositionsCount / $_baseCompositionsCount)',
+                                  onTap: () => _showListActionSheet(
+                                      _kCompositionConfig)),
+                              const SizedBox(height: 4),
+                              _buildListButton(
+                                  icon: Icons.cake,
+                                  title:
+                                      'Начинки ($_ownFillingsCount / $_baseFillingsCount)',
+                                  onTap: () =>
+                                      _showListActionSheet(_kFillingConfig)),
+                              const SizedBox(height: 4),
+                              _buildListButton(
+                                  icon: Icons.inventory_2,
+                                  title:
+                                      'Хранение ($_ownStorageCount / $_baseStorageCount)',
+                                  onTap: () =>
+                                      _showListActionSheet(_kStorageConfig)),
+                              const SizedBox(height: 4),
+                              _buildListButton(
+                                  icon: Icons.local_shipping,
+                                  title:
+                                      'Транспорт ($_ownTransportCount / $_baseTransportCount)',
+                                  onTap: () =>
+                                      _showListActionSheet(_kTransportConfig)),
+                            ]))),
+                  ])),
+            ])));
   }
 
   Widget _buildPhotoView(ProductFormData data) {
     if (data.imageBytes != null)
       return Image.memory(data.imageBytes!, fit: BoxFit.cover);
-    String photoPath = data.photoUrl.trim();
-    if (photoPath.isEmpty &&
+    String p = data.photoUrl.trim();
+    if (p.isEmpty &&
         _allProducts.isNotEmpty &&
-        _currentIndex < _allProducts.length) {
-      photoPath =
-          'assets/images/products/${_allProducts[_currentIndex].id}.webp';
-    }
-    if (photoPath.isNotEmpty) {
-      if (photoPath.startsWith('http'))
-        return Image.network(photoPath,
+        _currentIndex < _allProducts.length)
+      p = 'assets/images/products/${_allProducts[_currentIndex].id}.webp';
+    if (p.isNotEmpty) {
+      if (p.startsWith('http'))
+        return Image.network(p,
             fit: BoxFit.cover, errorBuilder: (c, e, s) => _buildEmptyPhoto());
-      String fullPath =
-          photoPath.startsWith('assets/') ? photoPath : 'assets/$photoPath';
-      return Image.asset(fullPath,
+      return Image.asset(p.startsWith('assets/') ? p : 'assets/$p',
           fit: BoxFit.cover, errorBuilder: (c, e, s) => _buildEmptyPhoto());
     }
     return _buildEmptyPhoto();
@@ -1152,9 +1274,9 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
             decoration: BoxDecoration(
-                color: Colors.grey[50],
+                color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.grey.shade200)),
+                border: Border.all(color: Colors.grey.shade300)),
             child: Row(children: [
               Icon(icon, color: Theme.of(context).primaryColor, size: 16),
               const SizedBox(width: 6),
@@ -1163,193 +1285,53 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                     Text(title,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 11),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color:
+                                Theme.of(context).textTheme.bodyLarge?.color),
                         overflow: TextOverflow.ellipsis),
                     Text(subtitle,
-                        style: TextStyle(fontSize: 9, color: Colors.grey[700]),
+                        style:
+                            TextStyle(fontSize: 9, color: Colors.grey.shade600),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1)
                   ])),
-              Icon(Icons.chevron_right, size: 14, color: Colors.grey[400])
+              Icon(Icons.chevron_right, size: 14, color: Colors.grey.shade400)
             ])));
   }
 
-  // ВСПОМОГАТЕЛЬНЫЕ БЛОКИ
-
-  Widget _buildExpansionTile({
-    required String title,
-    required IconData icon,
-    required int ownCount,
-    required int baseCount,
-    required Widget content,
-  }) {
-    return Card(
-      elevation: 1,
-      margin: EdgeInsets.zero,
-      child: ExpansionTile(
-        leading: Icon(icon, color: Theme.of(context).primaryColor),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          'Своих: $ownCount, От категории: $baseCount',
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-        ),
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: content,
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompositionContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (_baseCompositions.isNotEmpty) ...[
-          const Text('Унаследовано от категории:',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: Colors.grey)),
-          const SizedBox(height: 4),
-          ..._baseCompositions.map((c) => _buildMiniItemCard(
-              c.displayName, '${c.quantity} ${c.unitSymbol}')),
-          const Divider(height: 24),
-        ],
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Собственный состав:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-            IconButton(
-              icon: const Icon(Icons.edit, size: 18),
-              onPressed: () => _showListDialog(_kCompositionConfig),
-              tooltip: 'Редактировать',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-            )
-          ],
-        ),
-        const SizedBox(height: 4),
-        if (_ownCompositions.isEmpty)
-          const Text('Не указан',
-              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic))
-        else
-          ..._ownCompositions.map((c) => _buildMiniItemCard(
-              c.displayName, '${c.quantity} ${c.unitSymbol}')),
-      ],
-    );
-  }
-
-  Widget _buildFillingsContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (_baseFillings.isNotEmpty) ...[
-          const Text('Унаследовано:',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: Colors.grey)),
-          ..._baseFillings.map((c) => _buildMiniItemCard(c.displayName, '')),
-          const Divider(height: 24),
-        ],
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Собственные: ${_ownFillings.length}'),
-            IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () => _showListDialog(_kFillingConfig))
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStorageContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (_baseStorage.isNotEmpty) ...[
-          const Text('Унаследовано:',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: Colors.grey)),
-          ..._baseStorage.map((s) => _buildMiniItemCard(s.storageLocation,
-              '${s.temperature}°C, ${s.shelfLife} ${s.unit}')),
-          const Divider(height: 24),
-        ],
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Собственные: ${_ownStorage.length}'),
-            IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () => _showListDialog(_kStorageConfig))
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTransportContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (_baseTransport.isNotEmpty) ...[
-          const Text('Унаследовано:',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: Colors.grey)),
-          ..._baseTransport.map((t) => _buildMiniItemCard(t.description, '')),
-          const Divider(height: 24),
-        ],
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Собственные: ${_ownTransport.length}'),
-            IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () => _showListDialog(_kTransportConfig))
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMiniItemCard(String title, String subtitle) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-              child: Text(title,
-                  style: const TextStyle(fontSize: 13),
-                  overflow: TextOverflow.ellipsis)),
-          if (subtitle.isNotEmpty)
-            Text(subtitle,
-                style:
-                    const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
+  Widget _buildListButton(
+      {required IconData icon,
+      required String title,
+      required VoidCallback onTap}) {
+    return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.grey.shade300)),
+            child: Row(children: [
+              Icon(icon, color: Theme.of(context).primaryColor, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: Text(title,
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          color: Theme.of(context).textTheme.bodyLarge?.color),
+                      overflow: TextOverflow.ellipsis)),
+              Icon(Icons.chevron_right, size: 14, color: Colors.grey.shade400)
+            ])));
   }
 
   void _goToPage(int index) {
-    if (_hasLocalChanges) _saveItemLocally();
+    if (_hasLocalChanges) {
+      _saveItemLocally();
+    }
     _pageController.animateToPage(index,
         duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
   }

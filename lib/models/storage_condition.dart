@@ -6,11 +6,11 @@ class StorageCondition {
   final String entityId; // ID Категории или Начинки (Колонка "ID сущности")
 
   // Данные
-  final String storageLocation; // Колонка "Место хранения"
-  final String temperature; // Колонка "Температура"
-  final String humidity; // Колонка "Влажность"
-  final String shelfLife; // Колонка "Срок"
-  final String unit; // Колонка "Ед.изм."
+  String storageLocation; // Колонка "Место хранения"
+  String temperature; // Колонка "Температура"
+  String humidity; // Колонка "Влажность"
+  String shelfLife; // Колонка "Срок"
+  String unit; // Колонка "Ед.изм."
 
   StorageCondition({
     this.id = '',
