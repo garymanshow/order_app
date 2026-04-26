@@ -8,7 +8,7 @@ import '../utils/parsing_utils.dart';
 /// 4. Условий транспортировки - sheetName = "Условия транспортировки"
 class Composition {
   // === Неизменяемые идентификаторы ===
-  final String id;
+  String id;
   final String sheetName; // Имя листа-источника
   final String
       level; // Уровень иерархии: "Категории прайса", "Прайс-лист", "Начинки"
@@ -46,7 +46,7 @@ class Composition {
 
   /// Геттер для получения отображаемого имени (универсальный)
   String get displayName =>
-      description.isNotEmpty ? description : ingredientName;
+      (description.isNotEmpty ? description : ingredientName).trim();
 
   /// Геттер для форматирования условий хранения в одну строку
   String get formattedStorage {
@@ -65,9 +65,6 @@ class Composition {
       return value.toString();
     }
 
-    // Получаем ID сущности
-    final entityId = parseId(json['ID сущности'] ?? json['entityId']);
-
     // Определяем sheetName (приоритет русскому ключу)
     final sheetName = (json['Лист'] ?? json['sheetName'] ?? '').toString();
 
@@ -76,24 +73,22 @@ class Composition {
             json['ingredientName'] ??
             json['Наименование'] ??
             '')
-        .toString();
+        .toString()
+        .trim();
 
     return Composition(
       id: parseId(json['ID'] ?? json['id']),
       sheetName: sheetName,
-      entityId: entityId,
+      // ИСПРАВЛЕНО ТУТ: level берется из 'Уровень', а не из 'Лист'
+      level: (json['Уровень'] ?? json['level'] ?? '').toString(),
+      entityId: parseId(json['ID сущности'] ?? json['entityId']),
       ingredientName: ingredientName,
       // Количество может прийти строкой "10" или числом 10
       quantity: double.tryParse(
               (json['Количество'] ?? json['quantity'] ?? 0).toString()) ??
           0.0,
-      unitSymbol:
-          (json['Ед.изм.'] ?? json['unitSymbol'] ?? json['Ед.изм'] ?? '')
-              .toString(),
+      unitSymbol: (json['Ед.изм.'] ?? json['unitSymbol'] ?? '').toString(),
 
-      // Новые поля для условий хранения
-      level: (json['Лист'] ?? json['level'] ?? '')
-          .toString(), // Часто level совпадает с Лист
       description: (json['Описание'] ?? json['description'] ?? '').toString(),
       storagePlace:
           (json['Место хранения'] ?? json['storagePlace'] ?? '').toString(),
@@ -101,9 +96,8 @@ class Composition {
           (json['Температура'] ?? json['temperature'] ?? '').toString(),
       humidity: (json['Влажность'] ?? json['humidity'] ?? '').toString(),
       shelfLife: (json['Срок'] ?? json['shelfLife'] ?? '').toString(),
-      shelfLifeUnit:
-          (json['Ед.изм.'] ?? json['shelfLifeUnit'] ?? json['unit'] ?? '')
-              .toString(), // Для срока ед.изм часто та же колонка
+      shelfLifeUnit: (json['Ед.изм. срока'] ?? json['shelfLifeUnit'] ?? '')
+          .toString(), // Убрана дублирующаяся колонка
     );
   }
 

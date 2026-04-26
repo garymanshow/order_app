@@ -50,12 +50,16 @@ class ProductFormData {
   String weight;
   int wastePercentage;
 
-  Map<String, List<Composition>> baseCompositions = {};
-  Map<String, List<Composition>> ownCompositions = {};
+  Map<String, List<Composition>> ownData = {};
+  List<Composition> baseFillings = [];
+  List<Composition> baseCompositions = [];
+
+  // ВЛОЖЕННЫЕ СОСТАВЫ ДЛЯ НАЧИНОК (Ключ - ID начинки, Значение - список её ингредиентов)
+  Map<String, List<Composition>> baseFillingCompositionsMap = {};
+  Map<String, List<Composition>> ownFillingCompositionsMap = {};
 
   List<StorageCondition> baseStorage = [];
   List<StorageCondition> ownStorage = [];
-
   List<TransportCondition> baseTransport = [];
   List<TransportCondition> ownTransport = [];
 
@@ -118,7 +122,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     levelProduct: 'Прайс-лист',
     isTransport: true,
   );
-
   static const _kStorageConfig = _ListButtonConfig(
     title: 'Условия хранения',
     icon: Icons.inventory_2,
@@ -127,7 +130,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     levelProduct: 'Прайс-лист',
     isStorage: true,
   );
-
   static const _kFillingConfig = _ListButtonConfig(
     title: 'Начинки',
     icon: Icons.cake,
@@ -137,12 +139,11 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     showQuantity: true,
     showUnit: true,
   );
-
   static const _kCompositionConfig = _ListButtonConfig(
     title: 'Состав',
     icon: Icons.restaurant_menu,
     sheetName: 'Состав',
-    levelCategory: 'Начинки',
+    levelCategory: 'Категории прайса',
     levelProduct: 'Прайс-лист',
     showQuantity: true,
     showUnit: true,
@@ -248,46 +249,52 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       final String catIdStr = productCategory?.id.toString() ?? '';
 
       if (clientData != null) {
-        // 1. Начинки категории
-        data.baseCompositions[_kFillingConfig.sheetName] = catIdStr.isNotEmpty
+        // 1. НАЧИНКИ КАТЕГОРИИ
+        data.baseFillings = catIdStr.isNotEmpty
             ? clientData.compositions
                 .where((c) =>
-                    c.sheetName == _kFillingConfig.sheetName &&
-                    c.entityId.toString() == catIdStr &&
-                    c.level == _kFillingConfig.levelCategory)
+                    c.sheetName == 'Категории прайса' &&
+                    c.entityId.toString() == catIdStr)
                 .toList()
             : [];
-        data.ownCompositions[_kFillingConfig.sheetName] = clientData
-            .compositions
-            .where((c) =>
-                c.sheetName == _kFillingConfig.sheetName &&
-                c.entityId.toString() == productIdStr &&
-                c.level == _kFillingConfig.levelProduct)
-            .toList();
 
-        // 2. Состав: берем ID найденных начинок и ищем их ингредиенты
-        List<Composition> baseCompList = [];
-        if (data.baseCompositions[_kFillingConfig.sheetName]!.isNotEmpty) {
-          final fillingIds = data.baseCompositions[_kFillingConfig.sheetName]!
-              .map((f) => f.id.toString())
-              .toList();
-          baseCompList = clientData.compositions
+        // 1.5 ВЛОЖЕННЫЙ СОСТАВ ДЛЯ КАЖДОЙ НАЧИНКИ КАТЕГОРИИ
+        // Проходимся по найденным начинкам и для каждой вытаскиваем её состав
+        for (var filling in data.baseFillings) {
+          String fillingIdStr = filling.id.toString();
+          data.baseFillingCompositionsMap[fillingIdStr] = clientData
+              .compositions
               .where((c) =>
-                  c.sheetName == _kCompositionConfig.sheetName &&
-                  fillingIds.contains(c.entityId.toString()) &&
-                  c.level == _kCompositionConfig.levelCategory)
+                  c.sheetName == 'Начинки' &&
+                  c.entityId.toString() == fillingIdStr)
               .toList();
         }
-        data.baseCompositions[_kCompositionConfig.sheetName] = baseCompList;
-        data.ownCompositions[_kCompositionConfig.sheetName] = clientData
-            .compositions
+
+        // 2. Начинки для конкретного товара
+        data.ownData[_kFillingConfig.sheetName] = clientData.compositions
             .where((c) =>
-                c.sheetName == _kCompositionConfig.sheetName &&
-                c.entityId.toString() == productIdStr &&
-                c.level == _kCompositionConfig.levelProduct)
+                c.sheetName == 'Прайс-лист' &&
+                c.entityId.toString() == productIdStr)
             .toList();
 
-        // 3. Хранение и Транспорт
+        // 2.5 ВЛОЖЕННЫЙ СОСТАВ ДЛЯ СОБСТВЕННЫХ НАЧИНОК ТОВАРА
+        for (var filling in data.ownData[_kFillingConfig.sheetName] ?? []) {
+          String fillingIdStr = filling.id.toString();
+          data.ownFillingCompositionsMap[fillingIdStr] = clientData.compositions
+              .where((c) =>
+                  c.sheetName == 'Начинки' &&
+                  c.entityId.toString() == fillingIdStr)
+              .toList();
+        }
+
+        // 3. СОСТАВ ТОВАРА (Прямой состав, привязанный к товару)
+        data.ownData[_kCompositionConfig.sheetName] = clientData.compositions
+            .where((c) =>
+                c.sheetName == 'Прайс-лист' &&
+                c.entityId.toString() == productIdStr)
+            .toList();
+
+        // 4. Хранение и Транспорт
         data.ownStorage = clientData.storageConditions
             .where((c) =>
                 c.entityId.toString() == productIdStr &&
@@ -316,21 +323,16 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       _formDataMap[product.id] = data;
     }
     _refreshTails();
-    setState(() {
-      _hasLocalChanges = false;
-    });
+    setState(() => _hasLocalChanges = false);
   }
 
   void _refreshTails() {
     final data = _currentData;
     _ownCompositionsCount =
-        (data.ownCompositions[_kCompositionConfig.sheetName] ?? []).length;
-    _baseCompositionsCount =
-        (data.baseCompositions[_kCompositionConfig.sheetName] ?? []).length;
-    _ownFillingsCount =
-        (data.ownCompositions[_kFillingConfig.sheetName] ?? []).length;
-    _baseFillingsCount =
-        (data.baseCompositions[_kFillingConfig.sheetName] ?? []).length;
+        (data.ownData[_kCompositionConfig.sheetName] ?? []).length;
+    _baseCompositionsCount = data.baseCompositions.length;
+    _ownFillingsCount = (data.ownData[_kFillingConfig.sheetName] ?? []).length;
+    _baseFillingsCount = data.baseFillings.length;
     _ownStorageCount = data.ownStorage.length;
     _baseStorageCount = data.baseStorage.length;
     _ownTransportCount = data.ownTransport.length;
@@ -366,7 +368,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           sheetName: config.sheetName,
           entityId: product.id,
           level: config.levelProduct,
-          items: (data.ownCompositions[config.sheetName] ?? [])
+          items: (data.ownData[config.sheetName] ?? [])
               .map((c) => c.toJson())
               .toList()));
       if (data.categoryId.isNotEmpty) {
@@ -374,11 +376,27 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
             sheetName: config.sheetName,
             entityId: data.categoryId,
             level: config.levelCategory,
-            items: (data.baseCompositions[config.sheetName] ?? [])
+            items: (config.sheetName == _kFillingConfig
+                    ? data.baseFillings
+                    : data.baseCompositions)
                 .map((c) => c.toJson())
                 .toList()));
       }
     }
+
+    // ДОБАВЛЯЕМ ВЛОЖЕННЫЕ СОСТАВЫ НАЧИНОК В ОЧЕРЕДЬ НА СОХРАНЕНИЕ
+    final allFillingComps = {
+      ...data.baseFillingCompositionsMap,
+      ...data.ownFillingCompositionsMap
+    };
+    for (var entry in allFillingComps.entries) {
+      _pendingChanges.add(PendingChange(
+          sheetName: 'Состав',
+          entityId: entry.key,
+          level: 'Начинки',
+          items: entry.value.map((c) => c.toJson()).toList()));
+    }
+
     _pendingChanges.add(PendingChange(
         sheetName: _kStorageConfig.sheetName,
         entityId: product.id,
@@ -404,22 +422,33 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final clientData = authProvider.clientData!;
+
     for (var config in [_kCompositionConfig, _kFillingConfig]) {
       clientData.compositions.removeWhere((c) =>
           c.sheetName == config.sheetName &&
           c.entityId.toString() == product.id.toString() &&
           c.level == config.levelProduct);
-      clientData.compositions
-          .addAll(data.ownCompositions[config.sheetName] ?? []);
+      clientData.compositions.addAll(data.ownData[config.sheetName] ?? []);
       if (data.categoryId.isNotEmpty) {
         clientData.compositions.removeWhere((c) =>
             c.sheetName == config.sheetName &&
             c.entityId.toString() == data.categoryId &&
             c.level == config.levelCategory);
-        clientData.compositions
-            .addAll(data.baseCompositions[config.sheetName] ?? []);
+        clientData.compositions.addAll(config.sheetName == _kFillingConfig
+            ? data.baseFillings
+            : data.baseCompositions);
       }
     }
+
+    // ОБНОВЛЯЕМ СОСТАВЫ НАЧИНОК В ГЛОБАЛЬНОМ КЭШЕ
+    for (var entry in allFillingComps.entries) {
+      clientData.compositions.removeWhere((c) =>
+          c.sheetName == 'Состав' &&
+          c.entityId.toString() == entry.key &&
+          c.level == 'Начинки');
+      clientData.compositions.addAll(entry.value);
+    }
+
     clientData.storageConditions.removeWhere((c) =>
         c.entityId.toString() == product.id.toString() &&
         c.level == _kStorageConfig.levelProduct);
@@ -456,7 +485,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
       uniqueChanges['${change.sheetName}_${change.entityId}_${change.level}'] =
           change;
     }
-
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final String? userPhone = authProvider.currentUser?.phone;
@@ -590,12 +618,9 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         final cat =
                             _categories.firstWhere((c) => c.name == val);
                         _currentData.categoryId = cat.id.toString();
-                        if (cat.weight > 0) {
+                        if (cat.weight > 0)
                           _currentData.weight = cat.weight.toString();
-                        }
-                        if (cat.unit.isNotEmpty) {
-                          _currentData.unit = cat.unit;
-                        }
+                        if (cat.unit.isNotEmpty) _currentData.unit = cat.unit;
                         _currentData.wastePercentage = cat.wastePercentage;
                         _currentData.multiplicity = cat.packagingQuantity;
                         final clientData =
@@ -603,28 +628,20 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                 .clientData;
                         final String catIdStr = cat.id.toString();
                         if (catIdStr.isNotEmpty && clientData != null) {
-                          _currentData
-                                  .baseCompositions[_kFillingConfig.sheetName] =
-                              clientData.compositions
-                                  .where((c) =>
-                                      c.sheetName ==
-                                          _kFillingConfig.sheetName &&
-                                      c.entityId.toString() == catIdStr &&
-                                      c.level == _kFillingConfig.levelCategory)
-                                  .toList();
-                          final fillingIds = _currentData
-                              .baseCompositions[_kFillingConfig.sheetName]!
-                              .map((f) => f.id.toString())
-                              .toList();
-                          _currentData.baseCompositions[
-                              _kCompositionConfig
-                                  .sheetName] = clientData.compositions
+                          _currentData.baseFillings = clientData.compositions
                               .where((c) =>
-                                  c.sheetName ==
-                                      _kCompositionConfig.sheetName &&
-                                  fillingIds.contains(c.entityId.toString()) &&
-                                  c.level == _kCompositionConfig.levelCategory)
+                                  c.sheetName == 'Категории прайса' &&
+                                  c.entityId.toString() == catIdStr)
                               .toList();
+                          for (var f in _currentData.baseFillings) {
+                            _currentData.baseFillingCompositionsMap[
+                                f.id
+                                    .toString()] = clientData.compositions
+                                .where((c) =>
+                                    c.sheetName == 'Начинки' &&
+                                    c.entityId.toString() == f.id.toString())
+                                .toList();
+                          }
                           _currentData.baseStorage = clientData
                               .storageConditions
                               .where((c) =>
@@ -638,7 +655,8 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                   c.level == _kTransportConfig.levelCategory)
                               .toList();
                         } else {
-                          _currentData.baseCompositions.clear();
+                          _currentData.baseFillings = [];
+                          _currentData.baseFillingCompositionsMap.clear();
                           _currentData.baseStorage = [];
                           _currentData.baseTransport = [];
                         }
@@ -701,22 +719,25 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     final data = _currentData;
     int baseCount = 0;
     int ownCount = 0;
+
     if (config.isStorage) {
       baseCount = data.baseStorage.length;
       ownCount = data.ownStorage.length;
     } else if (config.isTransport) {
       baseCount = data.baseTransport.length;
       ownCount = data.ownTransport.length;
-    } else {
-      baseCount = (data.baseCompositions[config.sheetName] ?? []).length;
-      ownCount = (data.ownCompositions[config.sheetName] ?? []).length;
+    } else if (config.sheetName == _kFillingConfig.sheetName) {
+      baseCount = data.baseFillings.length;
+      ownCount = (data.ownData[_kFillingConfig.sheetName] ?? []).length;
+    } else if (config.sheetName == _kCompositionConfig.sheetName) {
+      baseCount = data.baseCompositions.length;
+      ownCount = (data.ownData[_kCompositionConfig.sheetName] ?? []).length;
     }
 
-    final String categoryLabel = config.sheetName == 'Состав'
-        ? 'Состав начинок (${data.categoryName})'
-        : 'Для категории ${data.categoryName}';
+    final String categoryLabel =
+        '${config.title} категории (${data.categoryName})';
     final String productLabel =
-        data.name.isNotEmpty ? data.name : 'Собственные';
+        data.name.isNotEmpty ? '${config.title} товара' : 'Собственные';
 
     showModalBottomSheet(
         context: context,
@@ -729,14 +750,15 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                   child: Text(config.title,
                       style: const TextStyle(
                           fontSize: 18, fontWeight: FontWeight.bold))),
-              ListTile(
-                  leading: const Icon(Icons.lock_outline),
-                  title: Text(categoryLabel),
-                  subtitle: Text('$baseCount записей'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showListDialog(config, isBase: true);
-                  }),
+              if (baseCount > 0)
+                ListTile(
+                    leading: const Icon(Icons.lock_outline),
+                    title: Text(categoryLabel),
+                    subtitle: Text('$baseCount записей'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showListDialog(config, isBase: true);
+                    }),
               ListTile(
                   leading: const Icon(Icons.person_outline),
                   title: Text(productLabel),
@@ -756,22 +778,23 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   void _showListDialog(_ListButtonConfig config, {bool isBase = false}) {
     final data = _currentData;
     List<dynamic> sourceList = [];
+
     if (config.isStorage) {
       sourceList = isBase ? data.baseStorage : data.ownStorage;
     } else if (config.isTransport) {
       sourceList = isBase ? data.baseTransport : data.ownTransport;
-    } else {
+    } else if (config.sheetName == _kFillingConfig.sheetName) {
+      sourceList =
+          isBase ? data.baseFillings : (data.ownData[config.sheetName] ?? []);
+    } else if (config.sheetName == _kCompositionConfig.sheetName) {
       sourceList = isBase
-          ? (data.baseCompositions[config.sheetName] ?? [])
-          : (data.ownCompositions[config.sheetName] ?? []);
+          ? data.baseCompositions
+          : (data.ownData[config.sheetName] ?? []);
     }
 
     List<dynamic> editableList = List.from(sourceList);
-
     final String dialogTitle = isBase
-        ? (config.sheetName == 'Состав'
-            ? 'Состав начинок (${data.categoryName})'
-            : '${config.title} (Для ${data.categoryName})')
+        ? '${config.title} (${data.categoryName})'
         : '${config.title} (${data.name})';
 
     showDialog(
@@ -779,50 +802,43 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         builder: (context) => StatefulBuilder(
             builder: (context, setDialogState) => AlertDialog(
                   title: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                          child: Text(dialogTitle,
-                              style: const TextStyle(fontSize: 16))),
-                      IconButton(
-                        icon: const Icon(Icons.add_circle_outline,
-                            color: Colors.green, size: 28),
-                        onPressed: () {
-                          setDialogState(() {
-                            if (config.isStorage) {
-                              editableList.add(StorageCondition(
-                                  level: isBase
-                                      ? config.levelCategory
-                                      : config.levelProduct,
-                                  entityId: isBase
-                                      ? data.categoryId
-                                      : data.productId));
-                            } else if (config.isTransport) {
-                              editableList.add(TransportCondition(
-                                  sheetName: config.sheetName,
-                                  entityId:
-                                      isBase ? data.categoryId : data.productId,
-                                  level: isBase
-                                      ? config.levelCategory
-                                      : config.levelProduct));
-                            } else {
-                              editableList.add(Composition(
-                                  id: DateTime.now()
-                                      .millisecondsSinceEpoch
-                                      .toString(),
-                                  sheetName: config.sheetName,
-                                  level: isBase
-                                      ? config.levelCategory
-                                      : config.levelProduct,
-                                  entityId: isBase
-                                      ? data.categoryId
-                                      : data.productId));
-                            }
-                          });
-                        },
-                      ),
-                    ],
-                  ),
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                            child: Text(dialogTitle,
+                                style: const TextStyle(fontSize: 16))),
+                        IconButton(
+                            icon: const Icon(Icons.add_circle_outline,
+                                color: Colors.green, size: 28),
+                            onPressed: () {
+                              setDialogState(() {
+                                final newId = DateTime.now()
+                                    .millisecondsSinceEpoch
+                                    .toString();
+                                final currentLevel = isBase
+                                    ? config.levelCategory
+                                    : config.levelProduct;
+                                final currentEntityId =
+                                    isBase ? data.categoryId : data.productId;
+                                if (config.isStorage) {
+                                  editableList.add(StorageCondition(
+                                      level: currentLevel,
+                                      entityId: currentEntityId));
+                                } else if (config.isTransport) {
+                                  editableList.add(TransportCondition(
+                                      sheetName: config.sheetName,
+                                      entityId: currentEntityId,
+                                      level: currentLevel));
+                                } else {
+                                  editableList.add(Composition(
+                                      id: newId,
+                                      sheetName: config.sheetName,
+                                      level: currentLevel,
+                                      entityId: currentEntityId));
+                                }
+                              });
+                            }),
+                      ]),
                   content: SizedBox(
                       width: double.maxFinite,
                       height: 500,
@@ -862,13 +878,25 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                             Expanded(
                                                 child: _buildEditableFields(
                                                     config, item)),
+                                            // ЕСЛИ ЭТО НАЧИНКА - ДОБАВЛЯЕМ КНОПКУ "СОСТАВ"
+                                            if (config.sheetName ==
+                                                _kFillingConfig.sheetName)
+                                              IconButton(
+                                                  icon: const Icon(
+                                                      Icons.list_alt_outlined,
+                                                      color: Colors.blue,
+                                                      size: 20),
+                                                  tooltip: 'Состав начинки',
+                                                  onPressed: () =>
+                                                      _showFillingCompositionDialog(
+                                                          item, isBase)),
                                             IconButton(
                                                 icon: Icon(Icons.delete_outline,
                                                     color: Colors.red[300],
                                                     size: 20),
                                                 onPressed: () => setDialogState(
                                                     () => editableList
-                                                        .removeAt(index))),
+                                                        .removeAt(index)))
                                           ]);
                                     })),
                       ])),
@@ -880,29 +908,35 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         onPressed: () {
                           setState(() {
                             if (config.isStorage) {
-                              if (isBase) {
+                              if (isBase)
                                 data.baseStorage =
                                     editableList.cast<StorageCondition>();
-                              } else {
+                              else
                                 data.ownStorage =
                                     editableList.cast<StorageCondition>();
-                              }
                             } else if (config.isTransport) {
-                              if (isBase) {
+                              if (isBase)
                                 data.baseTransport =
                                     editableList.cast<TransportCondition>();
-                              } else {
+                              else
                                 data.ownTransport =
                                     editableList.cast<TransportCondition>();
-                              }
-                            } else {
-                              if (isBase) {
-                                data.baseCompositions[config.sheetName] =
+                            } else if (config.sheetName ==
+                                _kFillingConfig.sheetName) {
+                              if (isBase)
+                                data.baseFillings =
                                     editableList.cast<Composition>();
-                              } else {
-                                data.ownCompositions[config.sheetName] =
+                              else
+                                data.ownData[config.sheetName] =
                                     editableList.cast<Composition>();
-                              }
+                            } else if (config.sheetName ==
+                                _kCompositionConfig.sheetName) {
+                              if (isBase)
+                                data.baseCompositions =
+                                    editableList.cast<Composition>();
+                              else
+                                data.ownData[config.sheetName] =
+                                    editableList.cast<Composition>();
                             }
                             _refreshTails();
                             _hasLocalChanges = true;
@@ -910,6 +944,143 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                           Navigator.pop(context);
                         },
                         child: const Text('Сохранить')),
+                  ],
+                )));
+  }
+
+  // --- НОВЫЙ ДИАЛОГ ДЛЯ ВЛОЖЕННОГО СОСТАВА НАЧИНКИ ---
+  void _showFillingCompositionDialog(Composition filling, bool isBaseFilling) {
+    final data = _currentData;
+    // Берем существующий состав начинки или пустой список
+    final Map<String, List<Composition>> targetMap = isBaseFilling
+        ? data.baseFillingCompositionsMap
+        : data.ownFillingCompositionsMap;
+    List<dynamic> editableCompList =
+        List.from(targetMap[filling.id.toString()] ?? []);
+
+    showDialog(
+        context: context,
+        builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+                  title: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                            child: Text('Состав: ${filling.displayName}',
+                                style: const TextStyle(fontSize: 16))),
+                        IconButton(
+                            icon: const Icon(Icons.add_circle_outline,
+                                color: Colors.green, size: 28),
+                            onPressed: () {
+                              setDialogState(() {
+                                editableCompList.add(Composition(
+                                  id: DateTime.now()
+                                      .millisecondsSinceEpoch
+                                      .toString(),
+                                  sheetName: 'Состав',
+                                  level:
+                                      'Начинки', // Указываем, что это состав начинки
+                                  entityId: filling.id
+                                      .toString(), // Привязываем к ID начинки
+                                ));
+                              });
+                            }),
+                      ]),
+                  content: SizedBox(
+                      width: double.maxFinite,
+                      height: 400,
+                      child: editableCompList.isEmpty
+                          ? Center(
+                              child: Text('Нет ингредиентов.\nНажмите +',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey[400])))
+                          : ListView.separated(
+                              itemCount: editableCompList.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 12),
+                              itemBuilder: (context, index) {
+                                final item = editableCompList[index];
+                                return Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                          child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                            TextField(
+                                                controller:
+                                                    TextEditingController(
+                                                        text: item.displayName),
+                                                decoration:
+                                                    const InputDecoration(
+                                                        labelText: 'Ингредиент',
+                                                        isDense: true),
+                                                onChanged: (v) {
+                                                  item.description = v;
+                                                  item.ingredientName = v;
+                                                }),
+                                            const SizedBox(height: 4),
+                                            Row(children: [
+                                              Expanded(
+                                                  child: TextField(
+                                                      controller:
+                                                          TextEditingController(
+                                                              text: item
+                                                                  .quantity
+                                                                  .toString()),
+                                                      decoration:
+                                                          const InputDecoration(
+                                                              labelText:
+                                                                  'Кол-во',
+                                                              isDense: true),
+                                                      keyboardType:
+                                                          TextInputType.number,
+                                                      onChanged: (v) {
+                                                        item.quantity =
+                                                            double.tryParse(
+                                                                    v) ??
+                                                                0;
+                                                      })),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                  child: TextField(
+                                                      controller:
+                                                          TextEditingController(
+                                                              text: item
+                                                                  .unitSymbol),
+                                                      decoration:
+                                                          const InputDecoration(
+                                                              labelText:
+                                                                  'Ед.изм.',
+                                                              isDense: true),
+                                                      onChanged: (v) {
+                                                        item.unitSymbol = v;
+                                                      })),
+                                            ])
+                                          ])),
+                                      IconButton(
+                                          icon: Icon(Icons.delete_outline,
+                                              color: Colors.red[300], size: 20),
+                                          onPressed: () => setDialogState(() =>
+                                              editableCompList.removeAt(index)))
+                                    ]);
+                              })),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Отмена')),
+                    ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            targetMap[filling.id.toString()] =
+                                editableCompList.cast<Composition>();
+                            _hasLocalChanges = true;
+                          });
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Сохранить состав')),
                   ],
                 )));
   }
@@ -1012,7 +1183,6 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   }
 
   // --- UI ---
-
   @override
   Widget build(BuildContext context) {
     if (_allProducts.isEmpty) {
@@ -1022,85 +1192,80 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     }
     return Scaffold(
       appBar: AppBar(
-        title: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(
-              icon: const Icon(Icons.arrow_back_ios),
-              onPressed:
-                  _currentIndex > 0 ? () => _goToPage(_currentIndex - 1) : null,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints()),
-          Text('${_currentIndex + 1} / ${_allProducts.length}'),
-          IconButton(
-              icon: const Icon(Icons.arrow_forward_ios),
-              onPressed: _currentIndex < _allProducts.length - 1
-                  ? () => _goToPage(_currentIndex + 1)
-                  : null,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints()),
-        ]),
-        actions: [
-          IconButton(
-              icon: Icon(Icons.save,
-                  color: _hasLocalChanges ? Colors.orange : null),
-              onPressed: _isSaving ? null : _saveItemLocally)
-        ],
-      ),
+          title: Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+                icon: const Icon(Icons.arrow_back_ios),
+                onPressed: _currentIndex > 0
+                    ? () => _goToPage(_currentIndex - 1)
+                    : null,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints()),
+            Text('${_currentIndex + 1} / ${_allProducts.length}'),
+            IconButton(
+                icon: const Icon(Icons.arrow_forward_ios),
+                onPressed: _currentIndex < _allProducts.length - 1
+                    ? () => _goToPage(_currentIndex + 1)
+                    : null,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints()),
+          ]),
+          actions: [
+            IconButton(
+                icon: Icon(Icons.save,
+                    color: _hasLocalChanges ? Colors.orange : null),
+                onPressed: _isSaving ? null : _saveItemLocally)
+          ]),
       body: PopScope(
-        canPop: !_hasLocalChanges,
-        onPopInvokedWithResult: (didPop, result) async {
-          if (didPop) return;
-          if (_hasLocalChanges) {
-            final save = await showDialog<bool>(
-                context: context,
-                builder: (ctx) =>
-                    AlertDialog(title: const Text('Сохранить?'), actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Нет')),
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Да'))
-                    ]));
-            if (save == true) {
-              _saveItemLocally();
+          canPop: !_hasLocalChanges,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            if (_hasLocalChanges) {
+              final save = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) =>
+                      AlertDialog(title: const Text('Сохранить?'), actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Нет')),
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Да'))
+                      ]));
+              if (save == true) _saveItemLocally();
             }
-          }
-          if (_pendingChanges.isNotEmpty) {
-            final send = await showDialog<bool>(
-                context: context,
-                builder: (ctx) =>
-                    AlertDialog(title: const Text('Отправить?'), actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Стереть')),
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Отправить'))
-                    ]));
-            if (send == true) {
-              await _commitChanges();
-            } else {
-              _pendingChanges.clear();
+            if (_pendingChanges.isNotEmpty) {
+              final send = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) =>
+                      AlertDialog(title: const Text('Отправить?'), actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Стереть')),
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Отправить'))
+                      ]));
+              if (send == true)
+                await _commitChanges();
+              else
+                _pendingChanges.clear();
             }
-          }
-        },
-        child: PageView.builder(
-            controller: _pageController,
-            itemCount: _allProducts.length,
-            onPageChanged: (i) {
-              if (_hasLocalChanges) {
-                _saveItemLocally();
-              }
-              _loadDataForIndex(i);
-              setState(() => _currentIndex = i);
-            },
-            itemBuilder: (c, i) => _isSaving
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Form(
-                        key: ValueKey('f_$i'), child: _buildGeneralBlock()))),
-      ),
+          },
+          child: PageView.builder(
+              controller: _pageController,
+              itemCount: _allProducts.length,
+              onPageChanged: (i) {
+                if (_hasLocalChanges) _saveItemLocally();
+                _loadDataForIndex(i);
+                setState(() => _currentIndex = i);
+              },
+              itemBuilder: (c, i) => _isSaving
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Form(
+                          key: ValueKey('f_$i'),
+                          child: _buildGeneralBlock())))),
     );
   }
 
@@ -1329,9 +1494,7 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   }
 
   void _goToPage(int index) {
-    if (_hasLocalChanges) {
-      _saveItemLocally();
-    }
+    if (_hasLocalChanges) _saveItemLocally();
     _pageController.animateToPage(index,
         duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
   }
