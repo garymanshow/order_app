@@ -136,7 +136,7 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(create: (context) => CartProvider()),
         if (unitService != null)
-          Provider<UnitService>.value(value: unitService!),
+          ChangeNotifierProvider<UnitService>.value(value: unitService!),
         Provider<CacheService>.value(value: cacheService),
         Provider<SyncService>.value(value: syncService),
         StreamProvider<ConnectivityResult>(

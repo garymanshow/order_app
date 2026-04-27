@@ -51,13 +51,13 @@ class ProductFormData {
   String categoryName;
   String unit;
   String weight;
+  String packagingName;
   int wastePercentage;
 
   Map<String, List<Composition>> ownData = {};
   List<Composition> baseFillings = [];
   List<Composition> baseCompositions = [];
 
-  // ВЛОЖЕННЫЕ СОСТАВЫ ДЛЯ НАЧИНОК (Ключ - ID начинки, Значение - список её ингредиентов)
   Map<String, List<Composition>> baseFillingCompositionsMap = {};
   Map<String, List<Composition>> ownFillingCompositionsMap = {};
 
@@ -78,6 +78,7 @@ class ProductFormData {
     this.categoryName = '',
     this.unit = 'г',
     this.weight = '0',
+    this.packagingName = 'Транспортный контейнер',
     this.wastePercentage = 10,
   });
 }
@@ -595,6 +596,16 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
   }
 
   void _showCategoryDialog() {
+    // Локальные контроллеры для полей ввода, чтобы они корректно обновлялись при смене категории
+    final weightController = TextEditingController(text: _currentData.weight);
+    final wasteController =
+        TextEditingController(text: _currentData.wastePercentage.toString());
+    final multController =
+        TextEditingController(text: _currentData.multiplicity.toString());
+    final packController = TextEditingController(
+        text: _currentData
+            .packagingName); // Убедитесь, что поле есть в ProductFormData
+
     showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -602,18 +613,49 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
               contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 0.0),
               content: SingleChildScrollView(
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // 1. СПИСОК КАТЕГОРИЙ С НОВЫМ СТИЛЕМ
                 DropdownButtonFormField<String>(
                     initialValue: _currentData.categoryName.isEmpty
                         ? null
                         : _currentData.categoryName,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                         labelText: 'Категория *', border: OutlineInputBorder()),
-                    items: _categories
-                        .map((c) => DropdownMenuItem(
-                            value: c.name,
+                    selectedItemBuilder: (context) {
+                      return _categories.map((c) {
+                        return DropdownMenuItem<String>(
+                          value: c.name,
+                          child: Text(c.name,
+                              overflow: TextOverflow.ellipsis,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                        );
+                      }).toList();
+                    },
+                    items: _categories.map((c) {
+                      final isSelected = c.name == _currentData.categoryName;
+                      final textColor =
+                          isSelected ? Colors.white : Colors.black87;
+                      final nameColor =
+                          isSelected ? Colors.white70 : Colors.black87;
+                      final bgColor = isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.transparent;
+
+                      return DropdownMenuItem<String>(
+                          value: c.name,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: bgColor,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                             child: Text(c.name,
-                                style: const TextStyle(color: Colors.white))))
-                        .toList(),
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: nameColor)),
+                          ));
+                    }).toList(),
                     onChanged: (val) {
                       if (val == null) return;
                       setState(() {
@@ -621,11 +663,26 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         final cat =
                             _categories.firstWhere((c) => c.name == val);
                         _currentData.categoryId = cat.id.toString();
+
+                        // Обновляем контроллеры новыми данными из выбранной категории
+                        weightController.text = cat.weight > 0
+                            ? cat.weight.toString()
+                            : _currentData.weight;
+                        wasteController.text = cat.wastePercentage.toString();
+                        multController.text = cat.packagingQuantity.toString();
+                        packController.text = cat.packagingName.isNotEmpty
+                            ? cat.packagingName
+                            : '';
+
+                        // Обновляем данные формы
                         if (cat.weight > 0)
-                          _currentData.weight = cat.weight.toString();
+                          _currentData.weight = weightController.text;
                         if (cat.unit.isNotEmpty) _currentData.unit = cat.unit;
                         _currentData.wastePercentage = cat.wastePercentage;
                         _currentData.multiplicity = cat.packagingQuantity;
+                        _currentData.packagingName =
+                            cat.packagingName; // Сохраняем тару
+
                         final clientData =
                             Provider.of<AuthProvider>(context, listen: false)
                                 .clientData;
@@ -666,23 +723,61 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                         _refreshTails();
                         _hasLocalChanges = true;
                       });
+                      // Перерисовываем диалог, чтобы обновились значения в полях ниже
                       Navigator.pop(context);
                       _showCategoryDialog();
                     }),
+
                 const SizedBox(height: 12),
+
+                // 2. ВЕС
                 TextFormField(
-                    initialValue: _currentData.weight,
-                    decoration: const InputDecoration(labelText: 'Вес'),
+                    controller: weightController,
+                    decoration: const InputDecoration(
+                        labelText: 'Вес', border: OutlineInputBorder()),
                     keyboardType: TextInputType.number,
                     onChanged: (val) {
                       _currentData.weight = val;
                       _hasLocalChanges = true;
                     }),
+
                 const SizedBox(height: 12),
+
+                // 3. ФАСОВКА В ТАРЕ (КРАТНОСТЬ)
                 TextFormField(
-                    initialValue: _currentData.wastePercentage.toString(),
-                    decoration:
-                        const InputDecoration(labelText: 'Издержки (%)'),
+                    controller: multController,
+                    decoration: const InputDecoration(
+                        labelText: 'Фасовка в таре (шт)',
+                        border: OutlineInputBorder(),
+                        helperText: 'Сколько штук в одном контейнере/банке'),
+                    keyboardType: TextInputType.number,
+                    onChanged: (val) {
+                      _currentData.multiplicity = int.tryParse(val) ?? 1;
+                      _hasLocalChanges = true;
+                    }),
+
+                const SizedBox(height: 12),
+
+                // 4. НАИМЕНОВАНИЕ УПАКОВКИ (ТАРА)
+                TextFormField(
+                    controller: packController,
+                    decoration: const InputDecoration(
+                        labelText: 'Тара',
+                        border: OutlineInputBorder(),
+                        helperText: 'Например: Транспортный контейнер, банка'),
+                    onChanged: (val) {
+                      _currentData.packagingName = val;
+                      _hasLocalChanges = true;
+                    }),
+
+                const SizedBox(height: 12),
+
+                // 5. ИЗДЕРЖКИ
+                TextFormField(
+                    controller: wasteController,
+                    decoration: const InputDecoration(
+                        labelText: 'Издержки (%)',
+                        border: OutlineInputBorder()),
                     keyboardType: TextInputType.number,
                     onChanged: (val) {
                       _currentData.wastePercentage = int.tryParse(val) ?? 10;
@@ -1168,43 +1263,37 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
         if (config.showQuantity || config.showUnit)
           Padding(
               padding: const EdgeInsets.only(top: 8.0),
-              child: Row(children: [
-                if (config.showQuantity)
-                  Expanded(
-                      child: TextField(
-                          controller: TextEditingController(
-                              text: item.quantity.toString()),
-                          decoration: const InputDecoration(
-                              labelText: 'Кол-во', isDense: true),
-                          keyboardType: TextInputType.number,
-                          onChanged: (v) {
-                            item.quantity = double.tryParse(v) ?? 0;
-                          })),
-                if (config.showQuantity && config.showUnit)
-                  const SizedBox(width: 8),
-                if (config.showUnit)
-                  Expanded(
-                      child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 5.0), // 🔥 Забираем 5px слева и справа
-                    child: UnitSelector(
-                      selectedUnit: item
-                          .unitSymbol, // Обновлено свойство, см. примечание ниже
-                      unitsList:
-                          Provider.of<UnitSelector>(context, listen: false)
-                                  .unitsList
-                                  ?.where((u) =>
-                                      u.category == 'weight' ||
-                                      u.category == 'volume' ||
-                                      u.category == 'piece')
-                                  .toList() ??
-                              [],
-                      onUnitSelected: (v) {
-                        if (v != null) item.unitSymbol = v;
-                      },
+              // 🔥 ЗАМЕНИЛИ Row НА Wrap ДЛЯ АДАПТИВНОСТИ
+              child: Wrap(
+                spacing: 8, // Отступ по горизонтали между элементами
+                runSpacing:
+                    8, // Отступ по вертикали при переносе на новую строку
+                children: [
+                  if (config.showQuantity)
+                    SizedBox(
+                        width: 80, // Фиксированная ширина для количества
+                        child: TextField(
+                            controller: TextEditingController(
+                                text: item.quantity.toString()),
+                            decoration: const InputDecoration(
+                                labelText: 'Кол-во', isDense: true),
+                            keyboardType: TextInputType.number,
+                            onChanged: (v) {
+                              item.quantity = double.tryParse(v) ?? 0;
+                            })),
+                  if (config.showUnit)
+                    SizedBox(
+                      width: 100, // Фиксированная ширина для селектора единиц
+                      child: UnitSelector(
+                        mode: UnitSelectorMode.ingredients,
+                        selectedUnit: item.unitSymbol,
+                        onUnitSelected: (v) {
+                          if (v != null) item.unitSymbol = v;
+                        },
+                      ),
                     ),
-                  )),
-              ])),
+                ],
+              )),
       ]);
     }
     return const SizedBox.shrink();
