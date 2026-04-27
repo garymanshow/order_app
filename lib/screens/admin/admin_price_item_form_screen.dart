@@ -893,13 +893,20 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                                   onPressed: () =>
                                                       _showFillingCompositionDialog(
                                                           item, isBase)),
-                                            IconButton(
-                                                icon: Icon(Icons.delete_outline,
-                                                    color: Colors.red[300],
-                                                    size: 20),
-                                                onPressed: () => setDialogState(
-                                                    () => editableList
-                                                        .removeAt(index)))
+                                            SizedBox(
+                                                width:
+                                                    32, // Жестко ограничиваем ширину кнопки удаления
+                                                height: 32,
+                                                child: IconButton(
+                                                    icon: Icon(
+                                                        Icons.delete_outline,
+                                                        color: Colors.red[300],
+                                                        size: 20),
+                                                    onPressed: () =>
+                                                        setDialogState(() =>
+                                                            editableList
+                                                                .removeAt(
+                                                                    index))))
                                           ]);
                                     })),
                       ])),
@@ -1063,11 +1070,17 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                                       })),
                                             ])
                                           ])),
-                                      IconButton(
-                                          icon: Icon(Icons.delete_outline,
-                                              color: Colors.red[300], size: 20),
-                                          onPressed: () => setDialogState(() =>
-                                              editableCompList.removeAt(index)))
+                                      SizedBox(
+                                          width:
+                                              32, // Жестко ограничиваем ширину кнопки удаления
+                                          height: 32,
+                                          child: IconButton(
+                                              icon: Icon(Icons.delete_outline,
+                                                  color: Colors.red[300],
+                                                  size: 20),
+                                              onPressed: () => setDialogState(
+                                                  () => editableCompList
+                                                      .removeAt(index))))
                                     ]);
                               })),
                   actions: [
@@ -1170,21 +1183,26 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                 if (config.showQuantity && config.showUnit)
                   const SizedBox(width: 8),
                 if (config.showUnit)
-                  // 🔥 ИСПРАВЛЕНИЕ: Передаем только нужные единицы напрямую, без дубликатов времени/веса
                   Expanded(
-                      child: UnitSelector(
-                    selectedUnit: item.unitSymbol,
-                    // Берем глобальный сервис, но фильтруем только под состав/начинки
-                    unitsList: Provider.of<UnitService>(context, listen: false)
-                        .allUnits
-                        .where((u) =>
-                            u.category == 'weight' ||
-                            u.category == 'volume' ||
-                            u.category == 'piece')
-                        .toList(),
-                    onUnitSelected: (v) {
-                      if (v != null) item.unitSymbol = v;
-                    },
+                      child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 5.0), // 🔥 Забираем 5px слева и справа
+                    child: UnitSelector(
+                      selectedUnit: item
+                          .unitSymbol, // Обновлено свойство, см. примечание ниже
+                      unitsList:
+                          Provider.of<UnitSelector>(context, listen: false)
+                                  .unitsList
+                                  ?.where((u) =>
+                                      u.category == 'weight' ||
+                                      u.category == 'volume' ||
+                                      u.category == 'piece')
+                                  .toList() ??
+                              [],
+                      onUnitSelected: (v) {
+                        if (v != null) item.unitSymbol = v;
+                      },
+                    ),
                   )),
               ])),
       ]);

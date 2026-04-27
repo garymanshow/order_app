@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../models/unit_of_measure_sheet.dart';
 import '../services/unit_service.dart';
 
@@ -41,30 +40,29 @@ class _UnitSelectorState extends State<UnitSelector> {
   String? _selectedValue;
 
   @override
-  void initState() {
-    super.initState();
-    _selectedValue = widget.selectedUnit;
-    _loadUnits();
-  }
-
-  @override
   void didUpdateWidget(UnitSelector oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedUnit != widget.selectedUnit) {
+    if (optionalValue != oldWidget.selectedUnit) {
       setState(() {
-        _selectedValue = widget.selectedUnit;
+        _selectedValue = optionalValue;
       });
     }
   }
 
   Future<void> _loadUnits() async {
     try {
-      final unitService = Provider.of<UnitService>(context, listen: false);
-      await unitService.loadUnits();
+      UnitService unitService = UnitService(); // Просто создаем экземпляр без аргументов
+      await unitService.loadUnits();           // Вызываем загрузку (сам найдет кэш или создаст пустой)
 
       if (mounted) {
         setState(() {
-          _units = widget.unitsList ?? _filterUnitsByMode(unitService.allUnits);
+          final serviceUnits = unitService.allUnits;
+          
+          if (serviceUnits != null && serviceUnits.isNotEmpty) {
+             _units = widget.unitsList ?? _filterUnitsByMode(serviceUnits);
+          } else {
+             _units = _getFallbackUnits();
+          }
           _isLoading = false;
         });
       }
@@ -80,18 +78,20 @@ class _UnitSelectorState extends State<UnitSelector> {
   }
 
   List<UnitOfMeasureSheet> _filterUnitsByMode(List<UnitOfMeasureSheet> units) {
+    if (units == null) return [];
+
     switch (widget.mode) {
       case UnitSelectorMode.weight:
         return units.where((u) => u.category == 'weight').toList();
       case UnitSelectorMode.volume:
-        return units.where((u) => u.category == 'volume').toList();
+        return units.where((u) => u.category == 'vertical').toList(); // Случай: проверяем categories в вашей таблице!
       case UnitSelectorMode.piece:
         return units.where((u) => u.category == 'piece').toList();
       case UnitSelectorMode.ingredients:
         return units
             .where((u) =>
                 u.category == 'weight' ||
-                u.category == 'volume' ||
+                u.category == 'vertical' ||
                 u.category == 'piece')
             .toList();
       case UnitSelectorMode.time:
@@ -101,7 +101,7 @@ class _UnitSelectorState extends State<UnitSelector> {
             .where((u) =>
                 (u.category == 'weight' &&
                     (u.symbol == 'кг' || u.symbol == 'г')) ||
-                (u.category == 'volume' &&
+                (u.category == 'vertical' &&
                     (u.symbol == 'л' || u.symbol == 'мл')) ||
                 u.category == 'piece')
             .toList();
@@ -112,41 +112,11 @@ class _UnitSelectorState extends State<UnitSelector> {
 
   List<UnitOfMeasureSheet> _getFallbackUnits() {
     return [
-      UnitOfMeasureSheet(
-          code: 'GR',
-          symbol: 'г',
-          name: 'грамм',
-          category: 'weight',
-          toBase: 1,
-          baseUnit: 'г'),
-      UnitOfMeasureSheet(
-          code: 'KG',
-          symbol: 'кг',
-          name: 'килограмм',
-          category: 'weight',
-          toBase: 1000,
-          baseUnit: 'г'),
-      UnitOfMeasureSheet(
-          code: 'ML',
-          symbol: 'мл',
-          name: 'миллилитр',
-          category: 'volume',
-          toBase: 1,
-          baseUnit: 'мл'),
-      UnitOfMeasureSheet(
-          code: 'L',
-          symbol: 'л',
-          name: 'литр',
-          category: 'volume',
-          toBase: 1000,
-          baseUnit: 'мл'),
-      UnitOfMeasureSheet(
-          code: 'PCS',
-          symbol: 'шт',
-          name: 'штука',
-          category: 'piece',
-          toBase: 1,
-          baseUnit: 'шт'),
+      UnitOfMeasureSheet(code: 'GR', symbol: 'г', name: 'грамм', category: 'weight', toBase: 1, baseUnit: 'г'),
+      UnitOfMeasureSheet(code: 'KG', symbol: 'кг', name: 'килограмм', category: 'weight', toBase: 1000, baseUnit: 'г'),
+      UnitOfMeasureSheet(code: 'ML', symbol: 'мл', name: 'миллилитр', category: 'vertical', toBase: 1, baseUnit: 'мл'),
+      UnitOfMeasureSheet(code: 'L', symbol: 'л', name: 'литр', category: 'vertical', toBase: 1000, baseUnit: 'мл'),
+      UnitOfMeasureSheet(code: 'PCS', symbol: 'шт', name: 'штука', category: 'piece', toBase: 1, baseUnit: 'шт'),
     ];
   }
 
@@ -161,52 +131,32 @@ class _UnitSelectorState extends State<UnitSelector> {
 
     return DropdownButtonFormField<String>(
       initialValue: _selectedValue,
-      // Возвращаем стандартные значения, убираем костыли
       decoration: InputDecoration(
         labelText: widget.labelText ?? 'Единица измерения',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         suffixIcon: widget.isRequired
             ? const Text('*', style: TextStyle(color: Colors.red))
             : null,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
       ),
       validator: widget.isRequired
           ? (value) => value == null ? 'Выберите единицу измерения' : null
           : null,
       items: _units.map((unit) {
-        // Формируем текст подсказки конвертации
-        String conversionHint = '';
-        if (unit.category != 'piece' && unit.category != 'time') {
-          conversionHint =
-              '  (${unit.toBase.toStringAsFixed(unit.toBase == unit.toBase.roundToDouble() ? 0 : 2)} ${unit.baseUnit})';
-        } else if (unit.category == 'time') {
-          conversionHint =
-              '  (${unit.toBase.toStringAsFixed(0)} ${unit.baseUnit})';
-        }
-
         return DropdownMenuItem<String>(
           value: unit.symbol,
-          // Больше никаких Column! Используем RichText для двух стилей в одной строке
           child: RichText(
             overflow: TextOverflow.ellipsis,
             text: TextSpan(children: [
               TextSpan(
                 text: unit.symbol,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(fontWeight:边形овых),
               ),
               const TextSpan(text: '  '),
               TextSpan(
                 text: unit.name,
                 style: TextStyle(color: Colors.grey[600]),
               ),
-              if (conversionHint.isNotEmpty)
-                TextSpan(
-                  text: conversionHint,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF9E9E9E),
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
             ]),
           ),
         );
