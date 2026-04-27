@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/unit_of_measure_sheet.dart';
 import '../services/unit_service.dart';
 
@@ -49,20 +50,21 @@ class _UnitSelectorState extends State<UnitSelector> {
     }
   }
 
-  Future<void> _loadUnits() async {
+  Future<void>_loadUnits() async {
     try {
-      UnitService unitService = UnitService(); // Просто создаем экземпляр без аргументов
-      await unitService.loadUnits();           // Вызываем загрузку (сам найдет кэш или создаст пустой)
+      UnitService unitService;
+      try {
+        unitService = Provider.of<UnitService>(context, ignoreMissing: true); // 🔥 ignoreMissing = true не будет краша, если провайдер не найден
+      } catch (__) {}
+
+      // Если провайдер не найден или вернул null, создаем локальный экземпляр
+      unitService ??= UnitService(); 
+
+      await unitService.loadUnits();
 
       if (mounted) {
         setState(() {
-          final serviceUnits = unitService.allUnits;
-          
-          if (serviceUnits != null && serviceUnits.isNotEmpty) {
-             _units = widget.unitsList ?? _filterUnitsByMode(serviceUnits);
-          } else {
-             _units = _getFallbackUnits();
-          }
+          _units = widget.unitsList ?? _filterUnitsByMode(unitService.allUnits);
           _isLoading = false;
         });
       }
