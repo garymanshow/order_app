@@ -1,15 +1,16 @@
-// lib/widgets/unit_selector.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/unit_of_measure_sheet.dart';
 import '../services/unit_service.dart';
 
 enum UnitSelectorMode {
-  all, // все единицы
-  weight, // только вес
-  volume, // только объем
-  piece, // только штуки
-  warehouse, // только складские (кг, л, шт)
+  all,
+  weight,
+  volume,
+  piece,
+  ingredients,
+  warehouse,
+  time,
 }
 
 class UnitSelector extends StatefulWidget {
@@ -18,7 +19,7 @@ class UnitSelector extends StatefulWidget {
   final ValueChanged<String?> onUnitSelected;
   final String? labelText;
   final bool isRequired;
-  final bool showOnlyMetric;
+  final List<UnitOfMeasureSheet>? unitsList;
 
   const UnitSelector({
     super.key,
@@ -27,7 +28,7 @@ class UnitSelector extends StatefulWidget {
     required this.onUnitSelected,
     this.labelText,
     this.isRequired = false,
-    this.showOnlyMetric = false,
+    this.unitsList,
   });
 
   @override
@@ -56,33 +57,28 @@ class _UnitSelectorState extends State<UnitSelector> {
     }
   }
 
-  /// 🔥 Загружает единицы через UnitService (который сам знает про кэш)
   Future<void> _loadUnits() async {
     try {
-      // Получаем сервис через Provider
       final unitService = Provider.of<UnitService>(context, listen: false);
-
-      // Загружаем данные (сервис сам решит: взять из кэша или пойти на сервер)
       await unitService.loadUnits();
 
       if (mounted) {
         setState(() {
-          _units = _filterUnitsByMode(unitService.allUnits);
+          _units = widget.unitsList ?? _filterUnitsByMode(unitService.allUnits);
           _isLoading = false;
         });
       }
     } catch (e) {
-      print('❌ UnitSelector: ошибка загрузки: $e');
+      debugPrint('❌ UnitSelector: ошибка загрузки: $e');
       if (mounted) {
         setState(() {
-          _units = _getFallbackUnits(); // Фоллбэк на хардкод
+          _units = _getFallbackUnits();
           _isLoading = false;
         });
       }
     }
   }
 
-  /// 🔥 Фильтрация списка по выбранному режиму
   List<UnitOfMeasureSheet> _filterUnitsByMode(List<UnitOfMeasureSheet> units) {
     switch (widget.mode) {
       case UnitSelectorMode.weight:
@@ -91,6 +87,15 @@ class _UnitSelectorState extends State<UnitSelector> {
         return units.where((u) => u.category == 'volume').toList();
       case UnitSelectorMode.piece:
         return units.where((u) => u.category == 'piece').toList();
+      case UnitSelectorMode.ingredients:
+        return units
+            .where((u) =>
+                u.category == 'weight' ||
+                u.category == 'volume' ||
+                u.category == 'piece')
+            .toList();
+      case UnitSelectorMode.time:
+        return units.where((u) => u.category == 'time').toList();
       case UnitSelectorMode.warehouse:
         return units
             .where((u) =>
@@ -101,12 +106,10 @@ class _UnitSelectorState extends State<UnitSelector> {
                 u.category == 'piece')
             .toList();
       case UnitSelectorMode.all:
-      default:
         return units;
     }
   }
 
-  /// 🔥 Фоллбэк-список, если сервис недоступен
   List<UnitOfMeasureSheet> _getFallbackUnits() {
     return [
       UnitOfMeasureSheet(
@@ -150,14 +153,15 @@ class _UnitSelectorState extends State<UnitSelector> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return SizedBox(
+      return const SizedBox(
         height: 56,
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
     return DropdownButtonFormField<String>(
-      value: _selectedValue,
+      initialValue: _selectedValue,
+      // Возвращаем стандартные значения, убираем костыли
       decoration: InputDecoration(
         labelText: widget.labelText ?? 'Единица измерения',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -169,26 +173,41 @@ class _UnitSelectorState extends State<UnitSelector> {
           ? (value) => value == null ? 'Выберите единицу измерения' : null
           : null,
       items: _units.map((unit) {
+        // Формируем текст подсказки конвертации
+        String conversionHint = '';
+        if (unit.category != 'piece' && unit.category != 'time') {
+          conversionHint =
+              '  (${unit.toBase.toStringAsFixed(unit.toBase == unit.toBase.roundToDouble() ? 0 : 2)} ${unit.baseUnit})';
+        } else if (unit.category == 'time') {
+          conversionHint =
+              '  (${unit.toBase.toStringAsFixed(0)} ${unit.baseUnit})';
+        }
+
         return DropdownMenuItem<String>(
           value: unit.symbol,
-          child: Row(
-            children: [
-              SizedBox(
-                width: 40,
-                child: Text(
-                  unit.symbol,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+          // Больше никаких Column! Используем RichText для двух стилей в одной строке
+          child: RichText(
+            overflow: TextOverflow.ellipsis,
+            text: TextSpan(children: [
+              TextSpan(
+                text: unit.symbol,
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  unit.name,
-                  style: TextStyle(color: Colors.grey[600]),
-                  overflow: TextOverflow.ellipsis,
-                ),
+              const TextSpan(text: '  '),
+              TextSpan(
+                text: unit.name,
+                style: TextStyle(color: Colors.grey[600]),
               ),
-            ],
+              if (conversionHint.isNotEmpty)
+                TextSpan(
+                  text: conversionHint,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF9E9E9E),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+            ]),
           ),
         );
       }).toList(),

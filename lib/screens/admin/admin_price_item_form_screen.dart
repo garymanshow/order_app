@@ -1,3 +1,4 @@
+// lib/screens/admin/admin_price_item_form_screen.dart
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,8 @@ import '../../models/composition.dart';
 import '../../models/storage_condition.dart';
 import '../../models/transport_condition.dart';
 import '../../services/api_service.dart';
+import '../../services/unit_service.dart';
+import '../../widgets/unit_selector.dart';
 
 class _ListButtonConfig {
   final String title;
@@ -1119,13 +1122,13 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
           const SizedBox(width: 8),
           Expanded(
               flex: 1,
-              child: TextField(
-                  controller: TextEditingController(text: item.unit),
-                  decoration: const InputDecoration(
-                      labelText: 'Ед.изм.', isDense: true),
-                  onChanged: (v) {
-                    item.unit = v;
-                  })),
+              child: UnitSelector(
+                mode: UnitSelectorMode.time,
+                selectedUnit: item.unit,
+                onUnitSelected: (v) {
+                  if (v != null) item.unit = v;
+                },
+              )),
         ]),
       ]);
     }
@@ -1167,15 +1170,22 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                 if (config.showQuantity && config.showUnit)
                   const SizedBox(width: 8),
                 if (config.showUnit)
+                  // 🔥 ИСПРАВЛЕНИЕ: Передаем только нужные единицы напрямую, без дубликатов времени/веса
                   Expanded(
-                      child: TextField(
-                          controller:
-                              TextEditingController(text: item.unitSymbol),
-                          decoration: const InputDecoration(
-                              labelText: 'Ед.изм.', isDense: true),
-                          onChanged: (v) {
-                            item.unitSymbol = v;
-                          })),
+                      child: UnitSelector(
+                    selectedUnit: item.unitSymbol,
+                    // Берем глобальный сервис, но фильтруем только под состав/начинки
+                    unitsList: Provider.of<UnitService>(context, listen: false)
+                        .allUnits
+                        .where((u) =>
+                            u.category == 'weight' ||
+                            u.category == 'volume' ||
+                            u.category == 'piece')
+                        .toList(),
+                    onUnitSelected: (v) {
+                      if (v != null) item.unitSymbol = v;
+                    },
+                  )),
               ])),
       ]);
     }
