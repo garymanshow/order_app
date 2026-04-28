@@ -10,6 +10,7 @@ import 'dart:typed_data';
 import '../models/product.dart';
 import '../models/client.dart';
 import '../models/client_data.dart';
+import '../models/price_category.dart';
 import '../models/price_list_mode.dart';
 import '../models/composition.dart';
 import '../models/nutrition_info.dart';
@@ -524,113 +525,177 @@ class _PriceListScreenState extends State<PriceListScreen> {
     );
   }
 
+  // Функция для приведения текста в порядок (1-я буква большая, 1 точка в конце)
+  String _normalizeText(String input) {
+    if (input.trim().isEmpty) return '';
+    String text = input.trim();
+    text = text[0].toUpperCase() + text.substring(1);
+    while (text.endsWith('.')) {
+      text = text.substring(0, text.length - 1).trim();
+    }
+    return '$text.';
+  }
+
   Future<void> _exportPriceList(
     BuildContext context,
     List<Product> products, {
     required String format,
-    required bool includeBasic,
-    required bool includeComposition,
-    required bool includeNutrition,
-    required bool includeStorage,
-    required bool includePhotos,
+    bool includeBasic = true,
+    bool includeComposition = true,
+    bool includeNutrition = true,
+    bool includeStorage = true,
+    bool includePhotos = false,
   }) async {
-    showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => Center(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const CircularProgressIndicator(color: Color(0xFF5D4037)),
-              const SizedBox(height: 16),
-              Text(
-                  includePhotos ? 'Генерация с фото...' : 'Генерация файла...'),
-            ])));
+    // Убираем диалог загрузки. Показываем уведомление, что процесс пошел.
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('⏳ Файл формируется и скоро будет сохранен...'),
+        duration: Duration(seconds: 3),
+        backgroundColor: Colors.blueGrey,
+      ),
+    );
 
     try {
-      // 🔥 1. БЕРЕМ ДАННЫЕ ЗДЕСЬ (на экране)
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final client = authProvider.currentUser;
       final clientData = authProvider.clientData;
 
-      final compositionsByProduct = <String, List<Composition>>{};
       final nutritionByProduct = <String, NutritionInfo>{};
-      final storageByProduct = <String, StorageCondition>{};
+      final storageByProduct = <String, List<StorageCondition>>{};
+      final compositionStringsByProduct = <String, String>{};
 
       if (clientData != null) {
+        final categoriesMap = <String, PriceCategory>{};
+        for (var cat in clientData.priceCategories) {
+          categoriesMap[cat.id.toString()] = cat;
+        }
+
         for (var product in products) {
-          compositionsByProduct[product.id] = clientData.compositions
-              .where((c) => c.sheetName == 'Состав' && c.entityId == product.id)
-              .toList();
-          try {
-            nutritionByProduct[product.id] = clientData.nutritionInfos
-                .firstWhere((n) => n.priceListId == product.id);
-          } catch (_) {}
-          try {
-            storageByProduct[product.id] = clientData.storageConditions
-                .firstWhere(
-                    (s) => s.level == 'Прайс-лист' && s.entityId == product.id);
-          } catch (_) {}
+          final String pId = product.id;
+          final String cId = product.categoryId;
+
+          if (includeNutrition) {
+            try {
+              final nut = clientData.nutritionInfos
+                  .firstWhere((n) => n.priceListId == pId);
+              nutritionByProduct[pId] = nut;
+            } catch (_) {}
+          }
+
+          if (includeStorage) {
+            final storages = clientData.storageConditions
+                .where(
+                    (s) => s.level == 'Категории прайса' && s.entityId == cId)
+                .toList();
+            if (storages.isNotEmpty) {
+              storageByProduct[pId] = storages;
+            }
+          }
+
+          if (includeComposition) {
+            final compositionParts = <String>[];
+
+            final fillings = clientData.compositions
+                .where((c) =>
+                    c.sheetName == 'Категории прайса' && c.entityId == cId)
+                .toList();
+
+            for (var filling in fillings) {
+              final fillingIngredients = clientData.compositions
+                  .where((c) =>
+                      c.sheetName == 'Начинки' &&
+                      c.entityId == filling.id.toString())
+                  .map((i) => i.displayName.trim().toLowerCase())
+                  .toList();
+
+              if (fillingIngredients.isNotEmpty) {
+                compositionParts.add(
+                    '${_normalizeText(filling.displayName).replaceAll('.', '')}: ${fillingIngredients.join(', ')}');
+              } else {
+                compositionParts.add(
+                    _normalizeText(filling.displayName).replaceAll('.', ''));
+              }
+            }
+
+            final directIngredients = clientData.compositions
+                .where((c) => c.sheetName == 'Прайс-лист' && c.entityId == pId)
+                .map((i) => _normalizeText(i.displayName).replaceAll('.', ''))
+                .toList();
+
+            if (directIngredients.isNotEmpty) {
+              compositionParts.addAll(directIngredients);
+            }
+
+            if (compositionParts.isNotEmpty) {
+              String rawComp = compositionParts.join('. ');
+              compositionStringsByProduct[pId] = _normalizeText(rawComp);
+            } else if (product.composition.trim().isNotEmpty) {
+              compositionStringsByProduct[pId] =
+                  _normalizeText(product.composition);
+            }
+          }
         }
       }
 
-      // 🔥 2. ВЫЗЫВАЕМ ЧИСТЫЙ СЕРВИС
+      _exportService.format = format;
+      _exportService.includeBasic = includeBasic;
+      _exportService.includeComposition = includeComposition;
+      _exportService.includeNutrition = includeNutrition;
+      _exportService.includeStorage = includeStorage;
+      _exportService.includePhotos = includePhotos;
+
       final result = await _exportService.generatePriceList(
         products: products,
         clientName: client?.name ?? 'Клиент',
         clientPhone: client?.phone ?? '',
-        compositionsByProduct: compositionsByProduct,
+        categories: clientData?.priceCategories ?? [],
+        compositionsByProduct: compositionStringsByProduct,
         nutritionByProduct: nutritionByProduct,
         storageByProduct: storageByProduct,
       );
 
-      if (context.mounted)
-        try {
-          Navigator.of(context).pop();
-        } catch (_) {}
-
-      if (result != null && context.mounted) {
+      if (result != null && mounted) {
         if (kIsWeb) {
           final bytes = result as Uint8List;
           final fileName =
               'price_list_${DateTime.now().millisecondsSinceEpoch}.$format';
-
           final blob = html.Blob([bytes]);
           final url = html.Url.createObjectUrlFromBlob(blob);
-
           final anchor = html.AnchorElement(href: url)
             ..setAttribute('download', fileName)
             ..style.display = 'none';
-
           html.document.body?.children.add(anchor);
           anchor.click();
-
           html.Url.revokeObjectUrl(url);
           anchor.remove();
 
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text('✅ Файл скачан: $fileName'),
-                  backgroundColor: Colors.green[700]),
-            );
-          }
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('✅ Файл скачан: $fileName'),
+                backgroundColor: Colors.green[700]),
+          );
         } else {
           final file = result as File;
           await SharePlus.instance
               .share(ShareParams(files: [XFile(file.path)]));
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('✅ Файл создан'),
-              backgroundColor: Colors.green[700]));
+
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('✅ Файл создан'), backgroundColor: Colors.green),
+          );
         }
-      } else if (context.mounted) {
+      } else if (mounted) {
         throw Exception('Ошибка генерации');
       }
     } catch (e) {
-      if (context.mounted) {
-        try {
-          Navigator.of(context).pop();
-        } catch (_) {}
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('❌ Ошибка: $e'), backgroundColor: Colors.red[700]));
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('❌ Ошибка: $e'), backgroundColor: Colors.red[700]),
+        );
       }
     }
   }

@@ -1,11 +1,12 @@
-// lib/screens/admin/admin_price_item_form_screen.dart
+// lib/screens/price_list_management_screen.dart
 import 'dart:io';
 import 'dart:typed_data';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import '../models/composition.dart';
 import '../models/nutrition_info.dart';
 import '../models/storage_condition.dart';
 import '../models/product.dart';
@@ -17,10 +18,6 @@ import '../services/export_service.dart';
 import 'admin/admin_price_item_form_screen.dart';
 import 'admin/admin_price_categories_screen.dart';
 
-// Игнорируем предупреждения о dart:html, так как логика скачивания обернута в kIsWeb
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
-
 class PriceListManagementScreen extends StatefulWidget {
   final String title;
 
@@ -30,7 +27,6 @@ class PriceListManagementScreen extends StatefulWidget {
   });
 
   @override
-  // Исправлено: убрано использование приватного типа в публичном API
   State<PriceListManagementScreen> createState() =>
       _PriceListManagementScreenState();
 }
@@ -44,23 +40,28 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
   final ApiService _apiService = ApiService();
   final ExportService _exportService = ExportService();
 
-  // 🔥 НАСТРОЙКИ ЭКСПОРТА (вместо Map)
+  // 🔥 НАСТРОЙКИ ЭКСПОРТА
   bool _expBasic = true;
   bool _expComposition = true;
   bool _expNutrition = true;
   bool _expStorage = true;
   bool _expPhotos = false;
 
-  // Исправлено: удалено неиспользуемое поле _draftCategories
-  // List<PriceCategory> _draftCategories = [];
+  // 🔥 ФОРМИРОВАНИЕ ЦЕНЫ
+  double _expMarkupPercent = 0;
+  double _expDiscountPercent = 0;
+  int _expRoundToNearest = 0;
+
   final Set<String> _modifiedCategoryIds = {};
   final Set<String> _deletedCategoryIds = {};
 
   List<Product> _draftProducts = [];
   final Set<String> _modifiedProductIds = {};
   final Set<String> _deletedProductIds = {};
-  // Исправлено: добавлен final (предупреждение prefer_final_fields)
   final List<Product> _createdProducts = [];
+
+  final GlobalKey<ScaffoldMessengerState> _scaffoldKey =
+      GlobalKey<ScaffoldMessengerState>();
 
   bool get _hasLocalChanges =>
       _modifiedProductIds.isNotEmpty ||
@@ -77,7 +78,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     if (authProvider.clientData == null) return;
 
-    final serverCategories = authProvider.clientData!.priceCategories;
     final serverProducts = authProvider.clientData!.products;
     final categories = authProvider.clientData!.priceCategories;
 
@@ -95,7 +95,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
 
     setState(() {
       _categories = categoryTitles;
-      // _draftCategories = serverCategories.toList();
 
       _draftProducts = serverProducts.map((p) {
         String realCategoryName = p.categoryName;
@@ -360,28 +359,24 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Будет изменено позиций: ${_filteredProducts.length}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, color: Colors.blue),
-                  ),
+                  Text('Будет изменено позиций: ${_filteredProducts.length}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.blue)),
                   const SizedBox(height: 16),
                   const Text('Тип изменения:'),
                   Row(
                     children: [
                       ChoiceChip(
-                        label: const Text('На %'),
-                        selected: mode == 'percent',
-                        onSelected: (_) =>
-                            setDialogState(() => mode = 'percent'),
-                      ),
+                          label: const Text('На %'),
+                          selected: mode == 'percent',
+                          onSelected: (_) =>
+                              setDialogState(() => mode = 'percent')),
                       const SizedBox(width: 8),
                       ChoiceChip(
-                        label: const Text('На сумму ₽'),
-                        selected: mode == 'amount',
-                        onSelected: (_) =>
-                            setDialogState(() => mode = 'amount'),
-                      ),
+                          label: const Text('На сумму ₽'),
+                          selected: mode == 'amount',
+                          onSelected: (_) =>
+                              setDialogState(() => mode = 'amount')),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -394,26 +389,23 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                       onChanged: (val) => value =
                           double.tryParse(val.replaceAll(',', '.')) ?? 0),
                   SwitchListTile(
-                    title: const Text('Округлить в свою пользу'),
-                    value: roundUp,
-                    onChanged: (val) => setDialogState(() => roundUp = val),
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
+                      title: const Text('Округлить в свою пользу'),
+                      value: roundUp,
+                      onChanged: (val) => setDialogState(() => roundUp = val),
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading),
                 ],
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Отмена'),
-                ), // Исправлено: была пропущена запятая
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Отмена')),
                 ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _localApplyMassPriceChange(mode, value, roundUp);
-                  },
-                  child: const Text('Применить локально'),
-                ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _localApplyMassPriceChange(mode, value, roundUp);
+                    },
+                    child: const Text('Применить локально')),
               ],
             );
           },
@@ -423,7 +415,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
   }
 
   // ==========================================
-  // ДИАЛОГ ЭКСПОРТА (УЛУЧШЕННЫЙ)
+  // ДИАЛОГ ЭКСПОРТА
   // ==========================================
   void _showExportDialog() {
     String selectedFormat = 'pdf';
@@ -444,18 +436,18 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                         selectedFormat,
                         'pdf',
                         'PDF — полная информация',
-                        'Для каталогов, презентаций, печати'),
+                        'Для каталогов, презентаций, печати',
+                        (v) => setDialogState(() => selectedFormat = v)),
                     const SizedBox(height: 8),
                     _buildFormatOption(
                         setDialogState,
                         selectedFormat,
                         'csv',
                         'CSV — для этикеток и учёта',
-                        'Только структурированные данные'),
-
+                        'Только структурированные данные',
+                        (v) => setDialogState(() => selectedFormat = v)),
                     if (selectedFormat == 'pdf') ...[
-                      const SizedBox(height: 16),
-                      const Divider(),
+                      const SizedBox(height: 16), const Divider(),
                       const SizedBox(height: 8),
                       const Align(
                           alignment: Alignment.centerLeft,
@@ -481,45 +473,117 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                           setDialogState, 'Условия хранения', _expStorage, (v) {
                         _expStorage = v ?? true;
                         setDialogState(() {});
-                      }),
+                      }), // ИСПРАВЛЕНО ЗДЕСЬ
                       Column(
                         children: [
-                          _buildCheckbox(
-                            setDialogState,
-                            '📷 Фотографии товаров',
-                            _expPhotos,
-                            (v) {
-                              _expPhotos = v ?? false;
-                              if (_expPhotos && context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                          _buildCheckbox(setDialogState,
+                              '📷 Фотографии товаров', _expPhotos, (v) {
+                            _expPhotos = v ?? false;
+                            if (_expPhotos && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    // Исправлено: убран лишний const внутри const SnackBar
-                                    content: Text(
-                                        '⏱️ Фото увеличат время генерации'),
-                                    duration: Duration(seconds: 3),
-                                    backgroundColor: Color(0xFF5D4037),
-                                  ),
-                                );
-                              }
-                              setDialogState(() {});
-                            },
-                          ),
+                                      content: Text(
+                                          '⏱️ Фото увеличат время генерации'),
+                                      duration: Duration(seconds: 3),
+                                      backgroundColor: Color(0xFF5D4037)));
+                            }
+                            setDialogState(() {});
+                          }),
                           if (_expPhotos)
                             Padding(
-                              padding:
-                                  const EdgeInsets.only(left: 48, bottom: 8),
-                              child: Text(
-                                '• Загрузка фото: +10-30 сек',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey[600],
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
+                                padding:
+                                    const EdgeInsets.only(left: 48, bottom: 8),
+                                child: Text('• Загрузка фото: +10-30 сек',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey[600],
+                                        fontStyle: FontStyle.italic))),
                         ],
                       ),
-                    ], // Исправлено: была лишняя скобка ]
+
+                      // 🔥 ФОРМИРОВАНИЕ ЦЕНЫ
+                      const SizedBox(height: 16), const Divider(),
+                      const SizedBox(height: 8),
+                      const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('Формирование цены',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF5D4037)))),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                              child: TextField(
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  decoration: const InputDecoration(
+                                      labelText: 'Наценка %',
+                                      border: OutlineInputBorder(),
+                                      contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8)),
+                                  onChanged: (val) => setDialogState(() =>
+                                      _expMarkupPercent = double.tryParse(
+                                              val.replaceAll(',', '.')) ??
+                                          0))),
+                          const SizedBox(width: 16),
+                          Expanded(
+                              child: TextField(
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  decoration: const InputDecoration(
+                                      labelText: 'Скидка %',
+                                      border: OutlineInputBorder(),
+                                      contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8)),
+                                  onChanged: (val) => setDialogState(() =>
+                                      _expDiscountPercent = double.tryParse(
+                                              val.replaceAll(',', '.')) ??
+                                          0))),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int>(
+                        value: _expRoundToNearest,
+                        decoration: const InputDecoration(
+                            labelText: 'Округлить до',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8)),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 0, child: Text('Без округления')),
+                          DropdownMenuItem(
+                              value: 5, child: Text('До 5 ₽ (115, 120...)')),
+                          DropdownMenuItem(
+                              value: 10, child: Text('До 10 ₽ (110, 120...)')),
+                          DropdownMenuItem(
+                              value: 50, child: Text('До 50 ₽ (150, 200...)')),
+                          DropdownMenuItem(
+                              value: 100,
+                              child: Text('До 100 ₽ (200, 300...)')),
+                        ],
+                        onChanged: (val) =>
+                            setDialogState(() => _expRoundToNearest = val ?? 0),
+                      ),
+                      const SizedBox(height: 8),
+                      if (_expMarkupPercent > 0 ||
+                          _expDiscountPercent > 0 ||
+                          _expRoundToNearest > 0)
+                        Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(8)),
+                            child: Text(
+                                '💡 Формула: Базовая × ${1 + _expMarkupPercent / 100} × ${1 - _expDiscountPercent / 100}${_expRoundToNearest > 0 ? ', округлить вверх до $_expRoundToNearest ₽' : ''}',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.orange[900],
+                                    fontStyle: FontStyle.italic))),
+                    ],
                   ],
                 ),
               ),
@@ -529,14 +593,13 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                   onPressed: Navigator.of(context).pop,
                   child: const Text('Отмена')),
               ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _exportPriceList(context, _filteredProducts,
-                      format: selectedFormat);
-                },
-                icon: const Icon(Icons.file_download),
-                label: const Text('Экспортировать'),
-              ),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _exportPriceList(context, _filteredProducts,
+                        format: selectedFormat);
+                  },
+                  icon: const Icon(Icons.file_download),
+                  label: const Text('Экспортировать')),
             ],
           );
         },
@@ -544,11 +607,16 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     );
   }
 
-  Widget _buildFormatOption(StateSetter setState, String selectedFormat,
-      String value, String title, String subtitle) {
-    final isSelected = selectedFormat == value;
+  Widget _buildFormatOption(
+      StateSetter setState,
+      String currentFormat,
+      String value,
+      String title,
+      String subtitle,
+      ValueChanged<String> onSelect) {
+    final isSelected = currentFormat == value;
     return InkWell(
-      onTap: () => setState(() => selectedFormat = value),
+      onTap: () => onSelect(value), // Вызываем коллбэк
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -561,20 +629,17 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                 ? const Color(0xFF5D4037).withValues(alpha: 0.1)
                 : null),
         child: Row(children: [
-          // Исправлено: устаревшие параметры groupValue и onChanged виджета Radio заменены на RadioGroup
           SizedBox(
-            width: 20,
-            height: 20,
-            child: RadioGroup<String>(
-              groupValue: selectedFormat,
-              onChanged: (v) => setState(() => selectedFormat = v!),
+              width: 20,
+              height: 20,
               child: Radio<String>(
-                value: value,
-                activeColor: const Color(0xFF5D4037),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-          ),
+                  value: value,
+                  groupValue: currentFormat,
+                  onChanged: (v) {
+                    if (v != null) onSelect(v);
+                  }, // Вызываем коллбэк
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  activeColor: const Color(0xFF5D4037))),
           const SizedBox(width: 8),
           Expanded(
               child: Column(
@@ -605,53 +670,109 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
   // ==========================================
   // ЛОГИКА ЭКСПОРТА
   // ==========================================
+
+  String _normalizeText(String input) {
+    if (input.trim().isEmpty) return '';
+    String text = input.trim();
+    text = text[0].toUpperCase() + text.substring(1);
+    while (text.endsWith('.')) {
+      text = text.substring(0, text.length - 1).trim();
+    }
+    return '$text.';
+  }
+
   Future<void> _exportPriceList(BuildContext context, List<Product> products,
       {required String format}) async {
-    // 1. Показываем диалог и сохраняем контекст навигатора
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(color: Color(0xFF5D4037)),
-              const SizedBox(height: 16),
-              Text(_expPhotos ? 'Генерация с фото...' : 'Генерация файла...'),
-            ],
-          ),
-        ),
-      ),
+    _scaffoldKey.currentState?.showSnackBar(
+      const SnackBar(
+          content: Text('⏳ Файл формируется и скоро будет сохранен...'),
+          duration: Duration(seconds: 3),
+          backgroundColor: Colors.blueGrey),
     );
-
-    // Используем стабильный контекст для закрытия диалога
-    final navigatorContext = Navigator.of(context).context;
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final client = authProvider.currentUser;
       final clientData = authProvider.clientData;
 
-      final compositionsByProduct = <String, List<Composition>>{};
       final nutritionByProduct = <String, NutritionInfo>{};
-      final storageByProduct = <String, StorageCondition>{};
+      final storageByProduct = <String, List<StorageCondition>>{};
+      final compositionStringsByProduct = <String, String>{};
 
       if (clientData != null) {
+        final categoriesMap = <String, PriceCategory>{};
+        for (var cat in clientData.priceCategories) {
+          categoriesMap[cat.id.toString()] = cat;
+        }
+
         for (var product in products) {
-          compositionsByProduct[product.id] = clientData.compositions
-              .where((c) => c.sheetName == 'Состав' && c.entityId == product.id)
+          final String pId = product.id;
+          final String cId = product.categoryId;
+
+          // 1. КБЖУ (С ОТЛАДКОЙ)
+          debugPrint(
+              '🔎 Ищем КБЖУ для продукта: ID=$pId, Name=${product.name}');
+
+          // Выводим все доступные КБЖУ, чтобы увидеть реальные ключи
+          if (pId == products.first.id) {
+            // Печатаем мапу только один раз для первого товара
+            debugPrint('📦 Все доступные КБЖУ в clientData:');
+            for (var n in clientData.nutritionInfos) {
+              debugPrint(
+                  '   -> priceListId: "${n.priceListId}" (тип: ${n.priceListId.runtimeType})');
+            }
+          }
+
+          try {
+            final nut = clientData.nutritionInfos
+                .firstWhere((n) => n.priceListId == pId);
+            nutritionByProduct[pId] = nut;
+          } catch (_) {}
+
+          final storages = clientData.storageConditions
+              .where((s) => s.level == 'Категории прайса' && s.entityId == cId)
               .toList();
-          try {
-            nutritionByProduct[product.id] = clientData.nutritionInfos
-                .firstWhere((n) => n.priceListId == product.id);
-          } catch (_) {}
-          try {
-            storageByProduct[product.id] = clientData.storageConditions
-                .firstWhere(
-                    (s) => s.level == 'Прайс-лист' && s.entityId == product.id);
-          } catch (_) {}
+          if (storages.isNotEmpty) {
+            storageByProduct[pId] = storages;
+          }
+
+          final compositionParts = <String>[];
+          final fillings = clientData.compositions
+              .where(
+                  (c) => c.sheetName == 'Категории прайса' && c.entityId == cId)
+              .toList();
+
+          for (var filling in fillings) {
+            final fillingIngredients = clientData.compositions
+                .where((c) =>
+                    c.sheetName == 'Начинки' &&
+                    c.entityId == filling.id.toString())
+                .map((i) => i.displayName.trim().toLowerCase())
+                .toList();
+            if (fillingIngredients.isNotEmpty) {
+              compositionParts.add(
+                  '${_normalizeText(filling.displayName).replaceAll('.', '')}: ${fillingIngredients.join(', ')}');
+            } else {
+              compositionParts
+                  .add(_normalizeText(filling.displayName).replaceAll('.', ''));
+            }
+          }
+
+          final directIngredients = clientData.compositions
+              .where((c) => c.sheetName == 'Прайс-лист' && c.entityId == pId)
+              .map((i) => _normalizeText(i.displayName).replaceAll('.', ''))
+              .toList();
+          if (directIngredients.isNotEmpty) {
+            compositionParts.addAll(directIngredients);
+          }
+
+          if (compositionParts.isNotEmpty) {
+            String rawComp = compositionParts.join('. ');
+            compositionStringsByProduct[pId] = _normalizeText(rawComp);
+          } else if (product.composition.trim().isNotEmpty) {
+            compositionStringsByProduct[pId] =
+                _normalizeText(product.composition);
+          }
         }
       }
 
@@ -662,76 +783,78 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
       _exportService.includeStorage = _expStorage;
       _exportService.includePhotos = _expPhotos;
 
+      // ПЕРЕДАЕМ НАСТРОЙКИ ЦЕНЫ В СЕРВИС
+      _exportService.markupPercent = _expMarkupPercent;
+      _exportService.discountPercent = _expDiscountPercent;
+      _exportService.roundToNearest = _expRoundToNearest;
+
       final result = await _exportService.generatePriceList(
         products: products,
         clientName: client?.name ?? 'Менеджер',
         clientPhone: client?.phone ?? '',
-        compositionsByProduct: compositionsByProduct,
+        categories: clientData?.priceCategories ?? [],
+        compositionsByProduct: compositionStringsByProduct,
         nutritionByProduct: nutritionByProduct,
         storageByProduct: storageByProduct,
       );
 
-      // 2. ЗАКРЫВАЕМ ДИАЛОГ СРАЗУ ПОСЛЕ ГЕНЕРАЦИИ
-      // Используем navigatorContext, чтобы избежать проблем с устаревшим context
-      if (navigatorContext.mounted) {
-        Navigator.of(navigatorContext).pop();
-      }
-
-      // 3. Обрабатываем результат
-      if (result != null && navigatorContext.mounted) {
+      if (result != null && mounted) {
         if (kIsWeb) {
           final bytes = result as Uint8List;
           final fileName =
               'price_list_${DateTime.now().millisecondsSinceEpoch}.$format';
           final blob = html.Blob([bytes]);
           final url = html.Url.createObjectUrlFromBlob(blob);
+
+          // Пытаемся автоматически скачать файл
           final anchor = html.AnchorElement(href: url)
             ..setAttribute('download', fileName)
             ..style.display = 'none';
           html.document.body?.children.add(anchor);
           anchor.click();
-          html.Url.revokeObjectUrl(url);
-          anchor.remove();
 
-          ScaffoldMessenger.of(navigatorContext).showSnackBar(
+          // Даем браузеру секунду на инициализацию скачивания, затем чистим память
+          Future.delayed(const Duration(seconds: 1), () {
+            html.Url.revokeObjectUrl(url);
+            anchor.remove();
+          });
+
+          _scaffoldKey.currentState?.hideCurrentSnackBar();
+
+          // Показываем SnackBar с ручной ссылкой на случай блокировки автоматического скачивания
+          _scaffoldKey.currentState?.showSnackBar(
             SnackBar(
-                content: Text('✅ Файл скачан: $fileName'),
-                backgroundColor: Colors.green[700]),
+              content: Text('✅ Файл готов: $fileName'),
+              backgroundColor: Colors.green[700],
+              duration: const Duration(
+                  seconds: 15), // Даем время пользователю кликнуть
+              action: SnackBarAction(
+                label: 'Сохранить',
+                textColor: Colors.white,
+                onPressed: () {
+                  // Если автоматическое скачивание не сработало, открываем в новой вкладке
+                  html.window.open(url, '_blank');
+                },
+              ),
+            ),
           );
         } else {
-          // Мобильная версия: сначала шарим, потом показываем успех
           final file = result as File;
           await SharePlus.instance
               .share(ShareParams(files: [XFile(file.path)]));
 
-          if (navigatorContext.mounted) {
-            ScaffoldMessenger.of(navigatorContext).showSnackBar(
-              const SnackBar(
-                  content: Text('✅ Файл создан'),
-                  backgroundColor: Colors.green),
-            );
-          }
+          _scaffoldKey.currentState?.hideCurrentSnackBar();
+          _scaffoldKey.currentState?.showSnackBar(const SnackBar(
+              content: Text('✅ Файл создан'), backgroundColor: Colors.green));
         }
-      } else if (navigatorContext.mounted) {
-        // Если результат null, показываем ошибку (диалог уже закрыт выше)
-        ScaffoldMessenger.of(navigatorContext).showSnackBar(
-          const SnackBar(
-              content: Text('❌ Ошибка: файл не был сгенерирован'),
-              backgroundColor: Colors.red),
-        );
+      } else if (mounted) {
+        throw Exception('Ошибка генерации');
       }
     } catch (e) {
-      // В случае любой ошибки проверяем, не закрыт ли уже диалог, и закрываем его
-      if (navigatorContext.mounted) {
-        // Пытаемся закрыть диалог, если он всё ещё висит (например, при crash-ошибке)
-        try {
-          Navigator.of(navigatorContext).pop();
-        } catch (_) {}
-
-        ScaffoldMessenger.of(navigatorContext).showSnackBar(
-          SnackBar(
-              content: Text('❌ Ошибка: $e'), backgroundColor: Colors.red[700]),
-        );
+      if (mounted) {
+        _scaffoldKey.currentState?.hideCurrentSnackBar();
+        _scaffoldKey.currentState?.showSnackBar(SnackBar(
+            content: Text('❌ Ошибка: $e'), backgroundColor: Colors.red[700]));
       }
     }
   }
@@ -760,6 +883,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
         if (shouldDiscard == true && mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
+        key: _scaffoldKey,
         appBar: AppBar(
           title: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(widget.title),
@@ -926,6 +1050,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                               product.categoryName;
                       final isModified =
                           _modifiedProductIds.contains(product.id);
+
                       return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -983,110 +1108,129 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
                                             ]),
                                   ])),
                             Card(
-                              margin: const EdgeInsets.symmetric(
-                                  horizontal: 0, vertical: 4),
-                              elevation: 1,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  side: isModified
-                                      ? const BorderSide(
-                                          color: Colors.orange, width: 1)
-                                      : BorderSide.none),
-                              child: InkWell(
-                                onTap: () => _navigateToEdit(product),
-                                borderRadius: BorderRadius.circular(8),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                          width: 56,
-                                          height: 56,
-                                          decoration: BoxDecoration(
-                                              color: Colors.grey[200],
-                                              borderRadius:
-                                                  BorderRadius.circular(8)),
-                                          child: ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              child:
-                                                  _buildProductImage(product))),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                          child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                            if (product.categoryName.isNotEmpty)
-                                              Text(product.categoryName,
-                                                  style: TextStyle(
-                                                      fontSize: 11,
-                                                      color:
-                                                          Colors.grey.shade600,
-                                                      fontWeight:
-                                                          FontWeight.w500),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis),
-                                            Text(product.displayName,
-                                                style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 14,
-                                                    height: 1.2),
-                                                maxLines: 2,
-                                                overflow:
-                                                    TextOverflow.ellipsis),
-                                          ])),
-                                      const SizedBox(width: 8),
-                                      Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
-                                            Text(
-                                                '${product.price.toStringAsFixed(0)} ₽',
-                                                style: const TextStyle(
-                                                    fontFamily: 'Lora',
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 16,
-                                                    color: Colors.black87)),
-                                            if (product.multiplicity > 1)
-                                              Text(
-                                                  '×${product.multiplicity} шт',
-                                                  style: const TextStyle(
-                                                      fontFamily: 'Lora',
-                                                      fontSize: 12,
-                                                      color: Colors.grey)),
-                                          ]),
-                                      const SizedBox(width: 4),
-                                      Column(children: [
-                                        IconButton(
-                                            icon: Icon(Icons.edit_outlined,
-                                                size: 20,
-                                                color: Colors.blue.shade700),
-                                            onPressed: () =>
-                                                _navigateToEdit(product),
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(
-                                                minWidth: 36, minHeight: 36)),
-                                        IconButton(
-                                            icon: Icon(Icons.delete_outline,
-                                                size: 20,
-                                                color: Colors.red.shade400),
-                                            onPressed: () =>
-                                                _localDeleteItem(product),
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(
-                                                minWidth: 36, minHeight: 36)),
-                                      ]),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
+                                margin: const EdgeInsets.symmetric(
+                                    horizontal: 0, vertical: 4),
+                                elevation: 1,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: isModified
+                                        ? const BorderSide(
+                                            color: Colors.orange, width: 1)
+                                        : BorderSide.none),
+                                child: InkWell(
+                                    onTap: () => _navigateToEdit(product),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.center,
+                                            children: [
+                                              Container(
+                                                  width: 56,
+                                                  height: 56,
+                                                  decoration: BoxDecoration(
+                                                      color: Colors.grey[200],
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8)),
+                                                  child: ClipRRect(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8),
+                                                      child: _buildProductImage(
+                                                          product))),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                  child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .center,
+                                                      children: [
+                                                    if (product.categoryName
+                                                        .isNotEmpty)
+                                                      Text(product.categoryName,
+                                                          style: TextStyle(
+                                                              fontSize: 11,
+                                                              color: Colors.grey
+                                                                  .shade600,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w500),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis),
+                                                    Text(product.displayName,
+                                                        style: const TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            fontSize: 14,
+                                                            height: 1.2),
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis),
+                                                  ])),
+                                              const SizedBox(width: 8),
+                                              Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.end,
+                                                  children: [
+                                                    Text(
+                                                        '${product.price.toStringAsFixed(0)} ₽',
+                                                        style: const TextStyle(
+                                                            fontFamily: 'Lora',
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize: 16,
+                                                            color: Colors
+                                                                .black87)),
+                                                    if (product.multiplicity >
+                                                        1)
+                                                      Text(
+                                                          '×${product.multiplicity} шт',
+                                                          style:
+                                                              const TextStyle(
+                                                                  fontFamily:
+                                                                      'Lora',
+                                                                  fontSize: 12,
+                                                                  color: Colors
+                                                                      .grey)),
+                                                  ]),
+                                              const SizedBox(width: 4),
+                                              Column(children: [
+                                                IconButton(
+                                                    icon: Icon(
+                                                        Icons.edit_outlined,
+                                                        size: 20,
+                                                        color: Colors
+                                                            .blue.shade700),
+                                                    onPressed: () =>
+                                                        _navigateToEdit(
+                                                            product),
+                                                    padding: EdgeInsets.zero,
+                                                    constraints:
+                                                        const BoxConstraints(
+                                                            minWidth: 36,
+                                                            minHeight: 36)),
+                                                IconButton(
+                                                    icon: Icon(
+                                                        Icons.delete_outline,
+                                                        size: 20,
+                                                        color: Colors
+                                                            .red.shade400),
+                                                    onPressed: () =>
+                                                        _localDeleteItem(
+                                                            product),
+                                                    padding: EdgeInsets.zero,
+                                                    constraints:
+                                                        const BoxConstraints(
+                                                            minWidth: 36,
+                                                            minHeight: 36)),
+                                              ]),
+                                            ])))),
                           ]);
                     }),
       ),

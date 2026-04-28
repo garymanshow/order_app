@@ -41,14 +41,17 @@ class NutritionInfo {
   factory NutritionInfo.fromJson(Map<String, dynamic> json) {
     return NutritionInfo(
       id: json['id']?.toString(),
-      // Поддержка обоих вариантов ключа для надежности
-      priceListId:
-          json['priceListId']?.toString() ?? json['ID сущности']?.toString(),
+      // Поддержка всех вариантов ключей (точно из вашей таблицы + сущности + Hive)
+      priceListId: json['ID Прайс-лист']?.toString() ??
+          json['ID прайс-листа']?.toString() ??
+          json['priceListId']?.toString() ??
+          json['ID сущности']?.toString(),
       level: json['level']?.toString() ?? 'Прайс-лист',
-      calories: json['calories']?.toString(),
-      proteins: json['proteins']?.toString(),
-      fats: json['fats']?.toString(),
-      carbohydrates: json['carbohydrates']?.toString(),
+      calories: json['Калории']?.toString() ?? json['calories']?.toString(),
+      proteins: json['Белки']?.toString() ?? json['proteins']?.toString(),
+      fats: json['Жиры']?.toString() ?? json['fats']?.toString(),
+      carbohydrates:
+          json['Углеводы']?.toString() ?? json['carbohydrates']?.toString(),
     );
   }
 

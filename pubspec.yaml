@@ -39,7 +39,6 @@ dependencies:
   http: ^1.6.0 # Если используется HTTP-клиент
   path_provider: ^2.1.5
   pdf: ^3.11.3
-  pdfx: ^2.6.0
   permission_handler: ^12.0.1
   provider: ^6.1.5+1
   share_plus: ^12.0.2
