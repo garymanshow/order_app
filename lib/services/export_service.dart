@@ -2,11 +2,13 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:crypto/crypto.dart'; // Обязательно добавьте в pubspec.yaml: crypto: ^3.0.3
 import '../models/product.dart';
 import '../models/nutrition_info.dart';
 import '../models/storage_condition.dart';
@@ -31,7 +33,9 @@ class ExportService {
   static final _colorAccent = PdfColors.green700;
 
   Future<pw.Font> _loadFont() async {
-    if (_cachedFont != null) return _cachedFont!;
+    if (_cachedFont != null) {
+      return _cachedFont!;
+    }
     try {
       final fontData = await rootBundle.load('assets/fonts/Lora-Regular.ttf');
       _cachedFont = pw.Font.ttf(fontData);
@@ -42,7 +46,9 @@ class ExportService {
   }
 
   Future<pw.MemoryImage?> _loadLogo() async {
-    if (_cachedLogo != null) return _cachedLogo!;
+    if (_cachedLogo != null) {
+      return _cachedLogo!;
+    }
     try {
       final logoData = await rootBundle.load('assets/images/auth/logo.webp');
       _cachedLogo = pw.MemoryImage(logoData.buffer.asUint8List());
@@ -54,8 +60,9 @@ class ExportService {
 
   Future<pw.MemoryImage?> _loadProductImage(
       String productId, String? imageUrl) async {
-    if (_cachedProductImages.containsKey(productId))
+    if (_cachedProductImages.containsKey(productId)) {
       return _cachedProductImages[productId];
+    }
     try {
       Uint8List? imageBytes;
       if (kIsWeb || imageUrl == null || imageUrl.isEmpty) {
@@ -206,6 +213,7 @@ class ExportService {
     Map<String, pw.MemoryImage?> productImages,
   ) async {
     final pdf = pw.Document();
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -223,7 +231,64 @@ class ExportService {
         ],
       ),
     );
-    return pdf.save();
+
+    final rawPdfBytes = await pdf.save();
+    return _applyPdfProtection(rawPdfBytes);
+  }
+
+  /// Внедряет стандартный словарь шифрования PDF прямо в байты файла.
+  Uint8List _applyPdfProtection(Uint8List pdfBytes) {
+    final random = Random.secure();
+    final ownerPassword = List.generate(32, (_) => random.nextInt(256));
+
+    // Используем актуальный метод хэширования из пакета crypto
+    final hash = md5.convert(ownerPassword);
+    final hashHex =
+        hash.bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+    final encryptDict =
+        '/Encrypt <</Filter /Standard /V 1 /R 2 /Length 40 /P -44 /O <$hashHex> /U <00000000000000000000000000000000>>>';
+
+    final pdfString = String.fromCharCodes(pdfBytes);
+    final infoIndex = pdfString.indexOf('/Info');
+
+    if (infoIndex == -1) {
+      debugPrint(
+          '⚠️ Не удалось внедрить шифрование: структура PDF не распознана.');
+      return pdfBytes;
+    }
+
+    final modifiedPdf =
+        pdfString.replaceRange(infoIndex, infoIndex, '$encryptDict ');
+
+    final startIndex = modifiedPdf.indexOf('startxref');
+    if (startIndex != -1) {
+      final xrefStartStr =
+          modifiedPdf.substring(startIndex + 9).trim().split('\n').first.trim();
+      final xrefStart = int.tryParse(xrefStartStr) ?? -1;
+
+      if (xrefStart != -1) {
+        final xrefIndex = modifiedPdf.indexOf('xref', xrefStart - 5);
+
+        if (xrefIndex != -1) {
+          final sizeMatch = RegExp(r'/Size (\d+)')
+              .firstMatch(modifiedPdf.substring(xrefIndex, xrefIndex + 200));
+          if (sizeMatch != null) {
+            final originalSize = int.parse(sizeMatch.group(1)!);
+            final sizeDiff = encryptDict.length * 2;
+            final newSize = originalSize + sizeDiff;
+            final originalSizeStr = '/Size $originalSize';
+            final newSizeStr = '/Size $newSize';
+
+            final finalPdf = modifiedPdf.replaceFirst(
+                originalSizeStr, newSizeStr, xrefIndex);
+            return Uint8List.fromList(finalPdf.codeUnits);
+          }
+        }
+      }
+    }
+
+    return Uint8List.fromList(modifiedPdf.codeUnits);
   }
 
   // ==========================================
@@ -488,10 +553,18 @@ class ExportService {
     final prot = _parseNum(info.proteins);
     final fats = _parseNum(info.fats);
     final carbs = _parseNum(info.carbohydrates);
-    if (cal > 0) nutritionParts.add('Калории: $cal ккал');
-    if (prot > 0) nutritionParts.add('Белки: $prot г');
-    if (fats > 0) nutritionParts.add('Жиры: $fats г');
-    if (carbs > 0) nutritionParts.add('Углеводы: $carbs г');
+    if (cal > 0) {
+      nutritionParts.add('Калории: $cal ккал');
+    }
+    if (prot > 0) {
+      nutritionParts.add('Белки: $prot г');
+    }
+    if (fats > 0) {
+      nutritionParts.add('Жиры: $fats г');
+    }
+    if (carbs > 0) {
+      nutritionParts.add('Углеводы: $carbs г');
+    }
     return pw.Container(
         width: double.infinity,
         padding: const pw.EdgeInsets.all(8),
@@ -509,10 +582,12 @@ class ExportService {
 
   pw.Widget _buildStorageBlock(StorageCondition storage, pw.Font font) {
     final List<String> parts = [];
-    if (storage.storageLocation.trim().isNotEmpty)
+    if (storage.storageLocation.trim().isNotEmpty) {
       parts.add(storage.storageLocation.trim());
-    if (storage.temperature.trim().isNotEmpty)
+    }
+    if (storage.temperature.trim().isNotEmpty) {
       parts.add('t: ${storage.temperature.trim()}');
+    }
     if (storage.shelfLife.trim().isNotEmpty) {
       final unitStr =
           storage.unit.trim().isNotEmpty ? ' ${storage.unit.trim()}' : '';

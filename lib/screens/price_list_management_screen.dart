@@ -607,15 +607,27 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
   // ==========================================
   Future<void> _exportPriceList(BuildContext context, List<Product> products,
       {required String format}) async {
+    // 1. Показываем диалог и сохраняем контекст навигатора
     showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => Center(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               const CircularProgressIndicator(color: Color(0xFF5D4037)),
               const SizedBox(height: 16),
               Text(_expPhotos ? 'Генерация с фото...' : 'Генерация файла...'),
-            ])));
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Используем стабильный контекст для закрытия диалога
+    final navigatorContext = Navigator.of(context).context;
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -659,13 +671,14 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
         storageByProduct: storageByProduct,
       );
 
-      // Исправлено: добавлена проверка mounted
-      if (mounted)
-        try {
-          Navigator.of(context).pop();
-        } catch (_) {}
+      // 2. ЗАКРЫВАЕМ ДИАЛОГ СРАЗУ ПОСЛЕ ГЕНЕРАЦИИ
+      // Используем navigatorContext, чтобы избежать проблем с устаревшим context
+      if (navigatorContext.mounted) {
+        Navigator.of(navigatorContext).pop();
+      }
 
-      if (result != null && mounted) {
+      // 3. Обрабатываем результат
+      if (result != null && navigatorContext.mounted) {
         if (kIsWeb) {
           final bytes = result as Uint8List;
           final fileName =
@@ -679,28 +692,46 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
           anchor.click();
           html.Url.revokeObjectUrl(url);
           anchor.remove();
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('✅ Файл скачан: $fileName'),
-              backgroundColor: Colors.green[700]));
+
+          ScaffoldMessenger.of(navigatorContext).showSnackBar(
+            SnackBar(
+                content: Text('✅ Файл скачан: $fileName'),
+                backgroundColor: Colors.green[700]),
+          );
         } else {
+          // Мобильная версия: сначала шарим, потом показываем успех
           final file = result as File;
           await SharePlus.instance
               .share(ShareParams(files: [XFile(file.path)]));
-          // Исправлено: убран const, так как Colors.green[700] не является константой компиляции
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: const Text('✅ Файл создан'),
-              backgroundColor: Colors.green[700]));
+
+          if (navigatorContext.mounted) {
+            ScaffoldMessenger.of(navigatorContext).showSnackBar(
+              const SnackBar(
+                  content: Text('✅ Файл создан'),
+                  backgroundColor: Colors.green),
+            );
+          }
         }
-      } else if (mounted) {
-        throw Exception('Ошибка генерации');
+      } else if (navigatorContext.mounted) {
+        // Если результат null, показываем ошибку (диалог уже закрыт выше)
+        ScaffoldMessenger.of(navigatorContext).showSnackBar(
+          const SnackBar(
+              content: Text('❌ Ошибка: файл не был сгенерирован'),
+              backgroundColor: Colors.red),
+        );
       }
     } catch (e) {
-      if (mounted) {
+      // В случае любой ошибки проверяем, не закрыт ли уже диалог, и закрываем его
+      if (navigatorContext.mounted) {
+        // Пытаемся закрыть диалог, если он всё ещё висит (например, при crash-ошибке)
         try {
-          Navigator.of(context).pop();
+          Navigator.of(navigatorContext).pop();
         } catch (_) {}
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('❌ Ошибка: $e'), backgroundColor: Colors.red[700]));
+
+        ScaffoldMessenger.of(navigatorContext).showSnackBar(
+          SnackBar(
+              content: Text('❌ Ошибка: $e'), backgroundColor: Colors.red[700]),
+        );
       }
     }
   }
