@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   charset_converter
   connectivity_plus
+  file_saver
   file_selector_windows
   firebase_auth
   firebase_core

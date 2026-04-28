@@ -1,11 +1,12 @@
 // lib/screens/price_list_screen.dart
+import 'dart:convert';
 import 'dart:io' show File;
-import 'dart:typed_data';
-import 'dart:html' as html if (dart.library.html) 'dart:html';
+import 'dart:html' as html;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:typed_data';
 import '../models/product.dart';
 import '../models/client.dart';
 import '../models/client_data.dart';
@@ -34,13 +35,12 @@ class _PriceListScreenState extends State<PriceListScreen> {
   bool _showNotificationDot = false;
   final ExportService _exportService = ExportService();
 
-  final Map<String, bool> _exportFields = {
-    'basic': true,
-    'composition': true,
-    'nutrition': true,
-    'storage': true,
-    'photos': false,
-  };
+  // Текущие настройки экспорта по умолчанию
+  bool _expBasic = true;
+  bool _expComposition = true;
+  bool _expNutrition = true;
+  bool _expStorage = true;
+  bool _expPhotos = false;
 
   @override
   void initState() {
@@ -164,11 +164,12 @@ class _PriceListScreenState extends State<PriceListScreen> {
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: () {
-                final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                
+                final authProvider =
+                    Provider.of<AuthProvider>(context, listen: false);
+
                 // 🔥 СБРАСЫВАЕМ ВЫБОР КЛИЕНТА
                 authProvider.resetClientSelection();
-                
+
                 // Используем pushReplacementNamed для возврата
                 Navigator.pushReplacementNamed(context, '/');
               },
@@ -307,11 +308,6 @@ class _PriceListScreenState extends State<PriceListScreen> {
   void _showExportDialog(BuildContext context, List<Product> products) {
     // 🔥 ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ ДИАЛОГА
     String selectedFormat = 'pdf';
-    bool includeBasic = true;
-    bool includeComposition = true;
-    bool includeNutrition = true;
-    bool includeStorage = true;
-    bool includePhotos = false; // 🔥 Фото выключены по умолчанию
 
     showDialog(
       context: context,
@@ -354,44 +350,42 @@ class _PriceListScreenState extends State<PriceListScreen> {
                           _buildCheckbox(
                             setState,
                             'Основные поля',
-                            includeBasic,
-                            (v) => includeBasic = v ?? true,
+                            _expBasic, // <---
+                            (v) => _expBasic = v ?? true, // <---
                           ),
                           _buildCheckbox(
                             setState,
                             'Состав',
-                            includeComposition,
-                            (v) => includeComposition = v ?? true,
+                            _expComposition, // <---
+                            (v) => _expComposition = v ?? true, // <---
                           ),
                           _buildCheckbox(
                             setState,
                             'КБЖУ',
-                            includeNutrition,
-                            (v) => includeNutrition = v ?? true,
+                            _expNutrition, // <---
+                            (v) => _expNutrition = v ?? true, // <---
                           ),
                           _buildCheckbox(
                             setState,
                             'Условия хранения',
-                            includeStorage,
-                            (v) => includeStorage = v ?? true,
+                            _expStorage, // <---
+                            (v) => _expStorage = v ?? true, // <---
                           ),
-                          
-                          // 🔥 ФОТОГРАФИИ С ПРЕДУПРЕЖДЕНИЕМ
+
+                          // Блок с фотографиями
                           Column(
                             children: [
                               _buildCheckbox(
                                 setState,
                                 '📷 Фотографии товаров',
-                                includePhotos,
+                                _expPhotos, // <---
                                 (v) {
-                                  includePhotos = v ?? false;
-                                  // 🔥 Показать предупреждение при включении
-                                  if (includePhotos && context.mounted) {
+                                  _expPhotos = v ?? false; // <---
+                                  if (_expPhotos && context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                         content: Text(
-                                          '⏱️ Фото увеличивают время генерации и размер файла',
-                                        ),
+                                            '⏱️ Фото увеличат время генерации'),
                                         duration: Duration(seconds: 3),
                                         backgroundColor: Color(0xFF5D4037),
                                       ),
@@ -399,16 +393,16 @@ class _PriceListScreenState extends State<PriceListScreen> {
                                   }
                                 },
                               ),
-                              if (includePhotos)
+                              if (_expPhotos) // <---
                                 Padding(
-                                  padding: const EdgeInsets.only(left: 48, bottom: 8),
+                                  padding: const EdgeInsets.only(
+                                      left: 48, bottom: 8),
                                   child: Text(
                                     '• Загрузка фото: +10-30 сек',
                                     style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey[600],
-                                      fontStyle: FontStyle.italic,
-                                    ),
+                                        fontSize: 11,
+                                        color: Colors.grey[600],
+                                        fontStyle: FontStyle.italic),
                                   ),
                                 ),
                             ],
@@ -428,16 +422,15 @@ class _PriceListScreenState extends State<PriceListScreen> {
               ElevatedButton.icon(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  // 🔥 Передаём настройки напрямую
                   _exportPriceList(
                     context,
                     products,
                     format: selectedFormat,
-                    includeBasic: includeBasic,
-                    includeComposition: includeComposition,
-                    includeNutrition: includeNutrition,
-                    includeStorage: includeStorage,
-                    includePhotos: includePhotos,
+                    includeBasic: _expBasic, // <---
+                    includeComposition: _expComposition, // <---
+                    includeNutrition: _expNutrition, // <---
+                    includeStorage: _expStorage, // <---
+                    includePhotos: _expPhotos, // <---
                   );
                 },
                 icon: const Icon(Icons.file_download),
@@ -541,156 +534,104 @@ class _PriceListScreenState extends State<PriceListScreen> {
     required bool includeStorage,
     required bool includePhotos,
   }) async {
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final client = authProvider.currentUser as Client;
-      final clientData = authProvider.clientData!;
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const CircularProgressIndicator(color: Color(0xFF5D4037)),
+              const SizedBox(height: 16),
+              Text(
+                  includePhotos ? 'Генерация с фото...' : 'Генерация файла...'),
+            ])));
 
-      // 🔥 Подготавливаем дополнительные данные
+    try {
+      // 🔥 1. БЕРЕМ ДАННЫЕ ЗДЕСЬ (на экране)
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final client = authProvider.currentUser;
+      final clientData = authProvider.clientData;
+
       final compositionsByProduct = <String, List<Composition>>{};
       final nutritionByProduct = <String, NutritionInfo>{};
       final storageByProduct = <String, StorageCondition>{};
 
-      for (var product in products) {
-        compositionsByProduct[product.id] = clientData.compositions
-            .where((c) => c.sheetName == 'Состав' && c.entityId == product.id)
-            .toList();
-
-        try {
-          nutritionByProduct[product.id] = clientData.nutritionInfos
-              .firstWhere((n) => n.priceListId == product.id);
-        } catch (_) {}
-
-        try {
-          storageByProduct[product.id] = clientData.storageConditions
-              .firstWhere((s) =>
-                  s.level == 'Прайс-лист' && s.entityId == product.id);
-        } catch (e) {}
+      if (clientData != null) {
+        for (var product in products) {
+          compositionsByProduct[product.id] = clientData.compositions
+              .where((c) => c.sheetName == 'Состав' && c.entityId == product.id)
+              .toList();
+          try {
+            nutritionByProduct[product.id] = clientData.nutritionInfos
+                .firstWhere((n) => n.priceListId == product.id);
+          } catch (_) {}
+          try {
+            storageByProduct[product.id] = clientData.storageConditions
+                .firstWhere(
+                    (s) => s.level == 'Прайс-лист' && s.entityId == product.id);
+          } catch (_) {}
+        }
       }
 
-      // 🔥 Настраиваем сервис
-      _exportService.format = format;
-      _exportService.includeBasic = includeBasic;
-      _exportService.includeComposition = includeComposition;
-      _exportService.includeNutrition = includeNutrition;
-      _exportService.includeStorage = includeStorage;
-      _exportService.includePhotos = includePhotos;
-
-      if (!context.mounted) return;
-
-      // 🔥 Показываем прогресс с сообщением о фото
-      final photoMessage = includePhotos ? '\n📷 Загрузка фото...' : '';
-      
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(
-                color: Color(0xFF5D4037),
-              ),
-              const SizedBox(height: 16),
-              const Text('Генерация файла...'),
-              if (includePhotos) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Это может занять до 1 минуты',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
-
-      // 🔥 Генерируем файл
+      // 🔥 2. ВЫЗЫВАЕМ ЧИСТЫЙ СЕРВИС
       final result = await _exportService.generatePriceList(
         products: products,
-        clientName: client.name ?? 'Клиент',
-        clientPhone: client.phone ?? '',
+        clientName: client?.name ?? 'Клиент',
+        clientPhone: client?.phone ?? '',
         compositionsByProduct: compositionsByProduct,
         nutritionByProduct: nutritionByProduct,
         storageByProduct: storageByProduct,
       );
 
-      if (context.mounted) {
+      if (context.mounted)
         try {
-          Navigator.of(context).pop(); // Закрываем лоадер
+          Navigator.of(context).pop();
         } catch (_) {}
-      }
 
       if (result != null && context.mounted) {
         if (kIsWeb) {
-          // 🔥 WEB: скачивание
           final bytes = result as Uint8List;
-          final fileName = 'price_list_${DateTime.now().millisecondsSinceEpoch}.${format == 'pdf' ? 'pdf' : 'csv'}';
-          
+          final fileName =
+              'price_list_${DateTime.now().millisecondsSinceEpoch}.$format';
+
           final blob = html.Blob([bytes]);
           final url = html.Url.createObjectUrlFromBlob(blob);
-          
-          final anchor = html.document.createElement('a') as html.AnchorElement
-            ..href = url
-            ..style.display = 'none'
-            ..download = fileName;
-          
+
+          final anchor = html.AnchorElement(href: url)
+            ..setAttribute('download', fileName)
+            ..style.display = 'none';
+
           html.document.body?.children.add(anchor);
           anchor.click();
-          html.document.body?.children.remove(anchor);
-          html.Url.revokeObjectUrl(url);
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
-                  const SizedBox(width: 12),
-                  Text('✅ Файл скачан: $fileName'),
-                ],
-              ),
-              backgroundColor: Colors.green[700],
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        } else {
-          // 🔥 Mobile/Desktop: Share
-          final file = result as File;
-          await Share.shareXFiles(
-            [XFile(file.path)],
-            text: 'Прайс-лист ${client.name}',
-          );
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ Файл создан: ${file.path.split('/').last}'),
-              backgroundColor: Colors.green[700],
-              duration: const Duration(seconds: 4),
-            ),
-          );
+          html.Url.revokeObjectUrl(url);
+          anchor.remove();
+
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text('✅ Файл скачан: $fileName'),
+                  backgroundColor: Colors.green[700]),
+            );
+          }
+        } else {
+          final file = result as File;
+          await SharePlus.instance
+              .share(ShareParams(files: [XFile(file.path)]));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('✅ Файл создан'),
+              backgroundColor: Colors.green[700]));
         }
-      } else {
-        throw Exception('Не удалось создать файл');
+      } else if (context.mounted) {
+        throw Exception('Ошибка генерации');
       }
     } catch (e) {
       if (context.mounted) {
         try {
           Navigator.of(context).pop();
         } catch (_) {}
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Ошибка: $e'),
-            backgroundColor: Colors.red[700],
-            duration: const Duration(seconds: 5),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('❌ Ошибка: $e'), backgroundColor: Colors.red[700]));
       }
-      print('❌ Ошибка экспорта: $e');
     }
   }
 }
