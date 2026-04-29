@@ -9,6 +9,7 @@ class PriceCategory {
   final double weight; // Вес
   final String unit; // Ед.изм.
   final int wastePercentage; // Издержки (процент)
+  final String description;
 
   PriceCategory({
     required this.id,
@@ -18,6 +19,7 @@ class PriceCategory {
     this.weight = 0.0,
     this.unit = 'г',
     this.wastePercentage = 10,
+    this.description = '',
   });
 
   /// 🔥 ОТЛАДКА: Печатаем ключи, которые приходят в метод
@@ -53,6 +55,8 @@ class PriceCategory {
       wastePercentage: ParsingUtils.parseInt(json['Издержки']) ??
           ParsingUtils.parseInt(json['wastePercentage']) ??
           10,
+      description:
+          json['Описание']?.toString() ?? json['description']?.toString() ?? '',
     );
   }
 
@@ -65,6 +69,7 @@ class PriceCategory {
       'weight': weight,
       'unit': unit,
       'wastePercentage': wastePercentage,
+      'description': description,
     };
   }
 }

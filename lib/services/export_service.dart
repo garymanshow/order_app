@@ -1,8 +1,11 @@
 // lib/services/export_service.dart
 import 'dart:io';
-import 'dart:html' as html;
 import 'dart:typed_data';
 import 'dart:convert';
+
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
+
 import 'package:charset_converter/charset_converter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/services.dart' show rootBundle;
@@ -28,10 +31,14 @@ class ExportService {
   double discountPercent = 0;
   int roundToNearest = 0;
 
+  // Мапа для доступа к категориям из карточек
+  final Map<String, PriceCategory> _categoriesMap = {};
+
   static pw.Font? _cachedFont;
   static pw.MemoryImage? _cachedLogo;
   static final Map<String, pw.MemoryImage> _cachedProductImages = {};
 
+  // ИСПРАВЛЕНО: Убрано слово const, так как PdfColor.fromHex не является const конструктором в текущей версии pdf
   static final _colorPrimary = PdfColor.fromHex('#5D4037');
   static final _colorSecondary = PdfColor.fromHex('#8D6E63');
   static final _colorBackground = PdfColor.fromHex('#EFEBE9');
@@ -39,9 +46,7 @@ class ExportService {
   static final _colorAccent = PdfColors.green700;
 
   Future<pw.Font> _loadFont() async {
-    if (_cachedFont != null) {
-      return _cachedFont!;
-    }
+    if (_cachedFont != null) return _cachedFont!;
     try {
       final fontData = await rootBundle.load('assets/fonts/Lora-Regular.ttf');
       _cachedFont = pw.Font.ttf(fontData);
@@ -52,9 +57,7 @@ class ExportService {
   }
 
   Future<pw.MemoryImage?> _loadLogo() async {
-    if (_cachedLogo != null) {
-      return _cachedLogo!;
-    }
+    if (_cachedLogo != null) return _cachedLogo!;
     try {
       final logoData = await rootBundle.load('assets/images/auth/logo.webp');
       _cachedLogo = pw.MemoryImage(logoData.buffer.asUint8List());
@@ -66,9 +69,8 @@ class ExportService {
 
   Future<pw.MemoryImage?> _loadProductImage(
       String productId, String? imageUrl) async {
-    if (_cachedProductImages.containsKey(productId)) {
+    if (_cachedProductImages.containsKey(productId))
       return _cachedProductImages[productId];
-    }
     try {
       Uint8List? imageBytes;
       if (kIsWeb || imageUrl == null || imageUrl.isEmpty) {
@@ -94,7 +96,6 @@ class ExportService {
     required String clientName,
     required String clientPhone,
     required List<PriceCategory> categories,
-    // ИЗМЕНЕНО: Теперь принимаем готовые строки вместо объектов Composition
     Map<String, String>? compositionsByProduct,
     Map<String, NutritionInfo>? nutritionByProduct,
     Map<String, List<StorageCondition>>? storageByProduct,
@@ -112,27 +113,21 @@ class ExportService {
       if (kIsWeb) {
         if (format == 'csv') {
           final csvStr = _generateCsvContent(products);
-
-          // ИСПРАВЛЕНО: На Web нельзя использовать CharsetConverter (вызывает Platform._operatingSystem)
-          // Используем встроенные возможности html.Blob для указания кодировки
-          final bytes = utf8.encode(csvStr); // Кодируем строку в байты
-          final blob = html.Blob([
-            bytes
-          ], 'text/csv;charset=windows-1251'); // Указываем кодировку для браузера
-          return blob; // Возвращаем Blob вместо Uint8List
+          final bytes = utf8.encode(csvStr);
+          final blob = html.Blob([bytes], 'text/csv;charset=windows-1251');
+          return blob;
         } else {
           return await _generatePdfBytes(
-            products,
-            clientName,
-            clientPhone,
-            compositionsByProduct,
-            nutritionByProduct,
-            storageByProduct,
-            font,
-            logo,
-            productImages,
-            categories,
-          );
+              products,
+              clientName,
+              clientPhone,
+              compositionsByProduct,
+              nutritionByProduct,
+              storageByProduct,
+              font,
+              logo,
+              productImages,
+              categories);
         }
       } else {
         final directory = await getApplicationDocumentsDirectory();
@@ -145,17 +140,16 @@ class ExportService {
           return File(filePath);
         } else {
           final pdfBytes = await _generatePdfBytes(
-            products,
-            clientName,
-            clientPhone,
-            compositionsByProduct,
-            nutritionByProduct,
-            storageByProduct,
-            font,
-            logo,
-            productImages,
-            categories,
-          );
+              products,
+              clientName,
+              clientPhone,
+              compositionsByProduct,
+              nutritionByProduct,
+              storageByProduct,
+              font,
+              logo,
+              productImages,
+              categories);
           final filePath = '${directory.path}/price_list_$timestamp.pdf';
           await File(filePath).writeAsBytes(pdfBytes);
           return File(filePath);
@@ -173,7 +167,6 @@ class ExportService {
   String _generateCsvContent(List<Product> products) {
     final headers = ['Категория', 'Название', 'Цена', 'Описание'];
     final rows = <List<String>>[];
-
     rows.add(headers);
 
     for (var product in products) {
@@ -181,14 +174,10 @@ class ExportService {
       final name = _escapeCsv(product.displayName.trim());
       final price = product.price.toStringAsFixed(0);
       final description = _escapeCsv(product.composition.trim());
-
       rows.add([category, name, price, description]);
     }
 
-    // Собираем CSV строку (разделитель - точка с запятой, стандарт для Excel РФ)
-    final csvString = rows.map((row) => row.join(';')).join('\r\n');
-
-    return csvString;
+    return rows.map((row) => row.join(';')).join('\r\n');
   }
 
   String _escapeCsv(String field) {
@@ -211,37 +200,134 @@ class ExportService {
     pw.Font font,
     pw.MemoryImage? logo,
     Map<String, pw.MemoryImage?> productImages,
-    List<PriceCategory> categories, // ДОБАВЛЕН ПАРАМЕТР
+    List<PriceCategory> categories,
   ) async {
     final pdf = pw.Document();
 
-    // Создаем мапу для быстрого поиска категорий
-    final categoriesMap = <String, PriceCategory>{};
+    _categoriesMap.clear();
     for (var cat in categories) {
-      categoriesMap[cat.id.toString()] = cat;
+      _categoriesMap[cat.id.toString()] = cat;
     }
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
-        build: (pw.Context context) => [
-          _buildHeader(clientName, clientPhone, font, logo),
-          ...products.map((product) => _buildProductCard(
+        build: (pw.Context context) {
+          final widgets = <pw.Widget>[];
+
+          widgets.add(_buildHeader(clientName, clientPhone, font, logo));
+
+          String? lastCategoryId;
+
+          for (int i = 0; i < products.length; i++) {
+            final product = products[i];
+            final category = _categoriesMap[product.categoryId];
+
+            if (product.categoryId != lastCategoryId) {
+              widgets.add(pw.NewPage());
+              if (category != null) {
+                final categoryStorages = storageByProduct?[product.id] ?? [];
+                widgets
+                    .add(_buildCategoryPage(category, categoryStorages, font));
+              }
+              lastCategoryId = product.categoryId;
+            }
+
+            widgets.add(
+              _buildProductCard(
                 product,
                 compositionsByProduct?[product.id],
                 nutritionByProduct?[product.id],
-                storageByProduct?[product.id] ?? [],
+                [],
                 font,
                 productImages[product.id],
-                categoriesMap[product.categoryId], // ПЕРЕДАЕМ КАТЕГОРИЮ
-              )),
-        ],
+              ),
+            );
+          }
+
+          return widgets;
+        },
       ),
     );
 
-    final rawPdfBytes = await pdf.save();
-    return rawPdfBytes;
+    // УДАЛЕНО: Применение шифрования. Просто сохраняем байты PDF.
+    return await pdf.save();
+  }
+
+  // ==========================================
+  // СТРАНИЦА КАТЕГОРИИ
+  // ==========================================
+  pw.Widget _buildCategoryPage(
+      PriceCategory category, List<StorageCondition> storages, pw.Font font) {
+    final specList = <String>[];
+    if (category.weight > 0) {
+      final unit = category.unit.trim().isNotEmpty ? category.unit.trim() : 'г';
+      final weightStr = category.weight == category.weight.roundToDouble()
+          ? category.weight.toInt().toString()
+          : category.weight.toString();
+      specList.add('Вес: $weightStr $unit');
+    }
+    if (category.packagingQuantity > 0) {
+      final packInfo = category.packagingName.trim().isNotEmpty
+          ? ' (${category.packagingName.trim()})'
+          : '';
+      specList.add('Фасовка: ${category.packagingQuantity} шт$packInfo');
+    }
+
+    // Нормализуем текст описания заранее
+    final String normalizedDescription =
+        _normalizePdfText(category.description.trim());
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        // ЗАГОЛОВОК КАТЕГОРИИ
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+          decoration: pw.BoxDecoration(
+            color: _colorPrimary,
+            borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
+          ),
+          child: pw.Text(
+            category.name.toUpperCase(),
+            style: pw.TextStyle(
+                fontSize: 28,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+                font: font),
+          ),
+        ),
+        pw.SizedBox(height: 16),
+
+        // ОПИСАНИЕ СРАЗУ ПОД ЗАГОЛОВКОМ
+        if (normalizedDescription.isNotEmpty) ...[
+          pw.Text(
+            normalizedDescription,
+            style: pw.TextStyle(
+                fontSize: 12, color: _colorText, font: font, lineSpacing: 2),
+          ),
+          pw.SizedBox(height: 16),
+        ],
+
+        if (specList.isNotEmpty) ...[
+          _buildSpecsRow(specList, font),
+          pw.SizedBox(height: 16),
+        ],
+
+        // ИСПРАВЛЕНО: Передаем переменную storages вместо пустого списка
+        if (storages.isNotEmpty) ...[
+          _buildSectionTitle('Условия хранения', font),
+          pw.SizedBox(height: 4),
+          _buildStorageBlock(storages, font),
+          pw.SizedBox(height: 24),
+        ],
+
+        pw.Divider(color: _colorSecondary, thickness: 1),
+        pw.SizedBox(height: 16),
+      ],
+    );
   }
 
   // ==========================================
@@ -249,13 +335,12 @@ class ExportService {
   // ==========================================
   pw.Widget _buildHeader(String clientName, String clientPhone, pw.Font font,
       pw.MemoryImage? logo) {
-    // Форматируем дату для заголовка
     final currentDate = DateTime.now().toLocal().toString().split(' ')[0];
 
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 24),
       decoration: pw.BoxDecoration(
-        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+        borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
         color: _colorPrimary,
       ),
       child: pw.Container(
@@ -266,15 +351,15 @@ class ExportService {
           children: [
             if (logo != null)
               pw.Container(
-                  width: 60,
-                  height: 60,
-                  margin: const pw.EdgeInsets.only(right: 16),
-                  decoration: pw.BoxDecoration(
-                      color: PdfColors.white,
-                      borderRadius:
-                          const pw.BorderRadius.all(pw.Radius.circular(8))),
-                  child: pw.ClipRRect(
-                      child: pw.Image(logo, fit: pw.BoxFit.contain))),
+                width: 60,
+                height: 60,
+                margin: const pw.EdgeInsets.only(right: 16),
+                decoration: const pw.BoxDecoration(
+                    color: PdfColors.white,
+                    borderRadius: pw.BorderRadius.all(pw.Radius.circular(8))),
+                child:
+                    pw.ClipRRect(child: pw.Image(logo, fit: pw.BoxFit.contain)),
+              ),
             pw.Expanded(
                 child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -286,7 +371,6 @@ class ExportService {
                           color: PdfColors.white,
                           font: font)),
                   pw.SizedBox(height: 4),
-                  // ИЗМЕНЕНО: Добавили дату прямо в подзаголовок
                   pw.Text(
                       'Прайс-лист премиум кондитерских изделий на $currentDate',
                       style: pw.TextStyle(
@@ -308,134 +392,97 @@ class ExportService {
     List<StorageCondition> storages,
     pw.Font font,
     pw.MemoryImage? productImage,
-    PriceCategory? category, // ДОБАВЛЕН ПАРАМЕТР КАТЕГОРИИ
   ) {
     final bool hasPhoto = includePhotos && productImage != null;
 
-    final List<String> specs = [];
+    final String descriptionText =
+        _normalizePdfText(product.composition.trim());
+    final bool hasDescription = descriptionText.isNotEmpty;
 
-    // ИСПРАВЛЕНО: Учитываем случай, когда у товара может не быть категории
-    if (category != null) {
-      // Данные из категории
-      if (category.weight > 0) {
-        final unit =
-            category.unit.trim().isNotEmpty ? category.unit.trim() : 'г';
-        // Убираем лишние нули у веса (120.0 -> 120, 0.5 -> 0.5)
-        final weightStr = category.weight == category.weight.roundToDouble()
-            ? category.weight.toInt().toString()
-            : category.weight.toString();
-        specs.add('Вес: $weightStr $unit');
-      }
-      if (category.packagingQuantity > 0) {
-        final packInfo = category.packagingName.trim().isNotEmpty
-            ? ' (${category.packagingName.trim()})'
-            : '';
-        specs.add('Фасовка в таре: ${category.packagingQuantity} шт$packInfo');
-      }
-    } else {
-      // Fallback: Данные из самого товара, если категории нет
-      if (product.weight.trim().isNotEmpty) {
-        specs.add('Вес: ${product.weight.trim()} г');
-      }
-      if (product.multiplicity > 0) {
-        specs.add('Фасовка: ${product.multiplicity} шт');
-      }
-    }
-
-    // Упаковка может быть указана в самом товаре, независимо от категории
-    if (product.packaging.trim().isNotEmpty) {
-      specs.add('Упаковка: ${product.packaging.trim()}');
-    }
+    final bool hasDetailedComposition = includeComposition &&
+        compositionString != null &&
+        compositionString.trim().isNotEmpty;
 
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 16),
       padding: const pw.EdgeInsets.all(12),
       decoration: pw.BoxDecoration(
           border: pw.Border.all(color: _colorSecondary, width: 0.5),
-          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+          borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
           color: PdfColors.white),
       child:
           pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
           if (hasPhoto)
             pw.Container(
-                width: 90,
-                height: 90,
-                margin: const pw.EdgeInsets.only(right: 16),
-                decoration: pw.BoxDecoration(
-                    color: _colorBackground,
-                    borderRadius:
-                        const pw.BorderRadius.all(pw.Radius.circular(8)),
-                    border: pw.Border.all(color: _colorSecondary, width: 0.5)),
-                child: pw.ClipRRect(
-                    child: pw.Image(productImage, fit: pw.BoxFit.cover))),
+              width: 90,
+              height: 90,
+              margin: const pw.EdgeInsets.only(right: 12),
+              decoration: pw.BoxDecoration(
+                  color: _colorBackground,
+                  borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
+                  border: pw.Border.all(color: _colorSecondary, width: 0.5)),
+              child: pw.ClipRRect(
+                  child: pw.Image(productImage, fit: pw.BoxFit.cover)),
+            ),
           pw.Expanded(
-              child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                pw.Text(product.displayName,
-                    style: pw.TextStyle(
-                        fontSize: 16,
-                        fontWeight: pw.FontWeight.bold,
-                        color: _colorPrimary,
-                        font: font)),
-                pw.SizedBox(height: 8),
-                if (product.categoryName.trim().isNotEmpty) ...[
-                  pw.Text('Категория: ${product.categoryName}',
+            flex: hasDescription ? 2 : 10,
+            child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(product.displayName,
                       style: pw.TextStyle(
-                          fontSize: 11, color: _colorSecondary, font: font)),
+                          fontSize: 16,
+                          fontWeight: pw.FontWeight.bold,
+                          color: _colorPrimary,
+                          font: font)),
                   pw.SizedBox(height: 8),
-                ],
-                pw.Container(
-                    padding: const pw.EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                  pw.Container(
+                      padding: const pw.EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: pw.BoxDecoration(
+                          color: _colorAccent,
+                          borderRadius:
+                              pw.BorderRadius.all(pw.Radius.circular(6))),
+                      child: pw.Text(
+                          PriceEngine.calculate(
+                            basePrice: product.price,
+                            markupPercent: markupPercent,
+                            discountPercent: discountPercent,
+                            roundToNearest: roundToNearest,
+                          ).formattedPrice,
+                          style: pw.TextStyle(
+                              fontSize: 18,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.white,
+                              font: font))),
+                ]),
+          ),
+          if (hasDescription)
+            pw.Expanded(
+                flex: 3,
+                child: pw.Container(
+                    padding: const pw.EdgeInsets.all(8),
                     decoration: pw.BoxDecoration(
-                        color: _colorAccent,
+                        color: _colorBackground,
                         borderRadius:
-                            const pw.BorderRadius.all(pw.Radius.circular(6))),
-                    // РАСЧЕТ ЦЕНЫ ЧЕРЕЗ ДВИЖОК
+                            pw.BorderRadius.all(pw.Radius.circular(6))),
                     child: pw.Text(
-                        PriceEngine.calculate(
-                          basePrice: product.price,
-                          markupPercent: markupPercent,
-                          discountPercent: discountPercent,
-                          roundToNearest: roundToNearest,
-                        ).formattedPrice,
-                        style: pw.TextStyle(
-                            fontSize: 18,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.white,
-                            font: font))),
-              ])),
+                      descriptionText,
+                      style: pw.TextStyle(
+                          fontSize: 9, color: _colorText, font: font),
+                      overflow: pw.TextOverflow.span,
+                    ))),
         ]),
-        if (specs.isNotEmpty) ...[
-          pw.SizedBox(height: 12),
-          pw.Divider(color: _colorBackground, thickness: 1),
-          pw.SizedBox(height: 8),
-          _buildSpecsRow(specs, font),
-        ],
-
-        // ВЫВОД СОСТАВА ИЗ СТРОКИ
-        if (includeComposition &&
-            compositionString != null &&
-            compositionString.isNotEmpty) ...[
+        if (hasDetailedComposition) ...[
           pw.SizedBox(height: 8),
           _buildSectionTitle('Состав', font),
           _buildTextBlock(compositionString, font),
         ],
-
-        if (includeNutrition &&
-            nutrition != null &&
-            _hasNutritionData(nutrition)) ...[
+        if (includeNutrition && nutrition != null) ...[
           pw.SizedBox(height: 8),
           _buildSectionTitle('Пищевая ценность на 100г', font),
           _buildNutritionBlock(nutrition, font),
-        ],
-
-        if (includeStorage && storages.isNotEmpty) ...[
-          pw.SizedBox(height: 8),
-          _buildSectionTitle('Условия хранения', font),
-          _buildStorageBlock(storages, font),
         ],
       ]),
     );
@@ -453,13 +500,6 @@ class ExportService {
 
   double _parseNum(String? val) => double.tryParse(val ?? '') ?? 0.0;
 
-  bool _hasNutritionData(NutritionInfo info) {
-    return _parseNum(info.calories) > 0 ||
-        _parseNum(info.proteins) > 0 ||
-        _parseNum(info.fats) > 0 ||
-        _parseNum(info.carbohydrates) > 0;
-  }
-
   pw.Widget _buildSectionTitle(String title, pw.Font font) {
     return pw.Text(title,
         style: pw.TextStyle(
@@ -475,25 +515,28 @@ class ExportService {
         padding: const pw.EdgeInsets.all(8),
         decoration: pw.BoxDecoration(
             color: _colorBackground,
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6))),
+            borderRadius: pw.BorderRadius.all(pw.Radius.circular(6))),
         child: pw.Text(text,
             style: pw.TextStyle(fontSize: 10, color: _colorText, font: font)));
   }
 
-  // Функция приведения текста в порядок для PDF
   String _normalizePdfText(String input) {
     if (input.trim().isEmpty) return '';
     String text = input.trim();
+
+    // Делаем первую букву заглавной
     text = text[0].toUpperCase() + text.substring(1);
-    while (text.endsWith('.')) {
+
+    // ИСПРАВЛЕНО: Удаляем лишние точки в конце, но оставляем одну, если её не было
+    while (text.endsWith('.') || text.endsWith('!') || text.endsWith('?')) {
       text = text.substring(0, text.length - 1).trim();
     }
-    return '$text.';
+
+    return '$text.'; // В конце всегда ставим одну точку
   }
 
   pw.Widget _buildNutritionBlock(NutritionInfo info, pw.Font font) {
     final parts = <String>[];
-
     final cal = _parseNum(info.calories);
     final prot = _parseNum(info.proteins);
     final fats = _parseNum(info.fats);
@@ -506,16 +549,15 @@ class ExportService {
 
     if (parts.isEmpty) return pw.SizedBox();
 
-    // Склеиваем через запятую, делаем первую букву заглавной и точку в конце
     String text = parts.join(', ');
-    text = _normalizePdfText(text); // Применяем наше правило типографики
+    text = _normalizePdfText(text);
 
     return pw.Container(
         width: double.infinity,
         padding: const pw.EdgeInsets.all(8),
         decoration: pw.BoxDecoration(
             color: _colorBackground,
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6))),
+            borderRadius: pw.BorderRadius.all(pw.Radius.circular(6))),
         child: pw.Text(text,
             style: pw.TextStyle(fontSize: 10, color: _colorText, font: font)));
   }
@@ -526,24 +568,17 @@ class ExportService {
     for (var storage in storages) {
       final parts = <String>[];
 
-      // Место хранения с большой буквы
       if (storage.storageLocation.trim().isNotEmpty) {
         String loc = storage.storageLocation.trim();
         loc = loc[0].toUpperCase() + loc.substring(1);
         parts.add(loc);
       }
-
-      // Температура со знаком градуса
       if (storage.temperature.trim().isNotEmpty) {
         parts.add('при температуре ${storage.temperature.trim()}°C');
       }
-
-      // Влажность
       if (storage.humidity.trim().isNotEmpty) {
         parts.add('влажность ${storage.humidity.trim()}%');
       }
-
-      // Срок и единица измерения
       if (storage.shelfLife.trim().isNotEmpty) {
         final unitStr =
             storage.unit.trim().isNotEmpty ? ' ${storage.unit.trim()}' : '';
@@ -554,9 +589,7 @@ class ExportService {
         storageLines.add(pw.Container(
             width: double.infinity,
             padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-            color: storageLines.isEmpty
-                ? _colorBackground
-                : PdfColors.white, // Чередуем фон
+            color: storageLines.isEmpty ? _colorBackground : PdfColors.white,
             child: pw.Text(parts.join(', '),
                 style: pw.TextStyle(
                     fontSize: 10, color: _colorText, font: font))));
@@ -570,11 +603,10 @@ class ExportService {
         padding: const pw.EdgeInsets.all(8),
         decoration: pw.BoxDecoration(
             color: _colorBackground,
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6))),
+            borderRadius: pw.BorderRadius.all(pw.Radius.circular(6))),
         child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: storageLines,
-        ));
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: storageLines));
   }
 
   pw.Widget _buildInfoChip(String text, pw.Font font) {
@@ -582,7 +614,7 @@ class ExportService {
         padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: pw.BoxDecoration(
             color: _colorBackground,
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(12)),
+            borderRadius: pw.BorderRadius.all(pw.Radius.circular(12)),
             border: pw.Border.all(color: _colorSecondary, width: 0.5)),
         child: pw.Text(text,
             style: pw.TextStyle(fontSize: 10, color: _colorText, font: font)));

@@ -723,6 +723,14 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
           }
 
           final compositionParts = <String>[];
+
+          final categoryData = categoriesMap[cId];
+          if (categoryData != null &&
+              categoryData.description.trim().isNotEmpty) {
+            compositionParts
+                .add(_normalizeText(categoryData.description.trim()));
+          }
+
           final fillings = clientData.compositions
               .where(
                   (c) => c.sheetName == 'Категории прайса' && c.entityId == cId)
@@ -755,9 +763,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
           if (compositionParts.isNotEmpty) {
             String rawComp = compositionParts.join('. ');
             compositionStringsByProduct[pId] = _normalizeText(rawComp);
-          } else if (product.composition.trim().isNotEmpty) {
-            compositionStringsByProduct[pId] =
-                _normalizeText(product.composition);
           }
         }
       }

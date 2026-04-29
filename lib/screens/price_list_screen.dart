@@ -630,9 +630,6 @@ class _PriceListScreenState extends State<PriceListScreen> {
             if (compositionParts.isNotEmpty) {
               String rawComp = compositionParts.join('. ');
               compositionStringsByProduct[pId] = _normalizeText(rawComp);
-            } else if (product.composition.trim().isNotEmpty) {
-              compositionStringsByProduct[pId] =
-                  _normalizeText(product.composition);
             }
           }
         }
