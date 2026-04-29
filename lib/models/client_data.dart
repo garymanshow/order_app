@@ -9,10 +9,11 @@ import 'order_item.dart';
 import 'product.dart';
 import 'price_category.dart';
 import 'storage_condition.dart';
-// === НОВЫЙ ИМПОРТ ===
 import 'transport_condition.dart';
-// ====================
 import 'unit_of_measure.dart';
+
+// ИМПОРТИРУЕМ НОВЫЕ МОДЕЛИ
+import 'vending_machine.dart';
 
 class ClientData {
   List<Product> products = [];
@@ -24,12 +25,15 @@ class ClientData {
   List<ClientCategory> clientCategories = [];
   List<Client> clients = [];
   List<StorageCondition> storageConditions = [];
-  // === НОВОЕ ПОЛЕ ===
   List<TransportCondition> transportConditions = [];
-  // ==================
   List<PriceCategory> priceCategories = [];
   List<UnitOfMeasure> unitsOfMeasure = [];
   Map<String, dynamic> cart = {};
+
+  // 🏭 НОВЫЕ СПИСКИ ВЕНДИНГА
+  List<VendingMachine> vendingMachines = [];
+  List<VendingLoad> vendingLoads = [];
+  List<VendingOperation> vendingOperations = [];
 
   // Индексы для быстрого поиска
   Map<String, Product> productIndex = {};
@@ -64,11 +68,14 @@ class ClientData {
     priceCategoryIndex = {for (var pc in priceCategories) pc.id: pc};
   }
 
+  // Вспомогательный метод для безопасного парсинга (защита от коротких строк из Google Sheets)
+  String _safeGetString(Map<String, dynamic> json, String key) {
+    return json[key]?.toString() ?? '';
+  }
+
   factory ClientData.fromJson(Map<String, dynamic> json) {
     print('🔍 ClientData.fromJson keys: ${json.keys}');
     final clientData = ClientData();
-
-    // ... (products, orders, compositions, fillings, nutritionInfos, deliveryConditions, clientCategories, clients, storageConditions - без изменений) ...
 
     // 🔥 Безопасная обработка списка продуктов
     if (json['products'] is List) {
@@ -127,14 +134,12 @@ class ClientData {
           .toList();
     }
 
-    // === НОВОЕ: Парсинг условий транспортировки ===
     if (json['transportConditions'] is List) {
       clientData.transportConditions = (json['transportConditions'] as List)
           .map((item) =>
               TransportCondition.fromJson(item as Map<String, dynamic>))
           .toList();
     }
-    // ==============================================
 
     if (json['priceCategories'] is List) {
       clientData.priceCategories = (json['priceCategories'] as List)
@@ -152,27 +157,34 @@ class ClientData {
       clientData.cart = json['cart'] as Map<String, dynamic>;
     }
 
+    // ==============================================
+    // 🏭 ПАРСИНГ ВЕНДИНГА
+    // ==============================================
+    if (json['vendingMachines'] is List) {
+      clientData.vendingMachines = (json['vendingMachines'] as List)
+          .map((item) => VendingMachine.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    if (json['vendingLoads'] is List) {
+      clientData.vendingLoads = (json['vendingLoads'] as List)
+          .map((item) => VendingLoad.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    if (json['vendingOperations'] is List) {
+      clientData.vendingOperations = (json['vendingOperations'] as List)
+          .map(
+              (item) => VendingOperation.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    // ==============================================
+
     clientData.buildIndexes();
     return clientData;
   }
 
   Map<String, dynamic> toJson() {
-    print('🟢 ClientData.toJson() START');
-    print('   - products: ${products.length}');
-    print('   - orders: ${orders.length}');
-    print('   - compositions: ${compositions.length}');
-    print('   - fillings: ${fillings.length}');
-    print('   - nutritionInfos: ${nutritionInfos.length}');
-    print('   - deliveryConditions: ${deliveryConditions.length}');
-    print('   - clientCategories: ${clientCategories.length}');
-    print('   - clients: ${clients.length}');
-    print('   - storageConditions: ${storageConditions.length}');
-    // === НОВЫЙ ЛОГ ===
-    print('   - transportConditions: ${transportConditions.length}');
-    // ==================
-    print('   - priceCategories: ${priceCategories.length}');
-    print('   - unitsOfMeasure: ${unitsOfMeasure.length}');
-
     final json = {
       'products': products.map((p) => p.toJson()).toList(),
       'orders': orders.map((o) => o.toJson()).toList(),
@@ -183,16 +195,17 @@ class ClientData {
       'clientCategories': clientCategories.map((c) => c.toJson()).toList(),
       'clients': clients.map((c) => c.toJson()).toList(),
       'storageConditions': storageConditions.map((s) => s.toJson()).toList(),
-      // === НОВОЕ ПОЛЕ В JSON ===
       'transportConditions':
           transportConditions.map((t) => t.toJson()).toList(),
-      // ==========================
       'priceCategories': priceCategories.map((pc) => pc.toJson()).toList(),
       'unitsOfMeasure': unitsOfMeasure.map((u) => u.toJson()).toList(),
       'cart': cart,
+      // 🏭 ВЕНДИНГ
+      'vendingMachines': vendingMachines.map((vm) => vm.toJson()).toList(),
+      'vendingLoads': vendingLoads.map((vl) => vl.toJson()).toList(),
+      'vendingOperations': vendingOperations.map((vo) => vo.toJson()).toList(),
     };
 
-    print('🟢 ClientData.toJson() END');
     return json;
   }
 }

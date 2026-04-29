@@ -1,4 +1,3 @@
-// lib/screens/admin_dashboard_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'admin_clients_screen.dart';
@@ -6,6 +5,7 @@ import 'admin_clients_with_orders_screen.dart';
 import 'admin_orders_screen.dart';
 import 'admin_price_list_screen.dart';
 import 'admin_employees_screen.dart';
+import 'admin_vending_dashboard_screen.dart'; // ДОБАВЛЕН ИМПОРТ
 import '../../models/employee.dart';
 import '../../providers/auth_provider.dart';
 import '../notifications_screen.dart';
@@ -36,14 +36,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Реальная загрузка данных, а не просто задержка
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-      // Проверяем, загружены ли данные
       if (authProvider.clientData == null) {
         print('⚠️ Данные клиента не загружены');
-        // Можно попробовать перезагрузить
-        // await authProvider.loadData();
       }
     } catch (e) {
       setState(() => _error = 'Ошибка загрузки данных: $e');
@@ -111,7 +107,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         padding: const EdgeInsets.all(24.0),
         child: ListView(
           children: [
-            // 👇 КНОПКА УВЕДОМЛЕНИЙ - ПЕРВАЯ В СПИСКЕ
             _buildAdminButton(
               context,
               icon: Icons.notifications_active_outlined,
@@ -200,6 +195,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               },
             ),
 
+            // 🏭 НОВАЯ КНОПКА: ДИСПЕТЧЕР ВЕНДИНГА
+            SizedBox(height: 24),
+            _buildAdminButton(
+              context,
+              icon: Icons.local_shipping,
+              title: 'Диспетчер вендинга',
+              description: 'Мониторинг автоматов, остатки и маршруты',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const AdminVendingDashboardScreen()),
+                );
+              },
+            ),
+
             SizedBox(height: 24),
             _buildAdminButton(
               context,
@@ -231,7 +242,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // Обновленная кнопка с описанием
   Widget _buildAdminButton(BuildContext context,
       {required IconData icon,
       required String title,

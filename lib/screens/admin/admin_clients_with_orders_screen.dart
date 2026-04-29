@@ -1,13 +1,15 @@
 // lib/screens/admin/admin_clients_with_orders_screen.dart
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:html' as html;
+import 'package:flutter/foundation.dart' show kIsWeb; // Для проверки платформы
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:charset_converter/charset_converter.dart';
-import 'dart:io';
-import 'dart:async';
+import 'package:charset_converter/charset_converter.dart'; // Для мобильных
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../models/order_item.dart';
@@ -318,7 +320,8 @@ class _AdminClientsWithOrdersScreenState
     }
 
     try {
-      if (Platform.isAndroid) {
+      // Запрашиваем разрешение только на Android
+      if (!kIsWeb && Platform.isAndroid) {
         final status = await Permission.storage.request();
         if (!status.isGranted) {
           _showSnackBar('Нужно разрешение на запись файлов', Colors.orange);
@@ -327,16 +330,41 @@ class _AdminClientsWithOrdersScreenState
       }
 
       final csvContent = _generateCsvContent(orders);
-      final cp1251Bytes = await CharsetConverter.encode('cp1251', csvContent);
 
-      final directory = await getApplicationDocumentsDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final filePath = '${directory.path}/unpaid_orders_$timestamp.csv';
+      if (kIsWeb) {
+        // ИСПРАВЛЕНО: На Web используем встроенный Blob с указанием кодировки
+        final bytes = utf8.encode(csvContent);
+        final blob = html.Blob([bytes], 'text/csv;charset=windows-1251');
+        final url = html.Url.createObjectUrlFromBlob(blob);
 
-      final file = File(filePath);
-      await file.writeAsBytes(cp1251Bytes);
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final fileName = 'unpaid_orders_$timestamp.csv';
 
-      _showSnackBar('Экспорт сохранен: $filePath', Colors.green);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute('download', fileName)
+          ..style.display = 'none';
+        html.document.body?.children.add(anchor);
+        anchor.click();
+
+        Future.delayed(const Duration(seconds: 2), () {
+          html.Url.revokeObjectUrl(url);
+          anchor.remove();
+        });
+
+        _showSnackBar('Файл $fileName готов к скачиванию', Colors.green);
+      } else {
+        // Мобильные устройства: используем нативный конвертер
+        final cp1251Bytes = await CharsetConverter.encode('cp1251', csvContent);
+
+        final directory = await getApplicationDocumentsDirectory();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final filePath = '${directory.path}/unpaid_orders_$timestamp.csv';
+
+        final file = File(filePath);
+        await file.writeAsBytes(cp1251Bytes);
+
+        _showSnackBar('Экспорт сохранен: $filePath', Colors.green);
+      }
     } catch (e) {
       _showSnackBar('Ошибка экспорта: $e', Colors.red);
     }

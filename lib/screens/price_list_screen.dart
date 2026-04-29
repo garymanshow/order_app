@@ -546,7 +546,6 @@ class _PriceListScreenState extends State<PriceListScreen> {
     bool includeStorage = true,
     bool includePhotos = false,
   }) async {
-    // Убираем диалог загрузки. Показываем уведомление, что процесс пошел.
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('⏳ Файл формируется и скоро будет сохранен...'),
@@ -576,8 +575,10 @@ class _PriceListScreenState extends State<PriceListScreen> {
 
           if (includeNutrition) {
             try {
-              final nut = clientData.nutritionInfos
-                  .firstWhere((n) => n.priceListId == pId);
+              final nut = clientData.nutritionInfos.firstWhere((n) {
+                return double.tryParse(n.priceListId ?? '') ==
+                    double.tryParse(pId);
+              });
               nutritionByProduct[pId] = nut;
             } catch (_) {}
           }
@@ -644,6 +645,12 @@ class _PriceListScreenState extends State<PriceListScreen> {
       _exportService.includeStorage = includeStorage;
       _exportService.includePhotos = includePhotos;
 
+      // Передаем настройки цены (если на этом экране нет полей ввода наценки,
+      // они будут равны 0, и цена останется базовой)
+      _exportService.markupPercent = 0;
+      _exportService.discountPercent = 0;
+      _exportService.roundToNearest = 0;
+
       final result = await _exportService.generatePriceList(
         products: products,
         clientName: client?.name ?? 'Клиент',
@@ -656,24 +663,47 @@ class _PriceListScreenState extends State<PriceListScreen> {
 
       if (result != null && mounted) {
         if (kIsWeb) {
-          final bytes = result as Uint8List;
           final fileName =
               'price_list_${DateTime.now().millisecondsSinceEpoch}.$format';
-          final blob = html.Blob([bytes]);
+          html.Blob blob;
+
+          // Результат может прийти как Uint8List (от PDF) или как html.Blob (от CSV)
+          if (result is html.Blob) {
+            blob = result as html.Blob;
+          } else if (result is Uint8List) {
+            blob = html.Blob([result]);
+          } else {
+            try {
+              blob = html.Blob([Uint8List.fromList(result as List<int>)]);
+            } catch (e) {
+              blob = html.Blob([result]);
+            }
+          }
+
           final url = html.Url.createObjectUrlFromBlob(blob);
           final anchor = html.AnchorElement(href: url)
             ..setAttribute('download', fileName)
             ..style.display = 'none';
           html.document.body?.children.add(anchor);
           anchor.click();
-          html.Url.revokeObjectUrl(url);
-          anchor.remove();
+
+          Future.delayed(const Duration(seconds: 2), () {
+            html.Url.revokeObjectUrl(url);
+            anchor.remove();
+          });
 
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content: Text('✅ Файл скачан: $fileName'),
-                backgroundColor: Colors.green[700]),
+              content: Text('✅ Файл готов: $fileName'),
+              backgroundColor: Colors.green[700],
+              duration: const Duration(seconds: 10),
+              action: SnackBarAction(
+                label: 'Скачать вручную',
+                textColor: Colors.white,
+                onPressed: () => html.window.open(url, '_blank'),
+              ),
+            ),
           );
         } else {
           final file = result as File;

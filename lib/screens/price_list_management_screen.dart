@@ -1,7 +1,6 @@
 // lib/screens/price_list_management_screen.dart
 import 'dart:io';
 import 'dart:typed_data';
-// ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -670,7 +669,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
   // ==========================================
   // ЛОГИКА ЭКСПОРТА
   // ==========================================
-
   String _normalizeText(String input) {
     if (input.trim().isEmpty) return '';
     String text = input.trim();
@@ -685,7 +683,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
       {required String format}) async {
     _scaffoldKey.currentState?.showSnackBar(
       const SnackBar(
-          content: Text('⏳ Файл формируется и скоро будет сохранен...'),
+          content: Text('⏳ Файл формируется...'),
           duration: Duration(seconds: 3),
           backgroundColor: Colors.blueGrey),
     );
@@ -709,23 +707,11 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
           final String pId = product.id;
           final String cId = product.categoryId;
 
-          // 1. КБЖУ (С ОТЛАДКОЙ)
-          debugPrint(
-              '🔎 Ищем КБЖУ для продукта: ID=$pId, Name=${product.name}');
-
-          // Выводим все доступные КБЖУ, чтобы увидеть реальные ключи
-          if (pId == products.first.id) {
-            // Печатаем мапу только один раз для первого товара
-            debugPrint('📦 Все доступные КБЖУ в clientData:');
-            for (var n in clientData.nutritionInfos) {
-              debugPrint(
-                  '   -> priceListId: "${n.priceListId}" (тип: ${n.priceListId.runtimeType})');
-            }
-          }
-
           try {
-            final nut = clientData.nutritionInfos
-                .firstWhere((n) => n.priceListId == pId);
+            final nut = clientData.nutritionInfos.firstWhere((n) {
+              return double.tryParse(n.priceListId ?? '') ==
+                  double.tryParse(pId);
+            });
             nutritionByProduct[pId] = nut;
           } catch (_) {}
 
@@ -783,7 +769,6 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
       _exportService.includeStorage = _expStorage;
       _exportService.includePhotos = _expPhotos;
 
-      // ПЕРЕДАЕМ НАСТРОЙКИ ЦЕНЫ В СЕРВИС
       _exportService.markupPercent = _expMarkupPercent;
       _exportService.discountPercent = _expDiscountPercent;
       _exportService.roundToNearest = _expRoundToNearest;
@@ -800,41 +785,46 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
 
       if (result != null && mounted) {
         if (kIsWeb) {
-          final bytes = result as Uint8List;
           final fileName =
               'price_list_${DateTime.now().millisecondsSinceEpoch}.$format';
-          final blob = html.Blob([bytes]);
-          final url = html.Url.createObjectUrlFromBlob(blob);
+          html.Blob blob;
 
-          // Пытаемся автоматически скачать файл
+          // Результат может прийти как Uint8List (от PDF) или как html.Blob (от CSV)
+          if (result is html.Blob) {
+            blob = result as html.Blob;
+          } else if (result is Uint8List) {
+            blob = html.Blob([result]);
+          } else {
+            // Fallback на случай внутренних типов пакета pdf
+            try {
+              blob = html.Blob([Uint8List.fromList(result as List<int>)]);
+            } catch (e) {
+              blob = html.Blob([result]);
+            }
+          }
+
+          final url = html.Url.createObjectUrlFromBlob(blob);
           final anchor = html.AnchorElement(href: url)
             ..setAttribute('download', fileName)
             ..style.display = 'none';
           html.document.body?.children.add(anchor);
           anchor.click();
 
-          // Даем браузеру секунду на инициализацию скачивания, затем чистим память
-          Future.delayed(const Duration(seconds: 1), () {
+          Future.delayed(const Duration(seconds: 2), () {
             html.Url.revokeObjectUrl(url);
             anchor.remove();
           });
 
           _scaffoldKey.currentState?.hideCurrentSnackBar();
-
-          // Показываем SnackBar с ручной ссылкой на случай блокировки автоматического скачивания
           _scaffoldKey.currentState?.showSnackBar(
             SnackBar(
               content: Text('✅ Файл готов: $fileName'),
               backgroundColor: Colors.green[700],
-              duration: const Duration(
-                  seconds: 15), // Даем время пользователю кликнуть
+              duration: const Duration(seconds: 10),
               action: SnackBarAction(
-                label: 'Сохранить',
+                label: 'Скачать вручную',
                 textColor: Colors.white,
-                onPressed: () {
-                  // Если автоматическое скачивание не сработало, открываем в новой вкладке
-                  html.window.open(url, '_blank');
-                },
+                onPressed: () => html.window.open(url, '_blank'),
               ),
             ),
           );

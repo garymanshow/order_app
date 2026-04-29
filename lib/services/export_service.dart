@@ -1,5 +1,6 @@
 // lib/services/export_service.dart
 import 'dart:io';
+import 'dart:html' as html;
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:charset_converter/charset_converter.dart';
@@ -110,10 +111,15 @@ class ExportService {
 
       if (kIsWeb) {
         if (format == 'csv') {
-          final csvStr = await _generateCsvContent(products);
-          // На Web конвертируем в Win-1251 для корректного открытия в Excel
-          final bytes = await CharsetConverter.encode('windows-1251', csvStr);
-          return Uint8List.fromList(bytes);
+          final csvStr = _generateCsvContent(products);
+
+          // ИСПРАВЛЕНО: На Web нельзя использовать CharsetConverter (вызывает Platform._operatingSystem)
+          // Используем встроенные возможности html.Blob для указания кодировки
+          final bytes = utf8.encode(csvStr); // Кодируем строку в байты
+          final blob = html.Blob([
+            bytes
+          ], 'text/csv;charset=windows-1251'); // Указываем кодировку для браузера
+          return blob; // Возвращаем Blob вместо Uint8List
         } else {
           return await _generatePdfBytes(
             products,
@@ -133,8 +139,7 @@ class ExportService {
         final timestamp = DateTime.now().millisecondsSinceEpoch;
         if (format == 'csv') {
           final filePath = '${directory.path}/price_list_$timestamp.csv';
-          final csvStr = await _generateCsvContent(products);
-          // Конвертируем в Win-1251 и сохраняем байты
+          final csvStr = _generateCsvContent(products);
           final bytes = await CharsetConverter.encode('windows-1251', csvStr);
           await File(filePath).writeAsBytes(bytes);
           return File(filePath);
@@ -165,20 +170,17 @@ class ExportService {
   // ==========================================
   // CSV GENERATION
   // ==========================================
-  Future<String> _generateCsvContent(List<Product> products) async {
-    // Формируем только нужные колонки в нужном порядке
+  String _generateCsvContent(List<Product> products) {
     final headers = ['Категория', 'Название', 'Цена', 'Описание'];
     final rows = <List<String>>[];
 
     rows.add(headers);
 
     for (var product in products) {
-      // Берем категорию из продукта, название, цену и описание (состав)
       final category = _escapeCsv(product.categoryName.trim());
       final name = _escapeCsv(product.displayName.trim());
-      final price = product.price.toStringAsFixed(0); // Целое число без копеек
-      final description =
-          _escapeCsv(product.composition.trim()); // Описание/Состав
+      final price = product.price.toStringAsFixed(0);
+      final description = _escapeCsv(product.composition.trim());
 
       rows.add([category, name, price, description]);
     }
