@@ -707,14 +707,15 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
           final String pId = product.id;
           final String cId = product.categoryId;
 
+          // 1. КБЖУ — ИСПРАВЛЕНО: ищем по точному строковому совпадению ID
           try {
-            final nut = clientData.nutritionInfos.firstWhere((n) {
-              return double.tryParse(n.priceListId ?? '') ==
-                  double.tryParse(pId);
-            });
+            final nut = clientData.nutritionInfos.firstWhere(
+              (n) => (n.priceListId ?? '').toString() == pId,
+            );
             nutritionByProduct[pId] = nut;
           } catch (_) {}
 
+          // 2. Условия хранения
           final storages = clientData.storageConditions
               .where((s) => s.level == 'Категории прайса' && s.entityId == cId)
               .toList();
@@ -722,40 +723,42 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
             storageByProduct[pId] = storages;
           }
 
+          // 3. ФОРМИРОВАНИЕ СОСТАВА (ИСПРАВЛЕНО: Правильная связь ID сущностей)
           final compositionParts = <String>[];
 
-          final categoryData = categoriesMap[cId];
-          if (categoryData != null &&
-              categoryData.description.trim().isNotEmpty) {
-            compositionParts
-                .add(_normalizeText(categoryData.description.trim()));
-          }
-
+          // Получаем все начинки для данной категории
           final fillings = clientData.compositions
               .where(
                   (c) => c.sheetName == 'Категории прайса' && c.entityId == cId)
               .toList();
 
           for (var filling in fillings) {
+            // ИСПРАВЛЕНО: Ищем ингредиенты начинки по entityId, равному ID самой начинки
             final fillingIngredients = clientData.compositions
                 .where((c) =>
                     c.sheetName == 'Начинки' &&
                     c.entityId == filling.id.toString())
                 .map((i) => i.displayName.trim().toLowerCase())
                 .toList();
+
+            // Формируем красивый вывод: "Название начинки: ингр1, ингр2"
             if (fillingIngredients.isNotEmpty) {
-              compositionParts.add(
-                  '${_normalizeText(filling.displayName).replaceAll('.', '')}: ${fillingIngredients.join(', ')}');
+              final fillingName =
+                  _normalizeText(filling.displayName).replaceAll('.', '');
+              compositionParts
+                  .add('$fillingName: ${fillingIngredients.join(', ')}');
             } else {
               compositionParts
                   .add(_normalizeText(filling.displayName).replaceAll('.', ''));
             }
           }
 
+          // Прямые ингредиенты из прайс-листа (джемы, глазурь и тд)
           final directIngredients = clientData.compositions
               .where((c) => c.sheetName == 'Прайс-лист' && c.entityId == pId)
               .map((i) => _normalizeText(i.displayName).replaceAll('.', ''))
               .toList();
+
           if (directIngredients.isNotEmpty) {
             compositionParts.addAll(directIngredients);
           }
@@ -794,13 +797,11 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
               'price_list_${DateTime.now().millisecondsSinceEpoch}.$format';
           html.Blob blob;
 
-          // Результат может прийти как Uint8List (от PDF) или как html.Blob (от CSV)
           if (result is html.Blob) {
             blob = result as html.Blob;
           } else if (result is Uint8List) {
             blob = html.Blob([result]);
           } else {
-            // Fallback на случай внутренних типов пакета pdf
             try {
               blob = html.Blob([Uint8List.fromList(result as List<int>)]);
             } catch (e) {
