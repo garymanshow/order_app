@@ -1,7 +1,12 @@
 {
     "cmake.sourceDirectory": "/home/administrator/Project/Flutter/order_app/order_app/linux",
-    "cSpell.language": "en,ru"
-
-// Глобальные настройки VS Code
-
+    "cSpell.language": "en,ru",
+    "python-envs.pythonProjects": [
+        {
+            "path": ".",
+            "envManager": "ms-python.python:system",
+            "packageManager": "ms-python.python:pip"
+        }
+    ]
+    // Глобальные настройки VS Code
 }
