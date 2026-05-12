@@ -53,6 +53,11 @@ class ProductFormData {
   String weight;
   String packagingName;
   int wastePercentage;
+  // ДЛЯ КБЖУ
+  double calories;
+  double proteins;
+  double fats;
+  double carbs;
 
   Map<String, List<Composition>> ownData = {};
   List<Composition> baseFillings = [];
@@ -80,6 +85,11 @@ class ProductFormData {
     this.weight = '0',
     this.packagingName = 'Транспортный контейнер',
     this.wastePercentage = 10,
+    // 🔥 Дефолты для КБЖУ
+    this.calories = 0,
+    this.proteins = 0,
+    this.fats = 0,
+    this.carbs = 0,
   });
 }
 
@@ -224,110 +234,185 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final clientData = authProvider.clientData;
 
-    if (!_formDataMap.containsKey(product.id)) {
-      PriceCategory? productCategory;
-      if (product.categoryId.isNotEmpty) {
-        try {
-          productCategory = _categories
-              .firstWhere((c) => c.id.toString() == product.categoryId);
-        } catch (_) {}
-      }
-
-      final data = ProductFormData(
-        productId: product.id,
-        name: product.name,
-        price: product.price,
-        multiplicity:
-            productCategory?.packagingQuantity ?? product.multiplicity,
-        photoUrl: product.imageUrl ?? '',
-        description: product.composition ?? '',
-        categoryId: productCategory?.id.toString() ?? product.categoryId,
-        categoryName: productCategory?.name ?? product.categoryName,
-        unit: productCategory?.unit ?? 'г',
-        weight: productCategory?.weight.toString() ?? product.weight,
-        wastePercentage:
-            productCategory?.wastePercentage ?? product.wastePercentage,
-      );
-
-      final String productIdStr = product.id.toString();
-      final String catIdStr = productCategory?.id.toString() ?? '';
-
-      if (clientData != null) {
-        // 1. НАЧИНКИ КАТЕГОРИИ
-        data.baseFillings = catIdStr.isNotEmpty
-            ? clientData.compositions
-                .where((c) =>
-                    c.sheetName == 'Категории прайса' &&
-                    c.entityId.toString() == catIdStr)
-                .toList()
-            : [];
-
-        // 1.5 ВЛОЖЕННЫЙ СОСТАВ ДЛЯ КАЖДОЙ НАЧИНКИ КАТЕГОРИИ
-        // Проходимся по найденным начинкам и для каждой вытаскиваем её состав
-        for (var filling in data.baseFillings) {
-          String fillingIdStr = filling.id.toString();
-          data.baseFillingCompositionsMap[fillingIdStr] = clientData
-              .compositions
-              .where((c) =>
-                  c.sheetName == 'Начинки' &&
-                  c.entityId.toString() == fillingIdStr)
-              .toList();
-        }
-
-        // 2. Начинки для конкретного товара
-        data.ownData[_kFillingConfig.sheetName] = clientData.compositions
-            .where((c) =>
-                c.sheetName == 'Прайс-лист' &&
-                c.entityId.toString() == productIdStr)
-            .toList();
-
-        // 2.5 ВЛОЖЕННЫЙ СОСТАВ ДЛЯ СОБСТВЕННЫХ НАЧИНОК ТОВАРА
-        for (var filling in data.ownData[_kFillingConfig.sheetName] ?? []) {
-          String fillingIdStr = filling.id.toString();
-          data.ownFillingCompositionsMap[fillingIdStr] = clientData.compositions
-              .where((c) =>
-                  c.sheetName == 'Начинки' &&
-                  c.entityId.toString() == fillingIdStr)
-              .toList();
-        }
-
-        // 3. СОСТАВ ТОВАРА (Прямой состав, привязанный к товару)
-        data.ownData[_kCompositionConfig.sheetName] = clientData.compositions
-            .where((c) =>
-                c.sheetName == 'Прайс-лист' &&
-                c.entityId.toString() == productIdStr)
-            .toList();
-
-        // 4. Хранение и Транспорт
-        data.ownStorage = clientData.storageConditions
-            .where((c) =>
-                c.entityId.toString() == productIdStr &&
-                c.level == _kStorageConfig.levelProduct)
-            .toList();
-        data.baseStorage = catIdStr.isNotEmpty
-            ? clientData.storageConditions
-                .where((c) =>
-                    c.entityId.toString() == catIdStr &&
-                    c.level == _kStorageConfig.levelCategory)
-                .toList()
-            : [];
-        data.ownTransport = clientData.transportConditions
-            .where((c) =>
-                c.entityId.toString() == productIdStr &&
-                c.level == _kTransportConfig.levelProduct)
-            .toList();
-        data.baseTransport = catIdStr.isNotEmpty
-            ? clientData.transportConditions
-                .where((c) =>
-                    c.entityId.toString() == catIdStr &&
-                    c.level == _kTransportConfig.levelCategory)
-                .toList()
-            : [];
-      }
-      _formDataMap[product.id] = data;
+    // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ СРАВНЕНИЯ ID
+    // Решает проблему '58' != '58.0' и null значений
+    bool isIdEqual(dynamic val1, dynamic val2) {
+      if (val1 == null || val2 == null) return false;
+      final s1 = val1.toString().replaceAll('.0', '');
+      final s2 = val2.toString().replaceAll('.0', '');
+      return s1 == s2;
     }
+
+    PriceCategory? productCategory;
+    if (product.categoryId.isNotEmpty) {
+      try {
+        productCategory =
+            _categories.firstWhere((c) => isIdEqual(c.id, product.categoryId));
+      } catch (_) {}
+    }
+
+    final data = ProductFormData(
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      multiplicity: productCategory?.packagingQuantity ?? product.multiplicity,
+      photoUrl: product.imageUrl ?? '',
+      description: product.composition ?? '',
+      categoryId: productCategory?.id.toString() ?? product.categoryId,
+      categoryName: productCategory?.name ?? product.categoryName,
+      unit: productCategory?.unit ?? 'г',
+      weight: productCategory?.weight.toString() ?? product.weight,
+      wastePercentage:
+          productCategory?.wastePercentage ?? product.wastePercentage,
+    );
+
+    final String pIdStr = product.id.toString();
+    final String cIdStr = productCategory?.id.toString() ?? '';
+
+    if (clientData != null) {
+      // ==========================================
+      // 1. НАЧИНКИ И СОСТАВ
+      // ==========================================
+
+      // Базовые начинки (Лист "Категории прайса", ID сущности = ID категории)
+      data.baseFillings = cIdStr.isNotEmpty
+          ? clientData.compositions
+              .where((c) =>
+                  c.sheetName == 'Категории прайса' &&
+                  isIdEqual(c.entityId, cIdStr))
+              .toList()
+          : [];
+
+      // Вложенный состав базовых начинок (Лист "Начинки", ID сущности = ID самой начинки)
+      for (var filling in data.baseFillings) {
+        data.baseFillingCompositionsMap[filling.id.toString()] = clientData
+            .compositions
+            .where((c) =>
+                c.sheetName == 'Начинки' && isIdEqual(c.entityId, filling.id))
+            .toList();
+      }
+
+      // Начинки и Состав товара (Лист "Прайс-лист", ID сущности = ID товара)
+      final productComps = clientData.compositions
+          .where((c) =>
+              c.sheetName == 'Прайс-лист' && isIdEqual(c.entityId, pIdStr))
+          .toList();
+      data.ownData[_kFillingConfig.sheetName] = productComps;
+      data.ownData[_kCompositionConfig.sheetName] = productComps;
+
+      // Вложенный состав собственных начинок (Лист "Начинки", ID сущности = ID начинки товара)
+      for (var filling in productComps) {
+        data.ownFillingCompositionsMap[filling.id.toString()] = clientData
+            .compositions
+            .where((c) =>
+                c.sheetName == 'Начинки' && isIdEqual(c.entityId, filling.id))
+            .toList();
+      }
+
+      // ==========================================
+      // 2. ХРАНЕНИЕ И ТРАНСПОРТИРОВКА
+      // Используем isIdEqual для ID сущности
+      // ==========================================
+      data.ownStorage = clientData.storageConditions
+          .where((c) => isIdEqual(c.entityId, pIdStr))
+          .toList(); // Убираем фильтр по level, ищем только по ID товара
+      data.baseStorage = cIdStr.isNotEmpty
+          ? clientData.storageConditions
+              .where((c) =>
+                  c.level == 'Категории прайса' &&
+                  isIdEqual(c.entityId, cIdStr))
+              .toList()
+          : [];
+
+      data.ownTransport = clientData.transportConditions
+          .where((c) => isIdEqual(c.entityId, pIdStr))
+          .toList(); // Убираем фильтр по level
+      data.baseTransport = cIdStr.isNotEmpty
+          ? clientData.transportConditions
+              .where((c) =>
+                  c.level == 'Категории прайса' &&
+                  isIdEqual(c.entityId, cIdStr))
+              .toList()
+          : [];
+
+      // ==========================================
+      // 3. КБЖУ
+      // ==========================================
+      try {
+        final nut = clientData.nutritionInfos.firstWhere(
+          (n) => isIdEqual(n.priceListId, pIdStr),
+        );
+        data.calories = double.tryParse(nut.calories ?? '0') ?? 0;
+        data.proteins = double.tryParse(nut.proteins ?? '0') ?? 0;
+        data.fats = double.tryParse(nut.fats ?? '0') ?? 0;
+        data.carbs = double.tryParse(nut.carbohydrates ?? '0') ?? 0;
+      } catch (_) {}
+    }
+
+    _formDataMap[product.id] = data;
     _refreshTails();
     setState(() => _hasLocalChanges = false);
+  }
+
+  void _showNutritionDialog() {
+    final data = _currentData;
+    final calCtrl =
+        TextEditingController(text: data.calories.toStringAsFixed(1));
+    final protCtrl =
+        TextEditingController(text: data.proteins.toStringAsFixed(1));
+    final fatsCtrl = TextEditingController(text: data.fats.toStringAsFixed(1));
+    final carbsCtrl =
+        TextEditingController(text: data.carbs.toStringAsFixed(1));
+
+    showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: const Text('КБЖУ (на 100 г)'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                      controller: calCtrl,
+                      decoration:
+                          const InputDecoration(labelText: 'Калории (ккал)'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true)),
+                  TextField(
+                      controller: protCtrl,
+                      decoration: const InputDecoration(labelText: 'Белки (г)'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true)),
+                  TextField(
+                      controller: fatsCtrl,
+                      decoration: const InputDecoration(labelText: 'Жиры (г)'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true)),
+                  TextField(
+                      controller: carbsCtrl,
+                      decoration:
+                          const InputDecoration(labelText: 'Углеводы (г)'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true)),
+                ],
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Отмена')),
+                ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        data.calories = double.tryParse(calCtrl.text) ?? 0;
+                        data.proteins = double.tryParse(protCtrl.text) ?? 0;
+                        data.fats = double.tryParse(fatsCtrl.text) ?? 0;
+                        data.carbs = double.tryParse(carbsCtrl.text) ?? 0;
+                        _hasLocalChanges = true;
+                      });
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Сохранить')),
+              ],
+            ));
   }
 
   void _refreshTails() {
@@ -1506,6 +1591,12 @@ class AdminPriceItemFormScreenState extends State<AdminPriceItemFormScreen> {
                                   onTap: () =>
                                       _showListActionSheet(_kFillingConfig)),
                               const SizedBox(height: 4),
+                              const SizedBox(height: 4),
+                              _buildListButton(
+                                  icon: Icons.local_fire_department,
+                                  title:
+                                      'КБЖУ (${data.calories.toStringAsFixed(0)} ккал)',
+                                  onTap: _showNutritionDialog),
                               _buildListButton(
                                   icon: Icons.inventory_2,
                                   title:
