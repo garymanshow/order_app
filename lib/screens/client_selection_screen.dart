@@ -9,7 +9,7 @@ import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../services/api_service.dart';
 
-class ClientSelectionScreen extends StatelessWidget {
+class ClientSelectionScreen extends StatefulWidget {
   final String phone;
   final List<Client> clients;
 
@@ -18,6 +18,24 @@ class ClientSelectionScreen extends StatelessWidget {
     required this.phone,
     required this.clients,
   });
+
+  @override
+  State<ClientSelectionScreen> createState() => _ClientSelectionScreenState();
+}
+
+class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 🔥 ЗАЩИТА ОТ ПЕРЕМЕШИВАНИЯ: При возвращении на этот экран
+    // сбрасываем временного клиента, которого мог оставить submitAllOrders
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final cartProvider = Provider.of<CartProvider>(context, listen: false);
+      if (cartProvider.isInitialized) {
+        cartProvider.reset(); // Вернет _currentClient в null
+      }
+    });
+  }
 
   // Расчет суммы клиента из его заказов
   double _calculateClientTotal(
@@ -51,8 +69,13 @@ class ClientSelectionScreen extends StatelessWidget {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
 
-    // Проверяем, есть ли неотправленные заказы
-    if (cartProvider.cartItems.isNotEmpty) {
+    // Проверяем, есть ли неотправленные заказы через глобальный список
+    bool hasUnsaved = false;
+    if (authProvider.clientData != null) {
+      hasUnsaved = authProvider.clientData!.orders.any((o) => o.quantity > 0);
+    }
+
+    if (hasUnsaved) {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -137,8 +160,11 @@ class ClientSelectionScreen extends StatelessWidget {
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
     final apiService = ApiService();
 
-    // Проверяем, есть ли заказы для отправки
-    if (cartProvider.cartItems.isEmpty) {
+    // 🔥 ИСПРАВЛЕНИЕ: Считаем заказы напрямую из глобального списка authProvider
+    final allOrders = authProvider.clientData!.orders;
+    final ordersReadyToSend = allOrders.where((o) => o.quantity > 0).toList();
+
+    if (ordersReadyToSend.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Нет заказов для отправки')),
       );
@@ -146,11 +172,10 @@ class ClientSelectionScreen extends StatelessWidget {
     }
 
     // Проверяем минимальные суммы для всех клиентов
-    final orders = authProvider.clientData!.orders;
     final clientsWithIssues = <String>[];
 
-    for (var client in clients) {
-      final total = _calculateClientTotal(client, orders);
+    for (var client in widget.clients) {
+      final total = _calculateClientTotal(client, allOrders);
       if (total > 0 && !_meetsMinimumOrder(client, total)) {
         clientsWithIssues.add(client.name ?? 'Неизвестный клиент');
       }
@@ -203,12 +228,16 @@ class ClientSelectionScreen extends StatelessWidget {
 
     if (confirm != true) return;
 
+    // 🔥 ВАЖНО: Подкидываем ВСЕ заказы в CartProvider для отправки пачкой
+    cartProvider.forceUpdateAllOrdersForSubmission(
+      authProvider.clientData!.orders,
+      authProvider.currentUser as Client?,
+    );
+
     // 🔥 ПЕРЕДАЕМ СТАТУС "оформлен" ЯВНО
-    // Это означает: "Удали старые заказы со статусом 'оформлен' и создай новые"
     final success = await cartProvider.submitAllOrders(
       context,
       apiService,
-      deleteStatus: 'оформлен',
     );
 
     if (context.mounted) {
@@ -233,9 +262,9 @@ class ClientSelectionScreen extends StatelessWidget {
             body: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Загрузка данных...'),
-                  const CircularProgressIndicator(),
+                children: const [
+                  Text('Загрузка данных...'),
+                  CircularProgressIndicator(),
                 ],
               ),
             ),
@@ -243,21 +272,21 @@ class ClientSelectionScreen extends StatelessWidget {
         }
 
         // 🔥 ПРОВЕРКА НА НАЛИЧИЕ КЛИЕНТОВ
-        if (clients.isEmpty) {
+        if (widget.clients.isEmpty) {
           return Scaffold(
             body: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Нет клиентов для телефона $phone'),
-                  SizedBox(height: 16),
+                  Text('Нет клиентов для телефона ${widget.phone}'),
+                  const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () {
                       authProvider.logout();
                       Navigator.pushNamedAndRemoveUntil(
                           context, '/', (route) => false);
                     },
-                    child: Text('Выйти'),
+                    child: const Text('Выйти'),
                   ),
                 ],
               ),
@@ -265,11 +294,11 @@ class ClientSelectionScreen extends StatelessWidget {
           );
         }
 
+        // 🔥 Берем заказы напрямую из AuthProvider для отрисовки кнопок
         final orders = authProvider.clientData!.orders;
-        final hasUnsavedOrders = cartProvider.cartItems.isNotEmpty;
 
         // Рассчитываем суммы и проверяем минимальные для каждого клиента
-        final clientsWithTotals = clients.map((client) {
+        final clientsWithTotals = widget.clients.map((client) {
           final total = _calculateClientTotal(client, orders);
           final meetsMin = _meetsMinimumOrder(client, total);
           return _ClientWithTotal(
@@ -323,47 +352,100 @@ class ClientSelectionScreen extends StatelessWidget {
                 ),
             ],
           ),
-          body: ListView.builder(
-            itemCount: clientsWithTotals.length,
-            itemBuilder: (context, index) {
-              final item = clientsWithTotals[index];
-              final hasItems = item.total > 0;
+          body: Stack(
+            children: [
+              // Основной список клиентов
+              ListView.builder(
+                itemCount: clientsWithTotals.length,
+                itemBuilder: (context, index) {
+                  final item = clientsWithTotals[index];
+                  final hasItems = item.total > 0;
 
-              return ListTile(
-                title: Text(item.client.name ?? ''),
-                subtitle: hasItems
-                    ? Text(
-                        '${item.total.toStringAsFixed(2)} ₽',
-                        style: TextStyle(
-                          color: item.meetsMinimum ? Colors.green : Colors.red,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : Text(
-                        'Минимальная сумма: ${item.client.minOrderAmount?.toStringAsFixed(0) ?? '0'} ₽',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
-                      ),
-                trailing: hasItems
-                    ? Chip(
-                        label: Text('${item.total.toStringAsFixed(0)} ₽'),
-                        backgroundColor: Colors.green.shade100,
-                        avatar: const Icon(Icons.shopping_cart, size: 16),
-                      )
-                    : null,
-                onTap: () {
-                  print('🔍 Выбран клиент: ${item.client.name}');
-
-                  // Устанавливаем клиента
-                  authProvider.selectClient(item.client);
-
-                  // Переход на прайс-лист
-                  Navigator.pushReplacementNamed(context, '/price');
+                  return ListTile(
+                    title: Text(item.client.name ?? ''),
+                    subtitle: hasItems
+                        ? Text(
+                            '${item.total.toStringAsFixed(2)} ₽',
+                            style: TextStyle(
+                              color:
+                                  item.meetsMinimum ? Colors.green : Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : Text(
+                            'Минимальная сумма: ${item.client.minOrderAmount?.toStringAsFixed(0) ?? '0'} ₽',
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
+                          ),
+                    // Отступ справа, чтобы текст не залезал под кнопку корзины
+                    contentPadding: const EdgeInsets.only(
+                        left: 16, right: 80, top: 8, bottom: 8),
+                    onTap: () {
+                      print('🔍 Выбран клиент для прайса: ${item.client.name}');
+                      authProvider.selectClient(item.client);
+                      Navigator.pushReplacementNamed(context, '/price');
+                    },
+                  );
                 },
-              );
-            },
+              ),
+
+              // 🔥 ПЛАВАЮЩИЕ КНОПКИ КОРЗИН СПРАВА
+              ...clientsWithTotals.asMap().entries.map((entry) {
+                final index = entry.key;
+                final item = entry.value;
+                final hasItems = item.total > 0;
+
+                if (!hasItems) return const SizedBox.shrink();
+
+                // Высота одной строки ListTile примерно 72 пикселя + отступ
+                final topOffset = index * 72.0 + 16.0;
+
+                return Positioned(
+                  top: topOffset,
+                  right: 8,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () {
+                      print(
+                          '🛒 Нажатие на корзину клиента: ${item.client.name}');
+
+                      // 1. Выбираем клиента
+                      authProvider.selectClient(item.client);
+
+                      // 2. Переходим КОНКРЕТНО в корзину
+                      Navigator.pushNamed(context, '/cart');
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.shopping_cart,
+                              size: 18, color: Colors.green.shade700),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${item.total.toStringAsFixed(0)} ₽',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
           ),
         );
       },

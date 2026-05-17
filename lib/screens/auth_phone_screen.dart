@@ -80,13 +80,14 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
       // 🔥 1. Выполняем вход
       await authProvider.login(phone, context: context);
 
-      // 🔥 2. Сохраняем флаг использования и телефон
+      // 🔥 2. Сохраняем флаг использования (быстро)
       await cacheService.markAsUsed();
       await cacheService.saveLastPhone(phone);
 
-      // 🔥 3. Закрываем экран ТОЛЬКО если мы все еще смонтированы
+      // 🔥 3. ЖЕСТКОЕ ПЕРЕКЛЮЧЕНИЕ: Вышибаем этот экран из стека навигации
+      // Мы не делаем pop, мы говорим роутеру: "Замени текущий экран на '/'"
       if (mounted) {
-        Navigator.pop(context, true);
+        Navigator.pushReplacementNamed(context, '/');
       }
     } catch (e) {
       // 🔥 4. Обрабатываем ошибки
@@ -96,7 +97,8 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
         );
       }
     } finally {
-      // 🔥 5. Всегда убираем спиннер, если мы на экране
+      // 🔥 5. Снимаем спиннер ТОЛЬКО если мы все еще на этом экране
+      // (Если pushReplacementName сработал, mounted будет false)
       if (mounted) {
         setState(() => _isLoading = false);
       }

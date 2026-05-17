@@ -6,6 +6,7 @@ import 'api_service.dart';
 import '../models/order_item.dart';
 import '../models/filling.dart';
 import '../models/product.dart';
+import '../providers/auth_provider.dart';
 
 class SyncService {
   final Connectivity _connectivity = Connectivity();
@@ -15,6 +16,8 @@ class SyncService {
   Timer? _syncTimer;
   bool _isSyncing = false;
   bool _isInitialized = false;
+
+  AuthProvider? _auth;
 
   SyncService();
 
@@ -34,7 +37,7 @@ class SyncService {
 
     // Подписываемся на изменения подключения
     _connectivity.onConnectivityChanged.listen((result) {
-      if (result != ConnectivityResult.none) {
+      if (!result.contains(ConnectivityResult.none)) {
         print('🌐 Интернет появился, запускаем синхронизацию');
         sync();
       }
@@ -47,6 +50,10 @@ class SyncService {
     _syncTimer?.cancel();
     _syncTimer = null;
     print('🔄 Периодическая синхронизация остановлена');
+  }
+
+  void setAuthProvider(AuthProvider auth) {
+    _auth = auth;
   }
 
   Future<void> sync() async {
@@ -165,45 +172,37 @@ class SyncService {
         switch (type) {
           case 'create':
             if (entity == 'order') {
-              // 🔥 РЕАЛИЗОВАНО: создание заказа
               success = await _createOrderFromData(data);
-              print('📝 Создание заказа: ${success ? 'успешно' : 'ошибка'}');
+              print(
+                  '📝 Создание заказа из очереди: ${success ? 'успешно' : 'ошибка'}');
             }
             break;
+
+          // 🔥 case 'delete' УДАЛЕН. Удаление старых заказов теперь
+          // происходит автоматически внутри GAS при вызове createOrder.
+
           case 'update':
             if (entity == 'order') {
               final order = OrderItem.fromJson(data);
               success = await _api.updateOrders([order]);
-            }
-            break;
-          case 'delete':
-            if (entity == 'order') {
-              // 🔥 ИСПРАВЛЕНО: Передаем именованные параметры для deleteOrder
-              // Для удаления требуются clientPhone, clientName, status
-              if (data['clientPhone'] != null &&
-                  data['clientName'] != null &&
-                  data['status'] != null) {
-                success = await _api.deleteOrder(
-                  clientPhone: data['clientPhone'],
-                  clientName: data['clientName'],
-                  status: data['status'],
-                );
-              } else {
-                print('⚠️ Недостаточно данных для удаления заказа в очереди');
-                success = false;
-              }
+              print('🔄 Обновление заказа: ${success ? 'успешно' : 'ошибка'}');
             }
             break;
         }
 
         if (success) {
           await _cache.removeOperation(id);
-          print('✅ Операция отправлена: $type/$entity');
+          print('✅ Операция из очереди выполнена: $type/$entity');
+
+          // Обновляем UI, если это был заказ
+          if (entity == 'order') {
+            _auth?.refreshOrdersFromCache();
+          }
         } else {
-          print('⚠️ Не удалось отправить операцию: $type/$entity');
+          print('⚠️ Не удалось выполнить операцию из очереди: $type/$entity');
         }
       } catch (e) {
-        print('❌ Ошибка отправки операции: $e');
+        print('❌ Ошибка отправки операции из очереди: $e');
       }
     }
   }
@@ -214,12 +213,19 @@ class SyncService {
       // Извлекаем данные из структуры
       final clientId = data['clientId']?.toString() ?? '';
       final employeeId = data['employeeId']?.toString() ?? '';
-      final items =
+      var items =
           (data['items'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
       final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
       final deliveryCity = data['deliveryCity'] as String?;
       final deliveryAddress = data['deliveryAddress'] as String?;
       final comment = data['comment'] as String?;
+
+      // Гарантируем единую дату для офлайн-очереди
+      final now = DateTime.now().toUtc().toIso8601String();
+      items = items.map((item) {
+        item['date'] = now; // Перезаписываем дату на момент реальной отправки
+        return item;
+      }).toList();
 
       // Вызываем API для создания заказа
       return await _api.createOrder(
@@ -267,7 +273,7 @@ class SyncService {
 
     // Пытаемся отправить сразу, если есть интернет
     final connectivityResult = await _connectivity.checkConnectivity();
-    if (connectivityResult != ConnectivityResult.none) {
+    if (!connectivityResult.contains(ConnectivityResult.none)) {
       await sync();
     }
   }

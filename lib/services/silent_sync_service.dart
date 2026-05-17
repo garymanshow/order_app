@@ -78,16 +78,31 @@ class SilentSyncService {
     }
   }
 
-  /// 🔥 Фоновая полная синхронизация
+  /// 🔥 Фоновая полная синхронизация (С ПРОВЕРКОЙ)
   Future<void> _syncFullDataInBackground() async {
     try {
-      // 🔥 FIX: _auth! после проверки
       final phone = _auth?.currentUser?.phone;
       if (phone == null) return;
 
+      // 🔥 ШАГ 1: Спрашиваем "Есть ли обновления?"
+      final checkResult = await _api.checkMetadataUpdates(
+        phone: phone,
+        localMetadata: _cache.getMetadata(),
+      );
+
+      // 🔥 ШАГ 2: Если обновлений нет - СРАЗУ ВЫХОДИМ (Экономим лимиты!)
+      if (checkResult == null || checkResult['hasUpdates'] != true) {
+        print('💤 Фоновая проверка: обновлений нет');
+        await _cache.clearPendingUpdates();
+        _auth?.setHasPendingUpdates(false, []);
+        return;
+      }
+
+      // 🔥 ШАГ 3: Обновления есть - качаем полный пакет
+      print('🔄 Фоновая проверка: найдены обновления, скачиваем...');
       final result = await _api.authenticate(
         phone: phone,
-        localMetadata: _cache.getMetadata(), // 🔥 FIX: убрать await
+        localMetadata: _cache.getMetadata(),
       );
 
       if (result != null && result['success'] == true) {
@@ -95,23 +110,20 @@ class SilentSyncService {
         final metadata = _deserializeMetadata(result['metadata']);
         await _cache.saveMetadata(metadata);
 
-        // Сохраняем данные
+        // Сохраняем данные (тот же код, что был у вас)
         if (result['data'] != null) {
           final data = result['data'] as Map<String, dynamic>;
-
           if (data['orders'] != null) {
             await _cache.saveOrders(_deserializeOrders(data['orders']));
           }
           if (data['products'] != null) {
             await _cache.saveProducts(_deserializeProducts(data['products']));
           }
-          // При необходимости добавить другие поля: fillings, compositions, etc.
+          // Здесь в будущем можно добавлять сохранение КБЖУ, Состава и т.д.
         }
 
-        // Очищаем флаг ожидающих обновлений
         await _cache.clearPendingUpdates();
-        _auth!.setHasPendingUpdates(false, []); // 🔥 FIX: _auth!
-
+        _auth?.setHasPendingUpdates(false, []);
         print('✅ Фоновое обновление завершено');
       }
     } catch (e) {

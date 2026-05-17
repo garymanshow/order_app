@@ -78,6 +78,14 @@ void main() async {
       // SyncService
       syncService = SyncService();
       await syncService.initialize();
+
+      // 🔥 СВЯЗЫВАЕМ SYNC С АВТОРИЗАЦИЕЙ
+      // await потому что провайдер создается асинхронно в runApp
+      await Future.delayed(const Duration(seconds: 1));
+      syncService.setAuthProvider(Provider.of<AuthProvider>(
+          navigatorKey.currentContext!,
+          listen: false));
+
       print('✅ SyncService инициализирован');
 
       // Предзагрузка изображений
@@ -153,25 +161,47 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class MyAppContent extends StatelessWidget {
+// 🔥 ИСПРАВЛЕНО: StatelessWidget заменен на StatefulWidget
+class MyAppContent extends StatefulWidget {
   final SilentSyncService? silentSync;
 
   const MyAppContent({super.key, this.silentSync});
+
+  @override
+  State<MyAppContent> createState() => _MyAppContentState();
+}
+
+class _MyAppContentState extends State<MyAppContent>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    // 🔥 Регистрируем наблюдателя ТОЛЬКО ОДИН РАЗ при создании виджета
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    // 🔥 ОБЯЗАТЕЛЬНО отписываемся при уничтожении, чтобы не было утечек памяти
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // 🔥 Перехватываем изменение состояния жизненного цикла здесь
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Используем listen: false, чтобы не вызывать rebuild этого виджета
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      authProvider.checkForUpdates();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
     final connectivityResult = Provider.of<ConnectivityResult>(context);
-
-    // 🔥 РЕГИСТРИРУЕМ НАБЛЮДАТЕЛЯ ЖИЗНЕННОГО ЦИКЛА
-    WidgetsBinding.instance.addObserver(
-      _AppLifecycleObserver(
-        onResume: () async {
-          await authProvider.checkForUpdates();
-        },
-      ),
-    );
 
     print(
         '🟢 MyAppContent: authProvider.isLoading = ${authProvider.isLoading}');
@@ -290,19 +320,5 @@ class MyAppContent extends StatelessWidget {
       labelLarge: const TextStyle(
           fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
     );
-  }
-}
-
-// 🔥 НОВЫЙ КЛАСС: Наблюдатель за жизненным циклом приложения
-class _AppLifecycleObserver extends WidgetsBindingObserver {
-  final Future<void> Function()? onResume;
-
-  _AppLifecycleObserver({this.onResume});
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      onResume?.call();
-    }
   }
 }

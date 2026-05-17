@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/client_category.dart';
 import '../models/client.dart';
@@ -27,6 +28,7 @@ import '../services/sync_service.dart';
 import '../services/web_push_service.dart';
 import '../services/env_service.dart';
 import '../utils/phone_validator.dart';
+import 'cart_provider.dart';
 
 class AuthProvider with ChangeNotifier {
   final GlobalKey<NavigatorState> navigatorKey;
@@ -79,17 +81,14 @@ class AuthProvider with ChangeNotifier {
   bool get isOffline => _isOffline;
 
   // ================== ИНИЦИАЛИЗАЦИЯ ==================
-
   Future<void> init() async {
     print('🟢 AuthProvider.init() START');
     _isLoading = true;
     notifyListeners();
 
-    // Инициализируем сервисы
     _cacheService = await CacheService.getInstance();
     _syncService = SyncService();
 
-    // Проверяем наличие кэшированных данных
     final hasCachedData = await _loadCachedData();
 
     if (hasCachedData) {
@@ -97,16 +96,34 @@ class AuthProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
 
-      // Фоновая синхронизация
-      _syncService.sync().catchError((e) {
-        print('⚠️ Фоновая синхронизация: $e');
-      });
+      // 🔥 НОВОЯ ЛОГИКА: Проверяем метаданные, а не тянем весь прайс
+      _checkMetadataOnStart();
     } else {
       _isLoading = false;
       notifyListeners();
     }
 
     print('🟢 AuthProvider.init() END');
+  }
+
+  // 🔥 Вспомогательный метод для легкой проверки при старте
+  Future<void> _checkMetadataOnStart() async {
+    try {
+      final result = await _apiService.checkMetadataUpdates(
+        phone: _currentUser?.phone,
+        localMetadata: _cacheService.getMetadata(),
+      );
+
+      if (result != null && result['hasUpdates'] == true) {
+        print(
+            '🔄 Данные на сервере обновились, запускаем полную синхронизацию');
+        await _syncService.sync();
+      } else {
+        print('💤 Данные актуальны, лишних запросов нет');
+      }
+    } catch (e) {
+      print('⚠️ Легкая проверка метаданных не удалась: $e');
+    }
   }
 
   // ================== ЗАГРУЗКА КЭШИРОВАННЫХ ДАННЫХ ==================
@@ -426,6 +443,21 @@ class AuthProvider with ChangeNotifier {
     }
 
     print('✅ Данные сохранены в Hive кэш');
+  }
+
+  // 🔥 МЕТОД ДЛЯ СИНХРОНИЗАЦИИ ОФЛАЙН-ЗАКАЗОВ С ИНТЕРФЕЙСОМ
+  Future<void> refreshOrdersFromCache() async {
+    try {
+      final freshOrders = _cacheService.getOrders();
+      if (_clientData != null) {
+        _clientData!.orders = freshOrders;
+        notifyListeners(); // Заставляет экраны пересобраться с новыми данными
+        print(
+            '🔄 Заказы в интерфейсе обновлены из кэша (после офлайн-отправки)');
+      }
+    } catch (e) {
+      print('❌ Ошибка обновления заказов из кэша: $e');
+    }
   }
 
   Future<bool> _checkNetwork() async {
@@ -854,6 +886,19 @@ class AuthProvider with ChangeNotifier {
     _metadata = null;
     _availableRoles = null;
     _isOffline = false;
+
+    // 🔥 НОВОЕ: Очищаем корзину из памяти при выходе
+    // Нам нужно получить контекст, чтобы найти CartProvider
+    final context = navigatorKey.currentContext;
+    if (context != null) {
+      try {
+        final cartProvider = Provider.of<CartProvider>(context, listen: false);
+        // Вызываем жесткий сброс (обнуляем всё, включая _allOrders)
+        cartProvider.hardReset();
+      } catch (e) {
+        print('⚠️ Не удалось сбросить корзину при выходе: $e');
+      }
+    }
 
     notifyListeners();
 

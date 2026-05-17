@@ -129,37 +129,21 @@ class ClientRouterScreen extends StatefulWidget {
 }
 
 class _ClientRouterScreenState extends State<ClientRouterScreen> {
+  bool _navigationHandled = false; // 🔥 ФЛАГ ЗАЩИТЫ ОТ ПОВТОРНОЙ ОТРИСОВКИ
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _checkAndNavigate();
-  }
-
-  void _checkAndNavigate() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-    if (authProvider.currentUser == null || authProvider.isEmployee) {
-      return;
-    }
-
-    final client = authProvider.currentUser as Client;
-    final phone = client.phone;
-
-    if (phone == null) return;
-
-    final allClients = authProvider.clientData?.clients ?? [];
-    final clientsWithPhone = allClients.where((c) => c.phone == phone).toList();
-
-    // 🔥 ПРОВЕРЯЕМ, НУЖНО ЛИ ПЕРЕХОДИТЬ
-    // Если клиент уже выбран, показываем прайс-лист
-    if (authProvider.clientSelected && clientsWithPhone.isNotEmpty) {
-      // Не делаем переход здесь, чтобы не было рекурсии
-      return;
+    if (!_navigationHandled) {
+      _navigationHandled = true; // Сразу запоминаем, что мы здесь были
+      // Если нужна была какая-то логика при первом входе — она тут
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Используем listen: false, чтобы этот экран НЕ перерисовывался,
+    // когда AuthProvider дергает notifyListeners (например, от пуш-уведомлений)
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     if (authProvider.currentUser == null || authProvider.isEmployee) {
@@ -176,14 +160,14 @@ class _ClientRouterScreenState extends State<ClientRouterScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text('Номер телефона не указан'),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () {
                   authProvider.logout();
                   Navigator.pushNamedAndRemoveUntil(
                       context, '/', (route) => false);
                 },
-                child: Text('Вернуться к авторизации'),
+                child: const Text('Вернуться к авторизации'),
               ),
             ],
           ),
@@ -194,12 +178,9 @@ class _ClientRouterScreenState extends State<ClientRouterScreen> {
     final allClients = authProvider.clientData?.clients ?? [];
     final clientsWithPhone = allClients.where((c) => c.phone == phone).toList();
 
-    print('📞 Всего клиентов: ${allClients.length}');
-    print('📞 Клиентов с телефоном $phone: ${clientsWithPhone.length}');
-
     // 🔥 ЕСЛИ КЛИЕНТ УЖЕ ВЫБРАН — ПОКАЗЫВАЕМ ПРАЙС-ЛИСТ
     if (authProvider.clientSelected && clientsWithPhone.isNotEmpty) {
-      return PriceListScreen();
+      return const PriceListScreen();
     }
 
     if (clientsWithPhone.isEmpty) {
@@ -208,15 +189,15 @@ class _ClientRouterScreenState extends State<ClientRouterScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('Клиент не найден'),
-              SizedBox(height: 16),
+              const Text('Клиент не найден'),
+              const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () {
                   authProvider.logout();
                   Navigator.pushNamedAndRemoveUntil(
                       context, '/', (route) => false);
                 },
-                child: Text('Выйти'),
+                child: const Text('Выйти'),
               ),
             ],
           ),
