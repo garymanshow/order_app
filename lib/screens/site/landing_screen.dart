@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../models/price_category.dart';
 import '../../models/product.dart';
 import '../../services/api_service.dart';
 import '../../services/cache_service.dart';
@@ -81,81 +82,97 @@ class _LandingScreenState extends State<LandingScreen>
     });
   }
 
-  // 🔥 ФИЛЬТРАЦИЯ ТОВАРОВ: удаляем пустышки и дубликаты картинок по размеру файла
-  Future<List<Product>> _filterValidProducts(List<Product> products) async {
-    final seenSizes = <int>{};
-    final validProducts = <Product>[];
+  // ==========================================
+  // 🚀 НОВАЯ ЛОГИКА ЗАГРУЗКИ ВИТРИНЫ
+  // ==========================================
 
-    for (final product in products) {
-      if (product.id.isEmpty) continue;
-
-      try {
-        final byteData = await rootBundle.load(product.assetPath);
-        final sizeInBytes = byteData.lengthInBytes;
-
-        if (sizeInBytes < 1024) continue;
-        if (seenSizes.contains(sizeInBytes)) continue;
-
-        seenSizes.add(sizeInBytes);
-        validProducts.add(product);
-      } catch (e) {
-        continue;
-      }
-    }
-
-    return validProducts;
-  }
-
-  // 🔥 ЗАГРУЗКА ДАННЫХ
+  // 🔥 ОСНОВНОЙ МЕТОД (Кэш -> Сеть -> Кэш)
   Future<void> _loadShowcaseData() async {
     try {
       final cacheService = await CacheService.getInstance();
+
+      // 1. Читаем ТОЛЬКО из локального кэша
       final localContacts = cacheService.getAdminContacts();
       final localProducts = cacheService.getProducts();
+      final localCategories = cacheService.getPriceCategories();
 
-      if (localContacts.isNotEmpty && localProducts.isNotEmpty) {
-        final filteredProducts = await _filterValidProducts(localProducts);
+      if (localProducts.isNotEmpty && localCategories.isNotEmpty) {
+        // Кэш есть — собираем витрину мгновенно (0 запросов к GAS)
+        final showcaseItems =
+            await _buildShowcaseList(localProducts, localCategories);
         if (mounted) {
           setState(() {
             _adminContacts = localContacts;
-            _products = filteredProducts.take(7).toList();
+            _products = showcaseItems;
             _isLoading = false;
           });
         }
-        final connectivity = await Connectivity().checkConnectivity();
-        if (!connectivity.contains(ConnectivityResult.none)) {
-          _refreshShowcaseData();
-        }
-      } else {
-        await _refreshShowcaseData();
+        return;
       }
+
+      // 2. Кэша нет (первый запуск гостя) — идем в сеть
+      await _fetchShowcaseFromServer(cacheService);
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _refreshShowcaseData() async {
-    try {
-      final response = await _apiService.authenticate(
-        phone: '',
-        localMetadata: {},
+  // 🔥 СБОРКА ВИТРИНЫ (1 товар из каждой категории + фильтр пустышек)
+  Future<List<Product>> _buildShowcaseList(
+      List<Product> products, List<dynamic> categories) async {
+    final showcaseItems = <Product>[];
+    final seenSizes = <int>{};
+
+    for (var cat in categories) {
+      final String catId = cat.id.toString();
+
+      // Находим первый товар этой категории
+      final product = products.firstWhere(
+        (p) => p.categoryId == catId,
+        orElse: () => Product(
+            id: '',
+            name: '',
+            price: 0,
+            multiplicity: 1,
+            categoryId: ''), // Пустышка
       );
 
-      if (!mounted) return;
-      if (response == null) {
-        setState(() => _isLoading = false);
+      if (product.id.isEmpty) continue;
+
+      // Проверяем размер картинки (отсеиваем пустышки < 72 байт)
+      try {
+        final byteData =
+            await rootBundle.load('assets/images/products/${product.id}.webp');
+        final sizeInBytes = byteData.lengthInBytes;
+
+        if (sizeInBytes < 72) continue; // Пропускаем заглушку
+        if (seenSizes.contains(sizeInBytes))
+          continue; // Пропускаем дубли картинок
+
+        seenSizes.add(sizeInBytes);
+        showcaseItems.add(product);
+      } catch (e) {
+        continue; // Нет картинки на диске — пропускаем
+      }
+    }
+
+    return showcaseItems;
+  }
+
+  // 🔥 ЗАГРУЗКА ИЗ СЕРВЕРА (Только если совсем пусто)
+  Future<void> _fetchShowcaseFromServer(CacheService cacheService) async {
+    try {
+      final response =
+          await _apiService.authenticate(phone: '', localMetadata: {});
+
+      if (!mounted || response == null || response['data'] == null) {
+        if (mounted) setState(() => _isLoading = false);
         return;
       }
 
-      final data = response['data'] as Map<String, dynamic>?;
-      if (data == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
+      final data = response['data'] as Map<String, dynamic>;
 
-      final cacheService = await CacheService.getInstance();
+      // Сохраняем контакты
       final employeesRaw = data['employees'];
       final contacts = employeesRaw is List
           ? employeesRaw
@@ -163,32 +180,46 @@ class _LandingScreenState extends State<LandingScreen>
               .cast<Map<String, dynamic>>()
               .toList()
           : <Map<String, dynamic>>[];
+      await cacheService.saveAdminContacts(contacts);
 
+      // Сохраняем КАТЕГОРИИ (с правильным приведением типов)
+      final categoriesRaw = data['priceCategories'];
+      List<PriceCategory> categories = [];
+      if (categoriesRaw is List) {
+        categories = categoriesRaw
+            .map((item) => PriceCategory.fromJson(item as Map<String, dynamic>))
+            .toList();
+      }
+      await cacheService.savePriceCategories(categories);
+
+      // Сохраняем ВСЕ товары
       final productsRaw = data['products'];
       final rawProducts = productsRaw is List
           ? productsRaw
               .map((item) => Product.fromMap(item as Map<String, dynamic>))
               .toList()
           : <Product>[];
+      await cacheService.saveProducts(rawProducts);
 
-      final products = await _filterValidProducts(rawProducts);
-
-      await cacheService.saveAdminContacts(contacts);
-      await cacheService.saveProducts(products);
+      // Собираем витрину и показываем
+      final showcaseItems = await _buildShowcaseList(rawProducts, categories);
 
       if (mounted) {
         setState(() {
           _adminContacts = contacts;
-          _products = products.toList();
+          _products = showcaseItems;
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      print('❌ Ошибка загрузки витрины: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // ==========================================
+  // 🎨 СТАРЫЙ КОД (Без изменений)
+  // ==========================================
 
   // 🔥 ОТПРАВКА ПИСЬМА (Из диалога)
   Future<void> _sendPartnerRequest({
@@ -290,29 +321,29 @@ class _LandingScreenState extends State<LandingScreen>
                     const Text('Способ связи:',
                         style: TextStyle(
                             fontSize: 12, fontWeight: FontWeight.bold)),
-                    
-                    // 🔥 ИСПРАВЛЕНО: Обычный Row с выбором метода (без устаревших Radio)
                     Wrap(
                       spacing: 8,
                       children: [
                         ChoiceChip(
                           label: const Text('Телефон'),
                           selected: contactMethod == 'Телефон',
-                          onSelected: (_) => setStateDialog(() => contactMethod = 'Телефон'),
+                          onSelected: (_) =>
+                              setStateDialog(() => contactMethod = 'Телефон'),
                         ),
                         ChoiceChip(
                           label: const Text('Email'),
                           selected: contactMethod == 'Email',
-                          onSelected: (_) => setStateDialog(() => contactMethod = 'Email'),
+                          onSelected: (_) =>
+                              setStateDialog(() => contactMethod = 'Email'),
                         ),
                         ChoiceChip(
                           label: const Text('Мессенджер'),
                           selected: contactMethod == 'Мессенджер',
-                          onSelected: (_) => setStateDialog(() => contactMethod = 'Мессенджер'),
+                          onSelected: (_) => setStateDialog(
+                              () => contactMethod = 'Мессенджер'),
                         ),
                       ],
                     ),
-                    
                     const SizedBox(height: 8),
                     TextField(
                       controller: contactController,
@@ -726,7 +757,8 @@ class _LandingScreenState extends State<LandingScreen>
           Expanded(
               flex: 3,
               child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 16.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0, vertical: 16.0),
                   child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -763,7 +795,8 @@ class _LandingScreenState extends State<LandingScreen>
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.9), shape: BoxShape.circle),
+                  color: Colors.white.withValues(alpha: 0.9),
+                  shape: BoxShape.circle),
               child: Icon(icon, size: 32, color: const Color(0xFF5D4037))));
 
   Widget _buildProductImage(Product product) {
@@ -951,7 +984,6 @@ class _LandingScreenState extends State<LandingScreen>
     );
   }
 
-  // 🔥 ОЧИЩЕННАЯ СЕКЦИЯ КОНТАКТОВ (Только инфа и кнопка)
   Widget _buildContactSection() {
     final String adminEmail =
         (_adminContacts.isNotEmpty && _adminContacts[0]['Email'] != null)
@@ -969,7 +1001,6 @@ class _LandingScreenState extends State<LandingScreen>
                   fontWeight: FontWeight.bold,
                   color: Colors.white)),
           const SizedBox(height: 32),
-          
           _buildContactItem(Icons.email, adminEmail, 'Напишите нам',
               onTap: adminEmail != 'Загрузка...'
                   ? () => _handleEmailTap(adminEmail)
@@ -977,9 +1008,7 @@ class _LandingScreenState extends State<LandingScreen>
           const SizedBox(height: 16),
           _buildContactItem(
               Icons.location_on, 'г. Красноярск', 'пр. Металлургов, 51 К'),
-              
           const SizedBox(height: 40),
-          
           ElevatedButton(
             onPressed: _showPartnerRequestDialog,
             style: ElevatedButton.styleFrom(
