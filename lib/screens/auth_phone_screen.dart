@@ -176,6 +176,26 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
             ),
 
           // Основной контент
+          Positioned(
+            top: 50,
+            left: 16,
+            child: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child:
+                    const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+              ),
+              onPressed: () {
+                // Возвращаемся на главную (запускаем AuthOrHomeRouter заново)
+                Navigator.pushReplacementNamed(context, '/');
+              },
+            ),
+          ),
+
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),

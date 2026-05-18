@@ -91,13 +91,16 @@ class _LandingScreenState extends State<LandingScreen>
     try {
       final cacheService = await CacheService.getInstance();
 
-      // 1. Читаем ТОЛЬКО из локального кэша
+      // 1. Читаем из локального кэша
       final localContacts = cacheService.getAdminContacts();
       final localProducts = cacheService.getProducts();
       final localCategories = cacheService.getPriceCategories();
 
-      if (localProducts.isNotEmpty && localCategories.isNotEmpty) {
-        // Кэш есть — собираем витрину мгновенно (0 запросов к GAS)
+      // 🔥 ИСПРАВЛЕНО: Проверяем, что ВСЕ нужные данные на месте
+      if (localProducts.isNotEmpty &&
+          localCategories.isNotEmpty &&
+          localContacts.isNotEmpty) {
+        // Кэш полон — собираем витрину мгновенно (0 запросов к GAS)
         final showcaseItems =
             await _buildShowcaseList(localProducts, localCategories);
         if (mounted) {
@@ -110,7 +113,7 @@ class _LandingScreenState extends State<LandingScreen>
         return;
       }
 
-      // 2. Кэша нет (первый запуск гостя) — идем в сеть
+      // 2. Кэша нет (или неполный) — идем в сеть
       await _fetchShowcaseFromServer(cacheService);
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
@@ -159,7 +162,7 @@ class _LandingScreenState extends State<LandingScreen>
     return showcaseItems;
   }
 
-  // 🔥 ЗАГРУЗКА ИЗ СЕРВЕРА (Только если совсем пусто)
+  // 🔥 ЗАГРУЗКА ИЗ СЕРВЕРА
   Future<void> _fetchShowcaseFromServer(CacheService cacheService) async {
     try {
       final response =
@@ -172,17 +175,23 @@ class _LandingScreenState extends State<LandingScreen>
 
       final data = response['data'] as Map<String, dynamic>;
 
-      // Сохраняем контакты
-      final employeesRaw = data['employees'];
-      final contacts = employeesRaw is List
-          ? employeesRaw
-              .where((e) => e['Роль'] == 'Администратор')
-              .cast<Map<String, dynamic>>()
-              .toList()
-          : <Map<String, dynamic>>[];
-      await cacheService.saveAdminContacts(contacts);
+      // ==========================================
+      // ЧИТАЕМ КОНТАКТ АДМИНА ИЗ НОВОГО МЕСТА В JSON
+      // ==========================================
+      final adminContactRaw = data['adminContact'];
+      List<Map<String, dynamic>> contacts = [];
 
-      // Сохраняем КАТЕГОРИИ (с правильным приведением типов)
+      if (adminContactRaw != null && adminContactRaw is Map) {
+        contacts.add({
+          'Email': adminContactRaw['email']?.toString() ?? '',
+          'Name': 'Администратор',
+        });
+        // Сохраняем в кэш (если у вас есть метод saveAdminContacts)
+        await cacheService.saveAdminContacts(contacts);
+      }
+      // ==========================================
+
+      // Сохраняем КАТЕГОРИИ
       final categoriesRaw = data['priceCategories'];
       List<PriceCategory> categories = [];
       if (categoriesRaw is List) {
@@ -206,7 +215,7 @@ class _LandingScreenState extends State<LandingScreen>
 
       if (mounted) {
         setState(() {
-          _adminContacts = contacts;
+          _adminContacts = contacts; // <--- ПОДСТАВЛЯЕМ НОВЫЙ СПИСОК
           _products = showcaseItems;
           _isLoading = false;
         });
@@ -533,8 +542,10 @@ class _LandingScreenState extends State<LandingScreen>
 
   void _navigateToLogin() async {
     final cacheService = Provider.of<CacheService>(context, listen: false);
+    // Переход НАД витриной
     final result = await Navigator.push(
         context, MaterialPageRoute(builder: (_) => AuthPhoneScreen()));
+
     if (result == true && mounted) {
       await cacheService.markAsUsed();
       Navigator.pushReplacement(

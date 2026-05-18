@@ -15,9 +15,17 @@ import 'manager/manager_dashboard_screen.dart';
 import 'role_selection_screen.dart';
 import 'price_list_screen.dart';
 
-class AuthOrHomeRouter extends StatelessWidget {
-  const AuthOrHomeRouter({super.key});
+// 🔥 ИЗМЕНЕНО НА StatefulWidget ДЛЯ ПОДДЕРЖКИ ФЛАГА
+class AuthOrHomeRouter extends StatefulWidget {
+  final bool forceLanding;
 
+  const AuthOrHomeRouter({super.key, this.forceLanding = false});
+
+  @override
+  State<AuthOrHomeRouter> createState() => _AuthOrHomeRouterState();
+}
+
+class _AuthOrHomeRouterState extends State<AuthOrHomeRouter> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
@@ -26,6 +34,7 @@ class AuthOrHomeRouter extends StatelessWidget {
     print('🔄 AuthOrHomeRouter build:');
     print('   - isLoading: ${authProvider.isLoading}');
     print('   - isAuthenticated: ${authProvider.isAuthenticated}');
+    print('   - forceLanding: ${widget.forceLanding}'); // <--- Лог для отладки
 
     // 🔥 ЗАГРУЗКА
     if (authProvider.isLoading) {
@@ -39,7 +48,7 @@ class AuthOrHomeRouter extends StatelessWidget {
       return _buildAuthenticatedRoute(authProvider);
     }
 
-    // 🔥 НЕ АВТОРИЗОВАН → проверяем, новое ли устройство
+    // 🔥 НЕ АВТОРИЗОВАН -> проверяем, новое ли устройство
     return _buildUnauthenticatedRoute(cacheService);
   }
 
@@ -65,11 +74,17 @@ class AuthOrHomeRouter extends StatelessWidget {
       }
     }
 
-    return ClientRouterScreen();
+    return const ClientRouterScreen();
   }
 
-  // 🔥 МАРШРУТ ДЛЯ НЕАВТОРИЗОВАННОГО (НОВАЯ ЛОГИКА!)
+  // 🔥 МАРШРУТ ДЛЯ НЕАВТОРИЗОВАННОГО (С ПОДДЕРЖКОЙ ВОЗВРАТА НА ВИТРИНУ)
   Widget _buildUnauthenticatedRoute(CacheService cacheService) {
+    // 🔥 НОВОЕ: Если нажали "Назад" из авторизации — принудительно витрина
+    if (widget.forceLanding) {
+      print('🎯 Принудительный возврат → LandingScreen');
+      return const LandingScreen();
+    }
+
     return FutureBuilder<bool>(
       future: cacheService.hasBeenUsed(),
       builder: (context, snapshot) {
@@ -83,12 +98,12 @@ class AuthOrHomeRouter extends StatelessWidget {
         // 🔥 НОВОЕ УСТРОЙСТВО → показываем лендинг
         if (snapshot.data == false || snapshot.hasError) {
           print('🎯 Новое устройство → LandingScreen');
-          return LandingScreen();
+          return const LandingScreen();
         }
 
         // 🔥 ВОЗВРАЩАЮЩИЙСЯ ПОЛЬЗОВАТЕЛЬ → сразу вход
         print('🎯 Возвращающийся пользователь → AuthPhoneScreen');
-        return AuthPhoneScreen();
+        return const AuthPhoneScreen();
       },
     );
   }
@@ -106,7 +121,7 @@ class _GenericEmployeeScreen extends StatelessWidget {
         title: Text(employee.name ?? 'Сотрудник'),
         actions: [
           IconButton(
-            icon: Icon(Icons.logout),
+            icon: const Icon(Icons.logout),
             onPressed: () {
               Provider.of<AuthProvider>(context, listen: false).logout();
             },
@@ -159,7 +174,7 @@ class _ClientRouterScreenState extends State<ClientRouterScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('Номер телефона не указан'),
+              const Text('Номер телефона не указан'),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () {
