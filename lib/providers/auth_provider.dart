@@ -460,6 +460,15 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // 🔥 МЕТОД СИНХРОНИЗАЦИИ: Обновляет глобальный список заказов
+  // чтобы экраны выбора клиентов и прайс-листа видели актуальные суммы
+  void updateGlobalOrders(List<OrderItem> updatedOrders) {
+    if (_clientData == null) return;
+
+    _clientData!.orders = updatedOrders;
+    notifyListeners(); // Заставляет перерисоваться шапки на предыдущих экранах
+  }
+
   Future<bool> _checkNetwork() async {
     try {
       final result = await _apiService.testConnection();

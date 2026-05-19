@@ -421,22 +421,38 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.green.shade50,
+                        // 🔥 ДИНАМИЧЕСКИЙ ЦВЕТ ФОНА И РАМКИ
+                        color: item.meetsMinimum
+                            ? Colors.green.shade50
+                            : Colors.red.shade50,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.green.shade200),
+                        border: Border.all(
+                          color: item.meetsMinimum
+                              ? Colors.green.shade200
+                              : Colors.red.shade200,
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.shopping_cart,
-                              size: 18, color: Colors.green.shade700),
+                          // 🔥 ДИНАМИЧЕСКИЙ ЦВЕТ ИКОНКИ
+                          Icon(
+                            Icons.shopping_cart,
+                            size: 18,
+                            color: item.meetsMinimum
+                                ? Colors.green.shade700
+                                : Colors.red.shade700,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             '${item.total.toStringAsFixed(0)} ₽',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: Colors.green.shade800,
+                              // 🔥 ДИНАМИЧЕСКИЙ ЦВЕТ ТЕКСТА
+                              color: item.meetsMinimum
+                                  ? Colors.green.shade800
+                                  : Colors.red.shade800,
                             ),
                           ),
                         ],

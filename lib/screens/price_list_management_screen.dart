@@ -679,11 +679,19 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
     return '$text.';
   }
 
-  Future<void> _exportPriceList(BuildContext context, List<Product> products,
-      {required String format}) async {
-    _scaffoldKey.currentState?.showSnackBar(
+  Future<void> _exportPriceList(
+    BuildContext context,
+    List<Product> products, {
+    required String format,
+    bool includeBasic = true,
+    bool includeComposition = true,
+    bool includeNutrition = true,
+    bool includeStorage = true,
+    bool includePhotos = false,
+  }) async {
+    ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-          content: Text('⏳ Файл формируется...'),
+          content: Text('⏳ Файл формируется и скоро будет сохранен...'),
           duration: Duration(seconds: 3),
           backgroundColor: Colors.blueGrey),
     );
@@ -693,104 +701,159 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
       final client = authProvider.currentUser;
       final clientData = authProvider.clientData;
 
-      final nutritionByProduct = <String, NutritionInfo>{};
-      final storageByProduct = <String, List<StorageCondition>>{};
-      final compositionStringsByProduct = <String, String>{};
+      if (clientData == null) throw Exception('Данные не загружены');
 
-      if (clientData != null) {
-        final categoriesMap = <String, PriceCategory>{};
-        for (var cat in clientData.priceCategories) {
-          categoriesMap[cat.id.toString()] = cat;
-        }
+      final categoriesMap = <String, PriceCategory>{
+        for (var c in clientData.priceCategories) c.id.toString(): c
+      };
 
-        for (var product in products) {
-          final String pId = product.id;
-          final String cId = product.categoryId;
+      final List<ExportProductData> exportProducts = [];
 
-          // 1. КБЖУ — ИСПРАВЛЕНО: ищем по точному строковому совпадению ID
-          try {
-            final nut = clientData.nutritionInfos.firstWhere(
-              (n) => (n.priceListId ?? '').toString() == pId,
-            );
-            nutritionByProduct[pId] = nut;
-          } catch (_) {}
+      for (var prod in products) {
+        final cat = categoriesMap[prod.categoryId];
+        if (cat == null) continue;
 
-          // 2. Условия хранения
-          final storages = clientData.storageConditions
-              .where((s) => s.level == 'Категории прайса' && s.entityId == cId)
+        // ==========================================
+        // 1. ОПИСАНИЕ
+        // ==========================================
+        final categoryDescription = cat.description ?? '';
+        final productDescription = prod.composition ?? '';
+
+        // ==========================================
+        // 2. КБЖУ (Строго по ID прайс-листа)
+        // ==========================================
+        NutritionInfo? nutrition;
+        try {
+          nutrition = clientData.nutritionInfos.firstWhere((n) =>
+              n.priceListId != null &&
+              double.tryParse(n.priceListId ?? '') == double.tryParse(prod.id));
+        } catch (_) {}
+
+        // ==========================================
+        // 3. УСЛОВИЯ ХРАНЕНИЯ (Слияние без дублей)
+        // ==========================================
+        final List<StorageCondition> mergedStorages = [];
+        final existingKeys = <String>{};
+
+        // Берем из Категории
+        if (includeStorage) {
+          final catStorages = clientData.storageConditions
+              .where((s) =>
+                  s.level == 'Категории прайса' &&
+                  s.entityId == prod.categoryId)
               .toList();
-          if (storages.isNotEmpty) {
-            storageByProduct[pId] = storages;
-          }
 
-          // 3. ФОРМИРОВАНИЕ СОСТАВА (ИСПРАВЛЕНО: Правильная связь ID сущностей)
-          final compositionParts = <String>[];
-
-          // Получаем все начинки для данной категории
-          final fillings = clientData.compositions
-              .where(
-                  (c) => c.sheetName == 'Категории прайса' && c.entityId == cId)
-              .toList();
-
-          for (var filling in fillings) {
-            // ИСПРАВЛЕНО: Ищем ингредиенты начинки по entityId, равному ID самой начинки
-            final fillingIngredients = clientData.compositions
-                .where((c) =>
-                    c.sheetName == 'Начинки' &&
-                    c.entityId == filling.id.toString())
-                .map((i) => i.displayName.trim().toLowerCase())
-                .toList();
-
-            // Формируем красивый вывод: "Название начинки: ингр1, ингр2"
-            if (fillingIngredients.isNotEmpty) {
-              final fillingName =
-                  _normalizeText(filling.displayName).replaceAll('.', '');
-              compositionParts
-                  .add('$fillingName: ${fillingIngredients.join(', ')}');
-            } else {
-              compositionParts
-                  .add(_normalizeText(filling.displayName).replaceAll('.', ''));
+          for (var s in catStorages) {
+            String key = '${s.storageLocation}_${s.temperature}_${s.shelfLife}';
+            if (!existingKeys.contains(key)) {
+              mergedStorages.add(s);
+              existingKeys.add(key);
             }
           }
 
-          // Прямые ингредиенты из прайс-листа (джемы, глазурь и тд)
-          final directIngredients = clientData.compositions
-              .where((c) => c.sheetName == 'Прайс-лист' && c.entityId == pId)
-              .map((i) => _normalizeText(i.displayName).replaceAll('.', ''))
+          // Дополняем из Прайс-листа (если есть)
+          final prodStorages = clientData.storageConditions
+              .where((s) => s.level == 'Прайс-лист' && s.entityId == prod.id)
               .toList();
 
-          if (directIngredients.isNotEmpty) {
-            compositionParts.addAll(directIngredients);
-          }
-
-          if (compositionParts.isNotEmpty) {
-            String rawComp = compositionParts.join('. ');
-            compositionStringsByProduct[pId] = _normalizeText(rawComp);
+          for (var s in prodStorages) {
+            String key = '${s.storageLocation}_${s.temperature}_${s.shelfLife}';
+            if (!existingKeys.contains(key)) {
+              mergedStorages.add(s);
+              existingKeys.add(key);
+            }
           }
         }
+
+        // ==========================================
+        // 4. СОСТАВ (Матрешка)
+        // ==========================================
+        final compLines = <String>[];
+
+        if (includeComposition) {
+          // Шаг А: Начинки уровня Категории
+          final catFillings = clientData.compositions
+              .where((c) =>
+                  c.sheetName == 'Начинки' && c.entityId == prod.categoryId)
+              .toList();
+
+          for (var filling in catFillings) {
+            final ings = clientData.compositions
+                .where((c) =>
+                    c.sheetName == 'Начинки' &&
+                    c.entityId == filling.id.toString())
+                .map((i) => i.ingredientName.trim().toLowerCase())
+                .where((s) => s.isNotEmpty)
+                .toList();
+
+            if (ings.isNotEmpty) {
+              compLines.add(
+                  '${_normalizeText(filling.displayName).replaceAll('.', '')}: ${ings.join(', ')}.');
+            }
+          }
+
+          // Шаг Б: Начинки уровня Прайс-листа
+          final prodFillings = clientData.compositions
+              .where((c) => c.sheetName == 'Начинки' && c.entityId == prod.id)
+              .toList();
+
+          for (var filling in prodFillings) {
+            final ings = clientData.compositions
+                .where((c) =>
+                    c.sheetName == 'Начинки' &&
+                    c.entityId == filling.id.toString())
+                .map((i) => i.ingredientName.trim().toLowerCase())
+                .where((s) => s.isNotEmpty)
+                .toList();
+
+            if (ings.isNotEmpty) {
+              compLines.add(
+                  '${_normalizeText(filling.displayName).replaceAll('.', '')}: ${ings.join(', ')}.');
+            }
+          }
+
+          // Шаг В: Прямые ингредиенты из листа Состав (Лист == 'Прайс-лист')
+          final directIngs = clientData.compositions
+              .where((c) => c.sheetName == 'Состав' && c.entityId == prod.id)
+              .map((i) => i.ingredientName.trim().toLowerCase())
+              .where((s) => s.isNotEmpty)
+              .toList();
+
+          if (directIngs.isNotEmpty) {
+            compLines.add('${directIngs.join(', ')}.');
+          }
+        }
+
+        exportProducts.add(ExportProductData(
+          product: prod,
+          categoryDescription: categoryDescription,
+          productDescription: productDescription,
+          nutrition: nutrition,
+          compositionText: compLines.join(' '),
+          mergedStorages: mergedStorages,
+        ));
       }
 
       _exportService.format = format;
-      _exportService.includeBasic = _expBasic;
-      _exportService.includeComposition = _expComposition;
-      _exportService.includeNutrition = _expNutrition;
-      _exportService.includeStorage = _expStorage;
-      _exportService.includePhotos = _expPhotos;
+      _exportService.includeBasic = includeBasic;
+      _exportService.includeComposition = includeComposition;
+      _exportService.includeNutrition = includeNutrition;
+      _exportService.includeStorage = includeStorage;
+      _exportService.includePhotos = includePhotos;
+      _exportService.markupPercent = 0;
+      _exportService.discountPercent = 0;
+      _exportService.roundToNearest = 0;
 
-      _exportService.markupPercent = _expMarkupPercent;
-      _exportService.discountPercent = _expDiscountPercent;
-      _exportService.roundToNearest = _expRoundToNearest;
-
-      final result = await _exportService.generatePriceList(
-        products: products,
-        clientName: client?.name ?? 'Менеджер',
+      final result = await _exportService.generateStructuredPriceList(
+        productsData: exportProducts,
+        clientName: client?.name ?? 'Клиент',
         clientPhone: client?.phone ?? '',
-        categories: clientData?.priceCategories ?? [],
-        compositionsByProduct: compositionStringsByProduct,
-        nutritionByProduct: nutritionByProduct,
-        storageByProduct: storageByProduct,
+        categories: clientData.priceCategories,
       );
 
+      // ==========================================
+      // ЛОГИКА СОХРАНЕНИЯ (ВАША ОРИГИНАЛЬНАЯ)
+      // ==========================================
       if (result != null && mounted) {
         if (kIsWeb) {
           final fileName =
@@ -805,7 +868,7 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
             try {
               blob = html.Blob([Uint8List.fromList(result as List<int>)]);
             } catch (e) {
-              blob = html.Blob([result]);
+              blob = html.Blob([result.toString()]);
             }
           }
 
@@ -821,26 +884,24 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
             anchor.remove();
           });
 
-          _scaffoldKey.currentState?.hideCurrentSnackBar();
-          _scaffoldKey.currentState?.showSnackBar(
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('✅ Файл готов: $fileName'),
               backgroundColor: Colors.green[700],
               duration: const Duration(seconds: 10),
               action: SnackBarAction(
-                label: 'Скачать вручную',
-                textColor: Colors.white,
-                onPressed: () => html.window.open(url, '_blank'),
-              ),
+                  label: 'Скачать вручную',
+                  textColor: Colors.white,
+                  onPressed: () => html.window.open(url, '_blank')),
             ),
           );
         } else {
           final file = result as File;
           await SharePlus.instance
               .share(ShareParams(files: [XFile(file.path)]));
-
-          _scaffoldKey.currentState?.hideCurrentSnackBar();
-          _scaffoldKey.currentState?.showSnackBar(const SnackBar(
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('✅ Файл создан'), backgroundColor: Colors.green));
         }
       } else if (mounted) {
@@ -848,8 +909,8 @@ class _PriceListManagementScreenState extends State<PriceListManagementScreen> {
       }
     } catch (e) {
       if (mounted) {
-        _scaffoldKey.currentState?.hideCurrentSnackBar();
-        _scaffoldKey.currentState?.showSnackBar(SnackBar(
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('❌ Ошибка: $e'), backgroundColor: Colors.red[700]));
       }
     }

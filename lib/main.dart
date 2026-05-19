@@ -143,6 +143,16 @@ class MyApp extends StatelessWidget {
             return provider;
           },
         ),
+        ChangeNotifierProvider(
+          create: (context) {
+            final cartProvider = CartProvider();
+            // 🔥 СВЯЗЫВАЕМ КОРЗИНУ С АВТОРИЗАЦИЕЙ
+            final authProvider =
+                Provider.of<AuthProvider>(context, listen: false);
+            cartProvider.setAuthProvider(authProvider);
+            return cartProvider;
+          },
+        ),
         ChangeNotifierProvider(create: (context) => CartProvider()),
         if (unitService != null)
           ChangeNotifierProvider<UnitService>.value(value: unitService!),

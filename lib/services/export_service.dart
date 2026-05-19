@@ -1,9 +1,6 @@
-// lib/services/export_service.dart
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
-
-// ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 
 import 'package:charset_converter/charset_converter.dart';
@@ -18,6 +15,26 @@ import '../models/nutrition_info.dart';
 import '../models/storage_condition.dart';
 import '../utils/price_engine.dart';
 
+// ==========================================
+// МОДЕЛИ ДЛЯ ПЕРЕДАЧИ СТРУКТУРЫ
+// ==========================================
+class ExportProductData {
+  final Product product;
+  final String categoryDescription;
+  final String productDescription;
+  final NutritionInfo? nutrition;
+  final String compositionText;
+  final List<StorageCondition> mergedStorages;
+  ExportProductData({
+    required this.product,
+    required this.categoryDescription,
+    required this.productDescription,
+    this.nutrition,
+    required this.compositionText,
+    required this.mergedStorages,
+  });
+}
+
 class ExportService {
   String format = 'pdf';
   bool includeBasic = true;
@@ -26,19 +43,14 @@ class ExportService {
   bool includeStorage = true;
   bool includePhotos = true;
 
-  // Наценка и скидка
   double markupPercent = 0;
   double discountPercent = 0;
   int roundToNearest = 0;
 
-  // Мапа для доступа к категориям из карточек
-  final Map<String, PriceCategory> _categoriesMap = {};
-
+  final Map<String, pw.MemoryImage> _cachedProductImages = {};
   static pw.Font? _cachedFont;
   static pw.MemoryImage? _cachedLogo;
-  static final Map<String, pw.MemoryImage> _cachedProductImages = {};
 
-  // ИСПРАВЛЕНО: Убрано слово const, так как PdfColor.fromHex не является const конструктором в текущей версии pdf
   static final _colorPrimary = PdfColor.fromHex('#5D4037');
   static final _colorSecondary = PdfColor.fromHex('#8D6E63');
   static final _colorBackground = PdfColor.fromHex('#EFEBE9');
@@ -67,93 +79,53 @@ class ExportService {
     }
   }
 
-  Future<pw.MemoryImage?> _loadProductImage(
-      String productId, String? imageUrl) async {
+  Future<pw.MemoryImage?> _loadProductImage(String productId) async {
     if (_cachedProductImages.containsKey(productId))
       return _cachedProductImages[productId];
     try {
-      Uint8List? imageBytes;
-      if (kIsWeb || imageUrl == null || imageUrl.isEmpty) {
-        try {
-          final data =
-              await rootBundle.load('assets/images/products/$productId.webp');
-          imageBytes = data.buffer.asUint8List();
-        } catch (_) {}
-      }
-      if (imageBytes != null) {
-        final memoryImage = pw.MemoryImage(imageBytes);
-        _cachedProductImages[productId] = memoryImage;
-        return memoryImage;
-      }
-      return null;
+      final data =
+          await rootBundle.load('assets/images/products/$productId.webp');
+      final memoryImage = pw.MemoryImage(data.buffer.asUint8List());
+      _cachedProductImages[productId] = memoryImage;
+      return memoryImage;
     } catch (e) {
       return null;
     }
   }
 
-  Future<dynamic> generatePriceList({
-    required List<Product> products,
+  Future<dynamic> generateStructuredPriceList({
+    required List<ExportProductData> productsData,
     required String clientName,
     required String clientPhone,
     required List<PriceCategory> categories,
-    Map<String, String>? compositionsByProduct,
-    Map<String, NutritionInfo>? nutritionByProduct,
-    Map<String, List<StorageCondition>>? storageByProduct,
   }) async {
     try {
       final font = await _loadFont();
       final logo = await _loadLogo();
 
       final Map<String, pw.MemoryImage?> productImages = {};
-      for (var product in products) {
-        productImages[product.id] =
-            await _loadProductImage(product.id, product.imageUrl);
+      for (var prodData in productsData) {
+        if (includePhotos) {
+          productImages[prodData.product.id] =
+              await _loadProductImage(prodData.product.id);
+        }
       }
 
+      final Map<String, PriceCategory> categoriesMap = {
+        for (var cat in categories) cat.id.toString(): cat
+      };
+
       if (kIsWeb) {
-        if (format == 'csv') {
-          final csvStr = _generateCsvContent(products);
-          final bytes = utf8.encode(csvStr);
-          final blob = html.Blob([bytes], 'text/csv;charset=windows-1251');
-          return blob;
-        } else {
-          return await _generatePdfBytes(
-              products,
-              clientName,
-              clientPhone,
-              compositionsByProduct,
-              nutritionByProduct,
-              storageByProduct,
-              font,
-              logo,
-              productImages,
-              categories);
-        }
+        return await _generatePdfBytes(productsData, clientName, clientPhone,
+            font, logo, productImages, categoriesMap);
       } else {
         final directory = await getApplicationDocumentsDirectory();
         final timestamp = DateTime.now().millisecondsSinceEpoch;
-        if (format == 'csv') {
-          final filePath = '${directory.path}/price_list_$timestamp.csv';
-          final csvStr = _generateCsvContent(products);
-          final bytes = await CharsetConverter.encode('windows-1251', csvStr);
-          await File(filePath).writeAsBytes(bytes);
-          return File(filePath);
-        } else {
-          final pdfBytes = await _generatePdfBytes(
-              products,
-              clientName,
-              clientPhone,
-              compositionsByProduct,
-              nutritionByProduct,
-              storageByProduct,
-              font,
-              logo,
-              productImages,
-              categories);
-          final filePath = '${directory.path}/price_list_$timestamp.pdf';
-          await File(filePath).writeAsBytes(pdfBytes);
-          return File(filePath);
-        }
+        final pdfBytes = await _generatePdfBytes(productsData, clientName,
+            clientPhone, font, logo, productImages, categoriesMap);
+        final filePath = '${directory.path}/price_list_$timestamp.pdf';
+        await File(filePath).writeAsBytes(pdfBytes);
+        return File(filePath);
       }
     } catch (e) {
       debugPrint('❌ Ошибка генерации прайс-листа: $e');
@@ -161,53 +133,16 @@ class ExportService {
     }
   }
 
-  // ==========================================
-  // CSV GENERATION
-  // ==========================================
-  String _generateCsvContent(List<Product> products) {
-    final headers = ['Категория', 'Название', 'Цена', 'Описание'];
-    final rows = <List<String>>[];
-    rows.add(headers);
-
-    for (var product in products) {
-      final category = _escapeCsv(product.categoryName.trim());
-      final name = _escapeCsv(product.displayName.trim());
-      final price = product.price.toStringAsFixed(0);
-      final description = _escapeCsv(product.composition.trim());
-      rows.add([category, name, price, description]);
-    }
-
-    return rows.map((row) => row.join(';')).join('\r\n');
-  }
-
-  String _escapeCsv(String field) {
-    if (field.contains(';') || field.contains('"') || field.contains('\n')) {
-      return '"${field.replaceAll('"', '""')}"';
-    }
-    return field;
-  }
-
-  // ==========================================
-  // PDF GENERATION
-  // ==========================================
   Future<Uint8List> _generatePdfBytes(
-    List<Product> products,
+    List<ExportProductData> productsData,
     String clientName,
     String clientPhone,
-    Map<String, String>? compositionsByProduct,
-    Map<String, NutritionInfo>? nutritionByProduct,
-    Map<String, List<StorageCondition>>? storageByProduct,
     pw.Font font,
     pw.MemoryImage? logo,
     Map<String, pw.MemoryImage?> productImages,
-    List<PriceCategory> categories,
+    Map<String, PriceCategory> categoriesMap,
   ) async {
     final pdf = pw.Document();
-
-    _categoriesMap.clear();
-    for (var cat in categories) {
-      _categoriesMap[cat.id.toString()] = cat;
-    }
 
     pdf.addPage(
       pw.MultiPage(
@@ -215,58 +150,48 @@ class ExportService {
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
           final widgets = <pw.Widget>[];
-
           widgets.add(_buildHeader(clientName, clientPhone, font, logo));
 
           String? lastCategoryId;
 
-          for (int i = 0; i < products.length; i++) {
-            final product = products[i];
-            final category = _categoriesMap[product.categoryId];
+          for (int i = 0; i < productsData.length; i++) {
+            final data = productsData[i];
+            final product = data.product;
+            final category = categoriesMap[product.categoryId];
 
             if (product.categoryId != lastCategoryId) {
-              widgets.add(pw.NewPage());
+              if (lastCategoryId != null) widgets.add(pw.SizedBox(height: 32));
               if (category != null) {
-                final categoryStorages = storageByProduct?[product.id] ?? [];
-                widgets
-                    .add(_buildCategoryPage(category, categoryStorages, font));
+                widgets.add(_buildCategoryHeader(category, font));
               }
               lastCategoryId = product.categoryId;
             }
 
             widgets.add(
               _buildProductCard(
-                product,
-                compositionsByProduct?[product.id],
-                nutritionByProduct?[product.id],
-                [],
+                data,
+                category,
                 font,
-                productImages[product.id],
+                includePhotos ? productImages[product.id] : null,
               ),
             );
           }
-
           return widgets;
         },
       ),
     );
-
-    // УДАЛЕНО: Применение шифрования. Просто сохраняем байты PDF.
     return await pdf.save();
   }
 
   // ==========================================
-  // СТРАНИЦА КАТЕГОРИИ
+  // ЗАГОЛОВОК КАТЕГОРИИ
   // ==========================================
-  pw.Widget _buildCategoryPage(
-      PriceCategory category, List<StorageCondition> storages, pw.Font font) {
+  pw.Widget _buildCategoryHeader(PriceCategory category, pw.Font font) {
     final specList = <String>[];
     if (category.weight > 0) {
       final unit = category.unit.trim().isNotEmpty ? category.unit.trim() : 'г';
-      final weightStr = category.weight == category.weight.roundToDouble()
-          ? category.weight.toInt().toString()
-          : category.weight.toString();
-      specList.add('Вес: $weightStr $unit');
+      specList.add(
+          'Вес: ${category.weight.toStringAsFixed(category.weight == category.weight.roundToDouble() ? 0 : 1)} $unit');
     }
     if (category.packagingQuantity > 0) {
       final packInfo = category.packagingName.trim().isNotEmpty
@@ -275,133 +200,46 @@ class ExportService {
       specList.add('Фасовка: ${category.packagingQuantity} шт$packInfo');
     }
 
-    // Нормализуем текст описания заранее
-    final String normalizedDescription =
-        _normalizePdfText(category.description.trim());
-
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // ЗАГОЛОВОК КАТЕГОРИИ
         pw.Container(
           width: double.infinity,
-          padding: const pw.EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+          padding: const pw.EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           decoration: pw.BoxDecoration(
-            color: _colorPrimary,
-            borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
-          ),
-          child: pw.Text(
-            category.name.toUpperCase(),
-            style: pw.TextStyle(
-                fontSize: 28,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
-                font: font),
-          ),
+              color: _colorPrimary,
+              borderRadius: pw.BorderRadius.all(pw.Radius.circular(8))),
+          child: pw.Text(category.name.toUpperCase(),
+              style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                  font: font)),
         ),
-        pw.SizedBox(height: 16),
-
-        // ОПИСАНИЕ СРАЗУ ПОД ЗАГОЛОВКОМ
-        if (normalizedDescription.isNotEmpty) ...[
-          pw.Text(
-            normalizedDescription,
-            style: pw.TextStyle(
-                fontSize: 12, color: _colorText, font: font, lineSpacing: 2),
-          ),
-          pw.SizedBox(height: 16),
-        ],
-
         if (specList.isNotEmpty) ...[
+          pw.SizedBox(height: 12),
           _buildSpecsRow(specList, font),
-          pw.SizedBox(height: 16),
         ],
-
-        // ИСПРАВЛЕНО: Передаем переменную storages вместо пустого списка
-        if (storages.isNotEmpty) ...[
-          _buildSectionTitle('Условия хранения', font),
-          pw.SizedBox(height: 4),
-          _buildStorageBlock(storages, font),
-          pw.SizedBox(height: 24),
-        ],
-
-        pw.Divider(color: _colorSecondary, thickness: 1),
         pw.SizedBox(height: 16),
+        pw.Divider(color: _colorSecondary, thickness: 1),
       ],
     );
   }
 
   // ==========================================
-  // PDF HEADER
-  // ==========================================
-  pw.Widget _buildHeader(String clientName, String clientPhone, pw.Font font,
-      pw.MemoryImage? logo) {
-    final currentDate = DateTime.now().toLocal().toString().split(' ')[0];
-
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 24),
-      decoration: pw.BoxDecoration(
-        borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
-        color: _colorPrimary,
-      ),
-      child: pw.Container(
-        width: double.infinity,
-        padding: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.start,
-          children: [
-            if (logo != null)
-              pw.Container(
-                width: 60,
-                height: 60,
-                margin: const pw.EdgeInsets.only(right: 16),
-                decoration: const pw.BoxDecoration(
-                    color: PdfColors.white,
-                    borderRadius: pw.BorderRadius.all(pw.Radius.circular(8))),
-                child:
-                    pw.ClipRRect(child: pw.Image(logo, fit: pw.BoxFit.contain)),
-              ),
-            pw.Expanded(
-                child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                  pw.Text('Вкусные моменты',
-                      style: pw.TextStyle(
-                          fontSize: 24,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.white,
-                          font: font)),
-                  pw.SizedBox(height: 4),
-                  pw.Text(
-                      'Прайс-лист премиум кондитерских изделий на $currentDate',
-                      style: pw.TextStyle(
-                          fontSize: 12, color: PdfColors.grey400, font: font)),
-                ])),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  // PDF PRODUCT CARD
+  // КАРТОЧКА ТОВАРА (Компоновка 1/3 и 2/3)
   // ==========================================
   pw.Widget _buildProductCard(
-    Product product,
-    String? compositionString,
-    NutritionInfo? nutrition,
-    List<StorageCondition> storages,
+    ExportProductData data,
+    PriceCategory? category,
     pw.Font font,
     pw.MemoryImage? productImage,
   ) {
-    final bool hasPhoto = includePhotos && productImage != null;
-
-    final String descriptionText =
-        _normalizePdfText(product.composition.trim());
-    final bool hasDescription = descriptionText.isNotEmpty;
-
-    final bool hasDetailedComposition = includeComposition &&
-        compositionString != null &&
-        compositionString.trim().isNotEmpty;
+    final product = data.product;
+    final hasPhoto = includePhotos && productImage != null;
+    final weightStr = category != null && category.weight > 0
+        ? 'Вес: ${category.weight.toStringAsFixed(category.weight == category.weight.roundToDouble() ? 0 : 1)} ${category.unit.trim().isEmpty ? 'г' : category.unit.trim()}'
+        : null;
 
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 16),
@@ -410,95 +248,209 @@ class ExportService {
           border: pw.Border.all(color: _colorSecondary, width: 0.5),
           borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
           color: PdfColors.white),
-      child:
-          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          // ЛЕВАЯ ЧАСТЬ (1/3) - ФОТО
           if (hasPhoto)
-            pw.Container(
-              width: 90,
-              height: 90,
-              margin: const pw.EdgeInsets.only(right: 12),
-              decoration: pw.BoxDecoration(
-                  color: _colorBackground,
-                  borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
-                  border: pw.Border.all(color: _colorSecondary, width: 0.5)),
-              child: pw.ClipRRect(
-                  child: pw.Image(productImage, fit: pw.BoxFit.cover)),
-            ),
-          pw.Expanded(
-            flex: hasDescription ? 2 : 10,
-            child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(product.displayName,
-                      style: pw.TextStyle(
-                          fontSize: 16,
-                          fontWeight: pw.FontWeight.bold,
-                          color: _colorPrimary,
-                          font: font)),
-                  pw.SizedBox(height: 8),
-                  pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: pw.BoxDecoration(
-                          color: _colorAccent,
-                          borderRadius:
-                              pw.BorderRadius.all(pw.Radius.circular(6))),
-                      child: pw.Text(
-                          PriceEngine.calculate(
-                            basePrice: product.price,
-                            markupPercent: markupPercent,
-                            discountPercent: discountPercent,
-                            roundToNearest: roundToNearest,
-                          ).formattedPrice,
-                          style: pw.TextStyle(
-                              fontSize: 18,
-                              fontWeight: pw.FontWeight.bold,
-                              color: PdfColors.white,
-                              font: font))),
-                ]),
-          ),
-          if (hasDescription)
             pw.Expanded(
-                flex: 3,
-                child: pw.Container(
-                    padding: const pw.EdgeInsets.all(8),
-                    decoration: pw.BoxDecoration(
-                        color: _colorBackground,
-                        borderRadius:
-                            pw.BorderRadius.all(pw.Radius.circular(6))),
-                    child: pw.Text(
-                      descriptionText,
+              flex: 1,
+              child: pw.Container(
+                height: 140,
+                decoration: pw.BoxDecoration(
+                  color: _colorBackground,
+                  border: pw.Border.all(color: _colorSecondary, width: 0.5),
+                  shape: pw.BoxShape
+                      .rectangle, // Прямоугольник (можно поменять на circle)
+                  image: productImage != null
+                      ? pw.DecorationImage(
+                          image: productImage!, fit: pw.BoxFit.cover)
+                      : null,
+                ),
+              ),
+            ),
+
+          if (hasPhoto) pw.SizedBox(width: 16),
+
+          // ПРАВАЯ ЧАСТЬ (2/3) - ИНФОРМАЦИЯ
+          pw.Expanded(
+            flex: 2,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(product.displayName,
+                    style: pw.TextStyle(
+                        fontSize: 16,
+                        fontWeight: pw.FontWeight.bold,
+                        color: _colorPrimary,
+                        font: font)),
+                pw.SizedBox(height: 8),
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
+                  decoration: pw.BoxDecoration(
+                      color: _colorAccent,
+                      borderRadius: pw.BorderRadius.all(pw.Radius.circular(6))),
+                  child: pw.Text(
+                      PriceEngine.calculate(
+                              basePrice: product.price,
+                              markupPercent: markupPercent,
+                              discountPercent: discountPercent,
+                              roundToNearest: roundToNearest)
+                          .formattedPrice,
                       style: pw.TextStyle(
-                          fontSize: 9, color: _colorText, font: font),
-                      overflow: pw.TextOverflow.span,
-                    ))),
-        ]),
-        if (hasDetailedComposition) ...[
-          pw.SizedBox(height: 8),
-          _buildSectionTitle('Состав', font),
-          _buildTextBlock(compositionString, font),
+                          fontSize: 18,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.white,
+                          font: font)),
+                ),
+
+                if (weightStr != null) ...[
+                  pw.SizedBox(height: 8),
+                  pw.Text(weightStr,
+                      style: pw.TextStyle(
+                          fontSize: 11, color: _colorText, font: font)),
+                ],
+
+                // Описание (Категория + Товар)
+                if (_buildDescriptionText(
+                        data.categoryDescription, data.productDescription)
+                    .isNotEmpty) ...[
+                  pw.SizedBox(height: 12),
+                  _buildTextBlock(
+                      _buildDescriptionText(
+                          data.categoryDescription, data.productDescription),
+                      font),
+                ],
+
+                // КБЖУ
+                if (includeNutrition && data.nutrition != null) ...[
+                  pw.SizedBox(height: 12),
+                  _buildSectionTitle('Пищевая ценность на 100г', font),
+                  _buildNutritionBlock(data.nutrition!, font),
+                ],
+
+                // Условия хранения (Слитные)
+                if (includeStorage && data.mergedStorages.isNotEmpty) ...[
+                  pw.SizedBox(height: 12),
+                  _buildSectionTitle('Условия хранения', font),
+                  _buildMergedStorageBlock(data.mergedStorages, font),
+                ],
+
+                // Состав
+                if (includeComposition && data.compositionText.isNotEmpty) ...[
+                  pw.SizedBox(height: 12),
+                  _buildSectionTitle('Состав', font),
+                  _buildTextBlock(data.compositionText, font),
+                ],
+              ],
+            ),
+          ),
         ],
-        if (includeNutrition && nutrition != null) ...[
-          pw.SizedBox(height: 8),
-          _buildSectionTitle('Пищевая ценность на 100г', font),
-          _buildNutritionBlock(nutrition, font),
-        ],
-      ]),
+      ),
     );
   }
 
   // ==========================================
-  // HELPER BLOCKS
+  // ЛОГИКА СЛИЯНИЯ И ФОРМАТИРОВАНИЯ ТЕКСТА
   // ==========================================
+
+  String _buildDescriptionText(String catDesc, String prodDesc) {
+    final parts = <String>[];
+    if (catDesc.trim().isNotEmpty) parts.add(_normalizePdfText(catDesc));
+    if (prodDesc.trim().isNotEmpty) parts.add(_normalizePdfText(prodDesc));
+    return parts.join(' ');
+  }
+
+  String _normalizePdfText(String input) {
+    if (input.trim().isEmpty) return '';
+    String text = input.trim();
+    text = text[0].toUpperCase() + text.substring(1);
+    while (text.endsWith('.') || text.endsWith('!') || text.endsWith('?')) {
+      text = text.substring(0, text.length - 1).trim();
+    }
+    return '$text.';
+  }
+
+  pw.Widget _buildMergedStorageBlock(
+      List<StorageCondition> storages, pw.Font font) {
+    // Собираем уникальные строки условий, склеивая температуру, влажность и срок
+    final lines = <String>[];
+    for (var s in storages) {
+      final loc = s.storageLocation.trim().isEmpty
+          ? 'Хранение'
+          : s.storageLocation.trim();
+      String details = '';
+      if (s.temperature.trim().isNotEmpty)
+        details += 'при температуре ${s.temperature.trim()}°C';
+      if (s.humidity.trim().isNotEmpty)
+        details += ', влажность ${s.humidity.trim()}%';
+      if (s.shelfLife.trim().isNotEmpty)
+        details +=
+            ', срок: ${s.shelfLife.trim()} ${s.unit.trim().isEmpty ? '' : s.unit.trim()}';
+
+      lines.add('$loc, $details.');
+    }
+    if (lines.isEmpty) return pw.SizedBox();
+    return _buildTextBlock(lines.join(' '), font);
+  }
+
+  // ==========================================
+  // ВСПОМОГАТЕЛЬНЫЕ БЛОКИ
+  // ==========================================
+  pw.Widget _buildHeader(String clientName, String clientPhone, pw.Font font,
+      pw.MemoryImage? logo) {
+    final currentDate = DateTime.now().toLocal().toString().split(' ')[0];
+    return pw.Container(
+        margin: const pw.EdgeInsets.only(bottom: 24),
+        decoration: pw.BoxDecoration(
+            borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
+            color: _colorPrimary),
+        child: pw.Container(
+            width: double.infinity,
+            padding:
+                const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+            child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.start,
+                children: [
+                  if (logo != null)
+                    pw.Container(
+                        width: 60,
+                        height: 60,
+                        margin: const pw.EdgeInsets.only(right: 16),
+                        decoration: const pw.BoxDecoration(
+                            color: PdfColors.white,
+                            borderRadius:
+                                pw.BorderRadius.all(pw.Radius.circular(8))),
+                        child: pw.ClipRRect(
+                            child: pw.Image(logo, fit: pw.BoxFit.contain))),
+                  pw.Expanded(
+                      child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                        pw.Text('Вкусные моменты',
+                            style: pw.TextStyle(
+                                fontSize: 24,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColors.white,
+                                font: font)),
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                            'Прайс-лист премиум кондитерских изделий на $currentDate',
+                            style: pw.TextStyle(
+                                fontSize: 12,
+                                color: PdfColors.grey400,
+                                font: font)),
+                      ])),
+                ])));
+  }
+
   pw.Widget _buildSpecsRow(List<String> specs, pw.Font font) {
     return pw.Wrap(
         spacing: 8,
         runSpacing: 8,
         children: specs.map((s) => _buildInfoChip(s, font)).toList());
   }
-
-  double _parseNum(String? val) => double.tryParse(val ?? '') ?? 0.0;
 
   pw.Widget _buildSectionTitle(String title, pw.Font font) {
     return pw.Text(title,
@@ -520,20 +472,7 @@ class ExportService {
             style: pw.TextStyle(fontSize: 10, color: _colorText, font: font)));
   }
 
-  String _normalizePdfText(String input) {
-    if (input.trim().isEmpty) return '';
-    String text = input.trim();
-
-    // Делаем первую букву заглавной
-    text = text[0].toUpperCase() + text.substring(1);
-
-    // ИСПРАВЛЕНО: Удаляем лишние точки в конце, но оставляем одну, если её не было
-    while (text.endsWith('.') || text.endsWith('!') || text.endsWith('?')) {
-      text = text.substring(0, text.length - 1).trim();
-    }
-
-    return '$text.'; // В конце всегда ставим одну точку
-  }
+  double _parseNum(String? val) => double.tryParse(val ?? '') ?? 0.0;
 
   pw.Widget _buildNutritionBlock(NutritionInfo info, pw.Font font) {
     final parts = <String>[];
@@ -541,72 +480,12 @@ class ExportService {
     final prot = _parseNum(info.proteins);
     final fats = _parseNum(info.fats);
     final carbs = _parseNum(info.carbohydrates);
-
-    if (cal > 0) parts.add('Энергетическая ценность: $cal ккал');
+    if (cal > 0) parts.add('Калории: $cal ккал');
     if (prot > 0) parts.add('Белки: $prot г');
     if (fats > 0) parts.add('Жиры: $fats г');
     if (carbs > 0) parts.add('Углеводы: $carbs г');
-
     if (parts.isEmpty) return pw.SizedBox();
-
-    String text = parts.join(', ');
-    text = _normalizePdfText(text);
-
-    return pw.Container(
-        width: double.infinity,
-        padding: const pw.EdgeInsets.all(8),
-        decoration: pw.BoxDecoration(
-            color: _colorBackground,
-            borderRadius: pw.BorderRadius.all(pw.Radius.circular(6))),
-        child: pw.Text(text,
-            style: pw.TextStyle(fontSize: 10, color: _colorText, font: font)));
-  }
-
-  pw.Widget _buildStorageBlock(List<StorageCondition> storages, pw.Font font) {
-    final storageLines = <pw.Widget>[];
-
-    for (var storage in storages) {
-      final parts = <String>[];
-
-      if (storage.storageLocation.trim().isNotEmpty) {
-        String loc = storage.storageLocation.trim();
-        loc = loc[0].toUpperCase() + loc.substring(1);
-        parts.add(loc);
-      }
-      if (storage.temperature.trim().isNotEmpty) {
-        parts.add('при температуре ${storage.temperature.trim()}°C');
-      }
-      if (storage.humidity.trim().isNotEmpty) {
-        parts.add('влажность ${storage.humidity.trim()}%');
-      }
-      if (storage.shelfLife.trim().isNotEmpty) {
-        final unitStr =
-            storage.unit.trim().isNotEmpty ? ' ${storage.unit.trim()}' : '';
-        parts.add('срок: ${storage.shelfLife.trim()}$unitStr');
-      }
-
-      if (parts.isNotEmpty) {
-        storageLines.add(pw.Container(
-            width: double.infinity,
-            padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-            color: storageLines.isEmpty ? _colorBackground : PdfColors.white,
-            child: pw.Text(parts.join(', '),
-                style: pw.TextStyle(
-                    fontSize: 10, color: _colorText, font: font))));
-      }
-    }
-
-    if (storageLines.isEmpty) return pw.SizedBox();
-
-    return pw.Container(
-        width: double.infinity,
-        padding: const pw.EdgeInsets.all(8),
-        decoration: pw.BoxDecoration(
-            color: _colorBackground,
-            borderRadius: pw.BorderRadius.all(pw.Radius.circular(6))),
-        child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: storageLines));
+    return _buildTextBlock(_normalizePdfText(parts.join(', ')), font);
   }
 
   pw.Widget _buildInfoChip(String text, pw.Font font) {

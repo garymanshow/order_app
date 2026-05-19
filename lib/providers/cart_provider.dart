@@ -8,26 +8,29 @@ import 'package:provider/provider.dart';
 import '../models/client.dart';
 import '../models/order_item.dart';
 import '../models/product.dart';
-import '../models/delivery_condition.dart'; // ✅ Добавлен импорт
+import '../models/delivery_condition.dart';
 import '../models/price_list_mode.dart';
 import '../services/api_service.dart';
 import '../services/delivery_conditions_service.dart' as delivery;
 import '../services/sync_service.dart';
+import 'auth_provider.dart';
 
 class CartProvider with ChangeNotifier {
   Client? _currentClient;
-  List<OrderItem>? _allOrders; // Ссылка на все заказы из AuthProvider
+  List<OrderItem>? _allOrders;
   List<Product>? _allProducts;
   DeliveryCondition? _deliveryCondition;
   PriceListMode _priceListMode = PriceListMode.full;
   final ApiService _apiService = ApiService();
   bool _isInitialized = false;
+  AuthProvider? _auth;
 
   // Геттеры
   PriceListMode get priceListMode => _priceListMode;
   DeliveryCondition? get deliveryCondition => _deliveryCondition;
   bool get isInitialized => _isInitialized;
-  // Геттер для доступа к сырым заказам извне (нужно для слияния при входе)
+
+  // Геттер для доступа к сырым заказам извне
   List<OrderItem>? get allOrders => _allOrders;
 
   // 🔥 Корзина
@@ -61,80 +64,45 @@ class CartProvider with ChangeNotifier {
       return;
     }
 
-    print('🛒 setQuantity: productId=$productId, quantity=$quantity');
+    final adjustedQuantity =
+        ((quantity / multiplicity).round() * multiplicity).clamp(0, 999);
+    final product = _allProducts!.firstWhere((p) => p.id == productId);
 
-    // Ищем индекс существующего заказа
     final existingIndex = _allOrders!.indexWhere((o) =>
         o.clientPhone == _currentClient!.phone &&
         o.clientName == _currentClient!.name &&
         o.priceListId == productId);
 
-    if (quantity <= 0) {
-      // Если количество 0 или меньше, удаляем заказ
+    if (adjustedQuantity <= 0) {
       if (existingIndex != -1) {
         _allOrders!.removeAt(existingIndex);
-        print('   🗑️ Заказ удален');
       }
+    } else if (existingIndex != -1) {
+      // 🔥 Меняем свойства СУЩЕСТВУЮЩЕГО объекта (не создаем new OrderItem)
+      final orderToUpdate = _allOrders![existingIndex];
+      orderToUpdate.quantity = adjustedQuantity;
+      orderToUpdate.totalPrice = product.price * adjustedQuantity;
+      orderToUpdate.status = '';
     } else {
-      // Корректируем с учетом кратности
-      final adjustedQuantity =
-          ((quantity / multiplicity).round() * multiplicity).clamp(0, 999);
-      final product = _allProducts!.firstWhere((p) => p.id == productId);
-
-      if (existingIndex != -1) {
-        // Обновляем существующий заказ
-        final oldOrder = _allOrders![existingIndex];
-        final updatedOrder = OrderItem(
-          status: oldOrder.status,
-          productName: oldOrder.productName,
-          quantity: adjustedQuantity,
-          totalPrice: product.price * adjustedQuantity,
-          date: oldOrder.date,
-          clientPhone: oldOrder.clientPhone,
-          clientName: oldOrder.clientName,
-          paymentAmount: oldOrder.paymentAmount,
-          paymentDocument: oldOrder.paymentDocument,
-          notificationSent: oldOrder.notificationSent,
-          priceListId: oldOrder.priceListId,
-        );
-        _allOrders![existingIndex] = updatedOrder;
-        print('   🔄 Заказ обновлен: quantity=$adjustedQuantity');
-      } else {
-        // Создаем новый заказ
-        final newOrder = OrderItem(
-          status: '',
-          productName: product.name,
-          quantity: adjustedQuantity,
-          totalPrice: product.price * adjustedQuantity,
-          date: DateTime.now().toUtc().toIso8601String(),
-          clientPhone: _currentClient!.phone!,
-          clientName: _currentClient!.name!,
-          priceListId: productId,
-        );
-        _allOrders!.add(newOrder);
-        print('   ✅ Новый заказ создан');
-      }
+      final newOrder = OrderItem(
+        status: '',
+        productName: product.name,
+        quantity: adjustedQuantity,
+        totalPrice: product.price * adjustedQuantity,
+        date: '',
+        clientPhone: _currentClient!.phone!,
+        clientName: _currentClient!.name!,
+        priceListId: productId,
+      );
+      _allOrders!.add(newOrder);
     }
 
-    // Сохраняем изменения локально
     await _saveOrdersToPreferences();
     notifyListeners();
   }
 
-  // 🔥 ТОЧЕЧНАЯ ОЧИСТКА: удаляем только тех клиентов, чьи заказы улетели на сервер
-  void clearClientsCart(List<String> successClientKeys) {
-    if (_allOrders == null) return;
-
-    _allOrders!.removeWhere((order) {
-      if (order.quantity <= 0) return false; // Не трогаем пустые
-      final key = '${order.clientPhone}_${order.clientName}';
-      return successClientKeys
-          .contains(key); // Удаляем только из списка успешных
-    });
-
-    _saveOrdersToPreferences();
-    notifyListeners();
-    print('🗑️ Очищены корзины для: ${successClientKeys.join(', ')}');
+  void setAuthProvider(AuthProvider auth) {
+    _auth = auth;
   }
 
   // Установка режима прайс-листа
@@ -153,36 +121,41 @@ class CartProvider with ChangeNotifier {
     }
   }
 
-  // Установка клиента и данных с учетом слияния локальных и серверных корзин
-  void setClient(Client client, List<OrderItem>? serverOrders,
-      List<Product>? allProducts) {
+  // 🔥 НОВЫЙ ПОДХОД: Просто грузим корзину нужного клиента из глобального списка
+  void loadCartForClient(
+      Client client, List<OrderItem> globalOrders, List<Product> allProducts) {
     _currentClient = client;
     _allProducts = allProducts;
 
-    // 🔥 СЛИЯНИЕ: Если в памяти уже были набраны товары (приложение свернули и открыли)
-    if (_allOrders != null && serverOrders != null) {
-      // Ищем товары, которые есть ТОЛЬКО локально (еще не отправлялись на сервер, статус пустой или 'новый')
-      final localOnlyItems = _allOrders!
-          .where((o) =>
-              o.clientPhone == client.phone &&
-              o.clientName == client.name &&
-              (o.status.isEmpty || o.status.toLowerCase() == 'новый'))
-          .toList();
-
-      // Берем серверные заказы (оформленные) как базу
-      _allOrders = List.from(serverOrders);
-
-      // Накидываем локальные поверх серверных
-      // (если менеджер правил один и тот же товар, останется его последняя локальная правка)
-      _allOrders!.addAll(localOnlyItems);
-    } else {
-      // Если первый вход — просто берем то, что пришло с сервера
-      _allOrders = serverOrders;
-    }
+    // Берем из ГЛОБАЛЬНОГО списка ТОЛЬКО товары этого клиента
+    _allOrders = globalOrders
+        .where(
+            (o) => o.clientPhone == client.phone && o.clientName == client.name)
+        .toList();
 
     _isInitialized = true;
     _updateDeliveryCondition();
     notifyListeners();
+  }
+
+  // 🔥 ТОЧЕЧНАЯ ОЧИСТКА: Обнуляем количество по ссылке
+  void clearClientsCart(List<String> successClientKeys) {
+    if (_allOrders == null) return;
+
+    for (var order in _allOrders!) {
+      if (order.quantity <= 0) continue;
+
+      final key = '${order.clientPhone}_${order.clientName}';
+      if (successClientKeys.contains(key)) {
+        // Меняем свойства СУЩЕСТВУЮЩЕГО объекта по ссылке
+        order.quantity = 0;
+        order.totalPrice = 0.0;
+      }
+    }
+
+    _saveOrdersToPreferences();
+    notifyListeners();
+    print('🗑️ Обнулены корзины для: ${successClientKeys.join(', ')}');
   }
 
   // Очистка при выходе
@@ -196,8 +169,8 @@ class CartProvider with ChangeNotifier {
   // 🔥 Жесткий сброс: ТОЛЬКО при логауте (выходе из аккаунта)
   void hardReset() {
     _currentClient = null;
-    _allOrders = null; // Теперь можно обнулять
-    _allProducts = null; // Теперь можно обнулять
+    _allOrders = null;
+    _allProducts = null;
     _deliveryCondition = null;
     _isInitialized = false;
     notifyListeners();
@@ -266,8 +239,6 @@ class CartProvider with ChangeNotifier {
     ApiService apiService, {
     List<OrderItem>? overrideOrders,
   }) async {
-    // 🔥 Если нам передали заказы напрямую (со списка клиентов), используем их.
-    // Иначе берем стандартные cartItems.
     final ordersToProcess = overrideOrders ?? cartItems;
 
     if (ordersToProcess.isEmpty) {
@@ -286,7 +257,6 @@ class CartProvider with ChangeNotifier {
       String comment =
           discount > 0 ? 'Скидка ${discount.toStringAsFixed(0)}%' : '';
 
-      // 1. Группируем товары по клиентам (по ключу phone_name)
       final ordersByClient = <String, List<OrderItem>>{};
 
       for (var item in ordersToProcess) {
@@ -300,7 +270,6 @@ class CartProvider with ChangeNotifier {
       final failedClients = <String>[];
       bool hasValidationErrors = false;
 
-      // 2. ЛОКАЛЬНАЯ ПРЕДВАРИТЕЛЬНАЯ ПРОВЕРКА (Минимальные суммы)
       for (var entry in ordersByClient.entries) {
         final clientOrders = entry.value;
         final clientName = clientOrders.first.clientName;
@@ -315,7 +284,6 @@ class CartProvider with ChangeNotifier {
         }
       }
 
-      // Если есть клиенты, не прошедшие проверку минималки — warnим, но продолжаем для тех, кто прошел
       if (hasValidationErrors) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -328,14 +296,12 @@ class CartProvider with ChangeNotifier {
         }
       }
 
-      // Оставляем только тех, кто прошел валидацию
       final validOrders = Map.fromEntries(ordersByClient.entries.where(
           (entry) => !failedClients
               .any((f) => f.startsWith(entry.value.first.clientName))));
 
       if (validOrders.isEmpty) return false;
 
-      // 3. ОТПРАВКА НА СЕРВЕР
       bool allNetworkSuccess = true;
 
       for (var entry in validOrders.entries) {
@@ -344,16 +310,13 @@ class CartProvider with ChangeNotifier {
         final totalAmount =
             clientOrders.fold(0.0, (sum, o) => sum + o.totalPrice);
 
-        // 🔥 ФОРМИРУЕМ ЕДИНУЮ ДАТУ ДЛЯ ВСЕХ ТОВАРОВ ЭТОГО ЗАКАЗА
         final now = DateTime.now().toUtc().toIso8601String();
         final items = clientOrders.map((o) {
           final json = o.toJson();
-          json['date'] = now; // Перезаписываем дату на момент отправки
+          json['date'] = now;
           return json;
         }).toList();
 
-        // Отправляем пачку товаров для конкретного клиента
-        // GAS сам внутри handleCreateOrder удалит старые "оформленные" заказы этого клиента
         final result = await apiService.createOrder(
           clientId: client.clientPhone,
           employeeId: 'автомат',
@@ -371,7 +334,6 @@ class CartProvider with ChangeNotifier {
         }
       }
 
-      // 4. ФИНАЛЬНАЯ ОЧИСТКА ЛОКАЛЬНОЙ ПАМЯТИ
       if (successClientKeys.isNotEmpty) {
         clearClientsCart(successClientKeys);
 
@@ -399,7 +361,6 @@ class CartProvider with ChangeNotifier {
     }
   }
 
-  // Сохранение заказов в SharedPreferences (для офлайн-режима)
   Future<void> _saveOrdersToPreferences() async {
     if (_allOrders == null) return;
 
@@ -421,13 +382,11 @@ class CartProvider with ChangeNotifier {
   }) async {
     final syncService = Provider.of<SyncService>(context, listen: false);
 
-    // Проверяем интернет (исправлено для новой версии connectivity_plus)
     final connectivityResult = await Connectivity().checkConnectivity();
     final isOffline = connectivityResult.isEmpty ||
         connectivityResult.contains(ConnectivityResult.none);
 
     if (isOffline) {
-      // Нет интернета — сохраняем в очередь
       await syncService.queueOrderCreation(
         clientId: clientId,
         employeeId: employeeId,
@@ -438,7 +397,6 @@ class CartProvider with ChangeNotifier {
         comment: comment,
       );
 
-      // 🔥 ТОЧЕЧНАЯ ОЧИСТКА ОФЛАЙН
       if (_currentClient != null) {
         clearClientsCart(['${_currentClient!.phone}_${_currentClient!.name}']);
       }
@@ -455,7 +413,6 @@ class CartProvider with ChangeNotifier {
       }
       return true;
     } else {
-      // Есть интернет — отправляем сразу
       final success = await _apiService.createOrder(
         clientId: clientId,
         employeeId: employeeId,
@@ -467,7 +424,6 @@ class CartProvider with ChangeNotifier {
       );
 
       if (success && _currentClient != null) {
-        // 🔥 ТОЧЕЧНАЯ ОЧИСТКА ОНЛАЙН
         clearClientsCart(['${_currentClient!.phone}_${_currentClient!.name}']);
       }
       return success;
@@ -479,14 +435,11 @@ class CartProvider with ChangeNotifier {
     await prefs.setString('price_list_mode', _priceListMode.name);
   }
 
-  // 🔥 Вспомогательный метод для экрана выбора клиентов.
-  // Временно подкидывает ВСЕ заказы, чтобы отправить их пачкой.
   void forceUpdateAllOrdersForSubmission(
       List<OrderItem> allOrders, Client? client) {
     _allOrders = allOrders;
     if (client != null) {
-      _currentClient =
-          client; // Временно ставим любого клиента, чтобы геттеры не ругались на null
+      _currentClient = client;
     }
     notifyListeners();
   }

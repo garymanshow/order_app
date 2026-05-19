@@ -3,11 +3,11 @@ import '../utils/parsing_utils.dart';
 
 // Заказы
 class OrderItem {
-  final String status;
-  final String productName; // Исходное название из прайса
-  final String displayName; // ← ДОБАВЛЯЕМ отформатированное название
-  final int quantity;
-  final double totalPrice;
+  String status;
+  String productName; // Исходное название из прайса
+  String displayName; // ← ДОБАВЛЯЕМ отформатированное название
+  int quantity;
+  double totalPrice;
   final String date;
   final String clientPhone;
   final String clientName;
