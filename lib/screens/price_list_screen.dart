@@ -249,6 +249,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
           body: filteredProducts.isEmpty
               ? const Center(child: Text('Нет товаров для отображения'))
               : ListView.builder(
+                  key: ValueKey(currentClient.phone),
                   padding: const EdgeInsets.all(8),
                   itemCount: filteredProducts.length,
                   itemBuilder: (context, index) {
