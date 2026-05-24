@@ -15,6 +15,7 @@ class OrderItem {
   final String paymentDocument;
   final bool notificationSent;
   final String priceListId;
+  final bool isLocalDraft;
 
   // 🔥 ИСПРАВЛЕНО: добавляем displayName в конструктор
   OrderItem({
@@ -29,6 +30,7 @@ class OrderItem {
     this.paymentDocument = '',
     this.notificationSent = false,
     this.priceListId = '',
+    this.isLocalDraft = false,
     String? displayName, // ← добавляем опциональный параметр
   }) : displayName = displayName ??
             productName; // ← если не передан, используем productName
@@ -47,6 +49,7 @@ class OrderItem {
     this.paymentDocument = '',
     this.notificationSent = false,
     this.priceListId = '',
+    this.isLocalDraft = false,
   });
 
   // 🔥 ИСПРАВЛЕННЫЙ fromJson
@@ -66,18 +69,16 @@ class OrderItem {
       priceListId: json['priceListId']?.toString() ?? '',
       displayName:
           json['displayName']?.toString(), // ← восстанавливаем displayName
+      isLocalDraft: ParsingUtils.parseBool(json['isLocalDraft']) ?? false,
     );
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ fromMap с поддержкой displayNames
   factory OrderItem.fromMap(
     Map<String, dynamic> map, {
-    Map<String, String>? productDisplayNames, // ← карта ID → displayName
+    Map<String, String>? productDisplayNames,
   }) {
     final productName = map['Название']?.toString() ?? '';
     final priceListId = map['ID Прайс-лист']?.toString() ?? '';
-
-    // Получаем отформатированное название, если есть
     final displayName = productDisplayNames?[priceListId] ?? productName;
 
     return OrderItem(
@@ -93,7 +94,8 @@ class OrderItem {
       paymentDocument: map['Платежный документ']?.toString() ?? '',
       notificationSent: map['Уведомление отправлено']?.toString() == 'true',
       priceListId: priceListId,
-      displayName: displayName, // ← передаем отформатированное
+      displayName: displayName,
+      isLocalDraft: false, // <--- С GAS всегда прилетает false
     );
   }
 
@@ -112,14 +114,15 @@ class OrderItem {
       'paymentDocument': paymentDocument,
       'notificationSent': notificationSent,
       'priceListId': priceListId,
+      'isLocalDraft': isLocalDraft,
     };
   }
 
-  // toMap для Google Таблиц (без displayName, так как там нужно исходное название)
+  // toMap для Google Таблиц (флаг НЕ отправляем на сервер!)
   Map<String, dynamic> toMap() {
     return {
       'Статус': status,
-      'Название': productName, // ← отправляем исходное название
+      'Название': productName,
       'Количество': quantity.toString(),
       'Итоговая цена': totalPrice.toString(),
       'Дата': date,
@@ -129,10 +132,10 @@ class OrderItem {
       'Платежный документ': paymentDocument,
       'Уведомление отправлено': notificationSent.toString(),
       'ID Прайс-лист': priceListId,
+      // isLocalDraft здесь НЕТ
     };
   }
 
-  // 🔥 copyWith с поддержкой displayName
   OrderItem copyWith({
     String? status,
     String? productName,
@@ -146,6 +149,7 @@ class OrderItem {
     String? paymentDocument,
     bool? notificationSent,
     String? priceListId,
+    bool? isLocalDraft, // <--- ДОБАВЛЕНО
   }) {
     return OrderItem(
       status: status ?? this.status,
@@ -160,6 +164,7 @@ class OrderItem {
       notificationSent: notificationSent ?? this.notificationSent,
       priceListId: priceListId ?? this.priceListId,
       displayName: displayName ?? this.displayName,
+      isLocalDraft: isLocalDraft ?? this.isLocalDraft, // <--- ДОБАВЛЕНО
     );
   }
 

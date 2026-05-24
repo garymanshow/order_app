@@ -145,8 +145,15 @@ class _PriceListScreenState extends State<PriceListScreen> {
                 o.quantity > 0)
             .fold(0.0, (sum, o) => sum + o.totalPrice);
 
+        // 🔥 Проверяем, есть ли у текущего клиента неотправленные черновики
+        final hasUnsent = clientData.orders.any((o) =>
+            o.clientPhone == currentClient.phone &&
+            o.clientName == currentClient.name &&
+            o.isLocalDraft == true &&
+            o.quantity > 0);
+
         final titleText = total > 0
-            ? 'Прайс-лист: выбрано на сумму ${total.toStringAsFixed(2)}'
+            ? 'Прайс-лист: ${hasUnsent ? '⚠️ ' : ''}выбрано на сумму ${total.toStringAsFixed(2)}'
             : 'Прайс-лист';
 
         return Scaffold(
@@ -154,7 +161,11 @@ class _PriceListScreenState extends State<PriceListScreen> {
             title: Text(
               titleText,
               style: TextStyle(
-                color: total > 0 ? Colors.green : null,
+                // 🔥 Если есть несохраненное — делаем текст оранжевым (или любым ярким)
+                color: hasUnsent
+                    ? Colors.orange
+                    : (total > 0 ? Colors.green : null),
+                fontWeight: hasUnsent ? FontWeight.bold : FontWeight.normal,
               ),
               maxLines: 2,
               overflow: TextOverflow.visible,

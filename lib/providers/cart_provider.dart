@@ -17,7 +17,7 @@ import 'auth_provider.dart';
 
 class CartProvider with ChangeNotifier {
   Client? _currentClient;
-  List<OrderItem> _allOrders = [];
+  List<OrderItem> _allOrders = []; // Это наша "песочница" для текущего клиента
   List<Product>? _allProducts;
   DeliveryCondition? _deliveryCondition;
   PriceListMode _priceListMode = PriceListMode.full;
@@ -36,6 +36,7 @@ class CartProvider with ChangeNotifier {
 
   List<OrderItem> get cartItems {
     if (_currentClient == null || _allOrders.isEmpty) return [];
+    // Показываем всё, что есть в песочнице (и серверное, и накликанное)
     return _allOrders.where((o) => o.quantity > 0).toList();
   }
 
@@ -58,8 +59,14 @@ class CartProvider with ChangeNotifier {
       Client client, List<OrderItem> globalOrders, List<Product> allProducts) {
     _currentClient = client;
     _allProducts = allProducts;
-    // Забираем нужные товары в локальную память
-    _syncFromGlobal();
+
+    // 🔥 ЗАГРУЖАЕМ В ПЕСОЧНИЦУ: Только заказы этого клиента со статусом "оформлен"
+    _allOrders = globalOrders
+        .where((o) =>
+            o.clientPhone == client.phone &&
+            o.clientName == client.name &&
+            o.status == 'оформлен')
+        .toList();
 
     _isInitialized = true;
     _updateDeliveryCondition();
@@ -81,15 +88,17 @@ class CartProvider with ChangeNotifier {
   }
 
   void reset() {
+    // При выходе из клиента ВОЗВРАЩАЕМ изменения в AuthProvider, но НЕ ОЧИЩАЕМ песочницу!
+    _syncToGlobal(saveToDisk: true);
     _currentClient = null;
     _isInitialized = false;
-//    _allOrders.clear(); // Очищаем корзину при выходе из прайса
     notifyListeners();
   }
 
   void hardReset() {
     _currentClient = null;
     _allProducts = null;
+    _allOrders.clear();
     _isInitialized = false;
     notifyListeners();
   }
@@ -115,64 +124,77 @@ class CartProvider with ChangeNotifier {
     if (adjustedQuantity <= 0) {
       if (existingIndex != -1) _allOrders.removeAt(existingIndex);
     } else if (existingIndex != -1) {
-      _allOrders[existingIndex].quantity = adjustedQuantity;
-      _allOrders[existingIndex].totalPrice = product.price * adjustedQuantity;
-      _allOrders[existingIndex].status = '';
+      // 🔥 ТОВАР УЖЕ ЕСТЬ (возможно, пришел с сервера со статусом "оформлен")
+      final existingOrder = _allOrders[existingIndex];
+
+      // Меняем количество и цену, но СТАТУС ОСТАВЛЯЕМ КАК БЫЛ!
+      _allOrders[existingIndex] = existingOrder.copyWith(
+        quantity: adjustedQuantity,
+        totalPrice: product.price * adjustedQuantity,
+        isLocalDraft:
+            true, // 🔥 Любое изменение руками = пометка "не отправлено"
+      );
     } else {
+      // 🔥 НОВЫЙ ТОВАР
       _allOrders.add(OrderItem(
-        status: '',
+        status: 'оформлен', // Сразу ставим правильный статус
         productName: product.name,
         quantity: adjustedQuantity,
         totalPrice: product.price * adjustedQuantity,
-        date: '',
+        date: '', // GAS заполнит сам при отправке
         clientPhone: _currentClient!.phone!,
         clientName: _currentClient!.name!,
         priceListId: productId,
+        isLocalDraft: true, // 🔥 Новый товар = локальный черновик
       ));
     }
 
-    await _saveOrdersToPreferences();
-    // Обновляем UI только этого провайдера и шапки
+    // Сразу пушим в AuthProvider для обновления суммы на главном экране
+    _syncToGlobal(saveToDisk: true);
+
     notifyListeners();
 
-    // И синхронизируем обратно с AuthProvider, чтобы экран выбора клиентов видел сумму
-    if (_auth?.clientData != null) {
-      _auth!.clientData!.orders.removeWhere((o) =>
-          o.clientPhone == _currentClient!.phone &&
-          o.clientName == _currentClient!.name);
-      _auth!.clientData!.orders.addAll(_allOrders);
-      _auth!.notifyListeners();
-    }
-
-    // 🔥 ПРИНУДИТЕЛЬНАЯ ПЕРИСОВКА ДЛЯ ПРАЙСА (Решение бага кэша в Web)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      (context as Element).markNeedsBuild();
-    });
-
+    // Убираем принудительную перерисовку дерева, notifyListeners() справляется лучше и безопаснее
     return adjustedQuantity;
   }
 
   void clearClientsCart(List<String> successClientKeys) {
     if (_allOrders.isEmpty) return;
 
+    // Удаляем из песочницы только то, что успешно ушло на сервер
     _allOrders.removeWhere((order) {
-      if (order.quantity <= 0) return false;
       final key = '${order.clientPhone}_${order.clientName}';
       return successClientKeys.contains(key);
     });
 
-    _saveOrdersToPreferences();
-
     // Синхронизируем удаление с AuthProvider
-    if (_auth?.clientData != null) {
-      _auth!.clientData!.orders.removeWhere((o) =>
-          o.clientPhone == _currentClient!.phone &&
-          o.clientName == _currentClient!.name);
-      _auth!.clientData!.orders.addAll(_allOrders);
-      _auth!.notifyListeners();
-    }
-
+    _syncToGlobal(saveToDisk: true);
     notifyListeners();
+  }
+
+  // ==========================================
+  // СИНХРОНИЗАЦИЯ МЕЖДУ ПЕСОЧНИЦЕЙ И AUTH PROVIDER
+  // ==========================================
+
+  /// Выгружает текущие заказы из песочницы обратно в общий список AuthProvider
+  void _syncToGlobal({required bool saveToDisk}) {
+    if (_auth?.clientData == null || _currentClient == null) return;
+
+    // 1. Удаляем старые записи по этому клиенту из глобального списка
+    _auth!.clientData!.orders.removeWhere((o) =>
+        o.clientPhone == _currentClient!.phone &&
+        o.clientName == _currentClient!.name);
+
+    // 2. Добавляем актуальные из песочницы
+    _auth!.clientData!.orders.addAll(_allOrders);
+
+    // 3. Сообщаем UI обновить суммы на главном экране
+    _auth!.notifyListeners();
+
+    // 4. (Опционально) Сохраняем вPrefs для защиты от закрытия вкладки
+    if (saveToDisk) {
+      _saveOrdersToPreferences();
+    }
   }
 
   // ==========================================
@@ -184,6 +206,7 @@ class CartProvider with ChangeNotifier {
     ApiService apiService, {
     List<OrderItem>? overrideOrders,
   }) async {
+    // Берем переданные заказы (они прилетят из ClientSelectionScreen)
     final ordersToProcess = overrideOrders ?? cartItems;
     if (ordersToProcess.isEmpty) {
       if (context.mounted)
@@ -242,9 +265,11 @@ class CartProvider with ChangeNotifier {
         final totalAmount =
             clientOrders.fold(0.0, (sum, o) => sum + o.totalPrice);
         final now = DateTime.now().toUtc().toIso8601String();
+
+        // Формируем JSON для отправки. isLocalDraft не уходит на сервер (мы убрали его из toMap)
         final items = clientOrders.map((o) {
-          final json = o.toJson();
-          json['date'] = now;
+          final json = o.toMap();
+          json['Дата'] = now;
           return json;
         }).toList();
 
@@ -263,7 +288,9 @@ class CartProvider with ChangeNotifier {
       }
 
       if (successClientKeys.isNotEmpty) {
+        // Очищаем из песочницы только успешно отправленных клиентов
         clearClientsCart(successClientKeys);
+
         if (context.mounted)
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(
@@ -280,7 +307,7 @@ class CartProvider with ChangeNotifier {
   }
 
   // ==========================================
-  // ОФЛАЙН И ВСПОМОГАТЕЛЬНЫЕ
+  // ОСТАЛЬНЫЕ МЕТОДЫ (ОФЛАЙН, ДОСТАВКА, ВСПОМОГАТЕЛЬНЫЕ)
   // ==========================================
 
   Future<bool> submitOrderOffline(
@@ -359,9 +386,11 @@ class CartProvider with ChangeNotifier {
     return cartTotal >= getMinOrderAmount(context);
   }
 
+  /// Сохраняет ВСЕ глобальные заказы в SharedPreferences для защиты от закрытия вкладки
   Future<void> _saveOrdersToPreferences() async {
     if (_auth?.clientData == null) return;
     final prefs = await SharedPreferences.getInstance();
+    // Сохраняем весь массив из AuthProvider, включая isLocalDraft
     await prefs.setString('all_orders',
         jsonEncode(_auth!.clientData!.orders.map((o) => o.toJson()).toList()));
   }
@@ -373,39 +402,14 @@ class CartProvider with ChangeNotifier {
 
   void forceUpdateAllOrdersForSubmission(
       List<OrderItem> allOrders, Client? client) {
-    if (_auth?.clientData != null) {
-      _auth!.clientData!.orders = allOrders;
-    }
-    if (client != null) _currentClient = client;
-    notifyListeners();
+    // Этот метод вызывается перед отправкой пачки.
+    // Мы не меняем _allOrders тут, чтобы не портить состояние CartProvider,
+    // просто передаем ссылку в submitAllOrders
   }
 
   void updateData(List<OrderItem>? allOrders, List<Product>? allProducts) {
     _allProducts = allProducts;
     _updateDeliveryCondition();
     notifyListeners();
-  }
-
-  // 🔥 ЖЕЛЕЗОБЕТОННОЕ ОБНОВЛЕНИЕ UI ДЛЯ WEB
-  void _forceUIUpdate() {
-    if (_auth != null) {
-      // Если мы находимся внутри виджета, просто вызываем rebuild дерева
-      if (_auth!.navigatorKey.currentContext != null) {
-        (_auth!.navigatorKey.currentContext as Element).markNeedsBuild();
-      }
-    }
-  }
-
-  // 🔥 СИНХРОНИЗАТОР: Забираем свежие данные из AuthProvider
-  void _syncFromGlobal() {
-    if (_currentClient != null && _auth?.clientData != null) {
-      final globalOrders = _auth!.clientData!.orders;
-      // Оставляем ТОЛЬКО товары текущего клиента
-      _allOrders = globalOrders
-          .where((o) =>
-              o.clientPhone == _currentClient!.phone &&
-              o.clientName == _currentClient!.name)
-          .toList();
-    }
   }
 }

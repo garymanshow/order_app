@@ -38,24 +38,47 @@ class OrderItemAdapter extends TypeAdapter<OrderItem> {
 
   @override
   OrderItem read(BinaryReader reader) {
+    // Читаем все СТАРЫЕ 12 полей строго по порядку
+    final status = reader.readString();
+    final productName = reader.readString();
+    final displayName = reader.readString();
+    final quantity = reader.readInt();
+    final totalPrice = reader.readDouble();
+    final date = reader.readString();
+    final clientPhone = reader.readString();
+    final clientName = reader.readString();
+    final paymentAmount = reader.readDouble();
+    final paymentDocument = reader.readString();
+    final notificationSent = reader.readBool();
+    final priceListId = reader.readString();
+
+    // 🔥 МАГИЯ БЕЗОПАСНОСТИ ДЛЯ PWA:
+    // Проверяем, есть ли еще данные в потоке (для старых записей их там нет)
+    bool isLocalDraft = false;
+    if (reader.availableBytes > 0) {
+      isLocalDraft = reader.readBool();
+    }
+
     return OrderItem(
-      status: reader.readString(),
-      productName: reader.readString(),
-      displayName: reader.readString(),
-      quantity: reader.readInt(),
-      totalPrice: reader.readDouble(),
-      date: reader.readString(),
-      clientPhone: reader.readString(),
-      clientName: reader.readString(),
-      paymentAmount: reader.readDouble(),
-      paymentDocument: reader.readString(),
-      notificationSent: reader.readBool(),
-      priceListId: reader.readString(),
+      status: status,
+      productName: productName,
+      displayName: displayName,
+      quantity: quantity,
+      totalPrice: totalPrice,
+      date: date,
+      clientPhone: clientPhone,
+      clientName: clientName,
+      paymentAmount: paymentAmount,
+      paymentDocument: paymentDocument,
+      notificationSent: notificationSent,
+      priceListId: priceListId,
+      isLocalDraft: isLocalDraft, // Подставили безопасно
     );
   }
 
   @override
   void write(BinaryWriter writer, OrderItem obj) {
+    // Пишем все 13 полей строго по порядку
     writer.writeString(obj.status);
     writer.writeString(obj.productName);
     writer.writeString(obj.displayName);
@@ -68,6 +91,7 @@ class OrderItemAdapter extends TypeAdapter<OrderItem> {
     writer.writeString(obj.paymentDocument);
     writer.writeBool(obj.notificationSent);
     writer.writeString(obj.priceListId);
+    writer.writeBool(obj.isLocalDraft); // <--- ПИШЕМ НОВОЕ ПОЛЕ
   }
 }
 

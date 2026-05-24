@@ -301,6 +301,48 @@ class ApiService {
     }
   }
 
+  /// Пакетная отправка заказов по нескольким клиентам
+  Future<bool> submitOrderBatch(List<OrderItem> ordersToProcess) async {
+    if (ordersToProcess.isEmpty) return false;
+
+    final ordersByClient = <String, List<OrderItem>>{};
+    for (var item in ordersToProcess) {
+      final key = '${item.clientPhone}_${item.clientName}';
+      ordersByClient.putIfAbsent(key, () => []).add(item);
+    }
+
+    bool allSuccess = true;
+
+    for (var entry in ordersByClient.entries) {
+      final clientOrders = entry.value;
+      final client = clientOrders.first;
+      final totalAmount =
+          clientOrders.fold(0.0, (sum, o) => sum + o.totalPrice);
+      final now = DateTime.now().toUtc().toIso8601String();
+
+      final items = clientOrders.map((o) {
+        final json = o.toMap();
+        json['Дата'] = now;
+        return json;
+      }).toList();
+
+      final success = await createOrder(
+        clientId: client.clientPhone,
+        employeeId: 'автомат',
+        items: items,
+        totalAmount: totalAmount,
+        deliveryCity:
+            '', // Если у вас тут нужны реальные данные, добавьте параметры в этот метод
+        deliveryAddress: '',
+        comment: '',
+      );
+
+      if (!success) allSuccess = false;
+    }
+
+    return allSuccess;
+  }
+
   /// Альтернативный метод, возвращающий полный ответ (для отладки)
   Future<Map<String, dynamic>?> createOrderWithDetails({
     required String clientId,

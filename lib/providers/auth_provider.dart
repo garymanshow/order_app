@@ -93,10 +93,14 @@ class AuthProvider with ChangeNotifier {
 
     if (hasCachedData) {
       print('✅ Загружены кэшированные данные');
+
+      // 🔥 ЗАЩИТА: Проверяем, не забыл ли менеджер отправить заказы перед закрытием вкладки
+      await _restoreUnsentDrafts();
+
       _isLoading = false;
       notifyListeners();
 
-      // 🔥 НОВОЯ ЛОГИКА: Проверяем метаданные, а не тянем весь прайс
+      // Легкая проверка метаданных
       _checkMetadataOnStart();
     } else {
       _isLoading = false;
@@ -298,7 +302,7 @@ class AuthProvider with ChangeNotifier {
     await _silentSync?.syncNow();
   }
 
-  // 🔥 БЕЗОПАССНЫЙ ОБЕРТКА ДЛЯ PUSH
+  // 🔥 БЕЗОПАСНАЯ ОБЕРТКА ДЛЯ PUSH
   Future<void> _handlePushSubscriptionSafe(String phone) async {
     try {
       await _handlePushSubscription(phone);
@@ -385,6 +389,9 @@ class AuthProvider with ChangeNotifier {
       // Сохраняем в Hive
       await saveToCache();
 
+      // вызов восстановления черновиков
+      await _restoreUnsentDrafts();
+
       // Сохраняем в SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
@@ -466,6 +473,78 @@ class AuthProvider with ChangeNotifier {
     if (_clientData != null) {
       _clientData!.orders = updatedOrders;
       notifyListeners();
+    }
+  }
+
+  // ==========================================
+  // ЗАЩИТА ОТ ЗАБЫВЧИВОСТИ МЕНЕДЖЕРА
+  // ==========================================
+
+  /// Удаляет успешно отправленные заказы из локального списка,
+  /// чтобы они не висели мертвым грузом до завтрашней синхронизации
+  void removeSuccessfullySentOrders(List<OrderItem> sentOrders) {
+    if (_clientData == null) return;
+
+    // Собираем ключи отправленных (Телефон_Имя_ID_Товара)
+    final sentKeys = sentOrders
+        .map((o) => '${o.clientPhone}_${o.clientName}_${o.priceListId}')
+        .toSet();
+
+    // Удаляем из локального списка ТОЛЬКО те, что улетели
+    _clientData!.orders.removeWhere((o) =>
+        sentKeys.contains('${o.clientPhone}_${o.clientName}_${o.priceListId}'));
+
+    // Сохраняем очищенное состояние в кэш
+    saveToCache();
+    notifyListeners();
+  }
+
+  /// Срабатывает при авторизации. Ищет в глубоком кэше (Prefs) незаконченные заказы
+  /// и возвращает их в рабочую базу, чтобы менеджер не потерял накликанное.
+  Future<void> _restoreUnsentDrafts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final draftJsonString = prefs.getString('all_orders');
+
+      if (draftJsonString == null || draftJsonString.isEmpty) return;
+
+      final List<dynamic> draftList = jsonDecode(draftJsonString);
+
+      if (draftList.isEmpty) return;
+
+      // Ищем только настоящие черновики (isLocalDraft == true)
+      final unsentDrafts = draftList
+          .map((item) => OrderItem.fromJson(item as Map<String, dynamic>))
+          .where((order) => order.isLocalDraft && order.quantity > 0)
+          .toList();
+
+      if (unsentDrafts.isEmpty) return;
+
+      print(
+          '🛡️ НАЙДЕНЫ НЕОТПРАВЛЕННЫЕ ЧЕРНОВИКИ: ${unsentDrafts.length} шт. Восстанавливаем...');
+
+      if (_clientData != null) {
+        // Убираем дубли на всякий случай (если сервер вдруг узнал о них)
+        _clientData!.orders.removeWhere((existingOrder) => unsentDrafts.any(
+            (draft) =>
+                draft.clientPhone == existingOrder.clientPhone &&
+                draft.clientName == existingOrder.clientName &&
+                draft.priceListId == existingOrder.priceListId));
+
+        // Добавляем найденные черновики в рабочую базу
+        _clientData!.orders.addAll(unsentDrafts);
+
+        // Сохраняем обновленную базу обратно в Hive
+        await saveToCache();
+
+        // Очищаем буфер в SharedPreferences, чтобы не восстанавливать их больше
+        await prefs.remove('all_orders');
+
+        notifyListeners();
+        print('✅ ЧЕРНОВИКИ УСПЕШНО ВОССТАНОВЛЕНЫ В СПИСОК ЗАКАЗОВ');
+      }
+    } catch (e) {
+      print('⚠️ Ошибка восстановления черновиков: $e');
     }
   }
 

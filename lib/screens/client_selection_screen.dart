@@ -37,7 +37,7 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
     });
   }
 
-  // Расчет суммы клиента из его заказов
+  // Расчет суммы клиента: Берем ВСЁ со статусом "оформлен" (и отправленное, и накликанное)
   double _calculateClientTotal(
     Client client,
     List<OrderItem> orders,
@@ -48,6 +48,7 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
         .where((o) =>
             o.clientPhone == client.phone &&
             o.clientName == client.name &&
+            o.status == 'оформлен' && // <--- Жесткий фильтр по статусу
             o.quantity > 0)
         .toList();
 
@@ -154,15 +155,16 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
     }
   }
 
-  // Отправка всех заказов
+  // Метод отправки всех заказов
   Future<void> _submitAllOrders(
       BuildContext context, AuthProvider authProvider) async {
-    final cartProvider = Provider.of<CartProvider>(context, listen: false);
     final apiService = ApiService();
 
-    // 🔥 ИСПРАВЛЕНИЕ: Считаем заказы напрямую из глобального списка authProvider
+    // 🔥 БЕРЕМ ИЗ ГЛОБАЛЬНОГО СПИСКА ВСЁ, ЧТО ОФОРМЛЕНО
     final allOrders = authProvider.clientData!.orders;
-    final ordersReadyToSend = allOrders.where((o) => o.quantity > 0).toList();
+    final ordersReadyToSend = allOrders
+        .where((o) => o.status == 'оформлен' && o.quantity > 0)
+        .toList();
 
     if (ordersReadyToSend.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -228,26 +230,27 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
 
     if (confirm != true) return;
 
-    // 🔥 ВАЖНО: Подкидываем ВСЕ заказы в CartProvider для отправки пачкой
-    cartProvider.forceUpdateAllOrdersForSubmission(
-      authProvider.clientData!.orders,
-      authProvider.currentUser as Client?,
-    );
-
-    // 🔥 ПЕРЕДАЕМ СТАТУС "оформлен" ЯВНО
-    final success = await cartProvider.submitAllOrders(
-      context,
-      apiService,
-    );
+    // 🔥 ПЕРЕДАЕМ ТОЛЬКО ОФОРМЛЕННЫЕ ЗАКАЗЫ НАПРЯМУЮ В ОТПРАВКУ
+    final success = await apiService.submitOrderBatch(ordersReadyToSend);
 
     if (context.mounted) {
       if (success) {
+        // Успешно отправленные заказы нужно удалить из локальной базы,
+        // чтобы они не висели со статусом "оформлен" до следующей синхронизации
+        authProvider.removeSuccessfullySentOrders(ordersReadyToSend);
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Заказы успешно отправлены!')),
+          const SnackBar(
+            content: Text('✅ Заказы успешно отправлены!'),
+            backgroundColor: Colors.green,
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ошибка при обновлении заказов')),
+          const SnackBar(
+            content: Text('❌ Ошибка при отправке заказов'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -402,6 +405,14 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
                 // Высота одной строки ListTile примерно 72 пикселя + отступ
                 final topOffset = index * 72.0 + 16.0;
 
+                // Проверяем, есть ли среди заказов этого клиента не отправленные (черновики)
+                final hasUnsentDrafts = authProvider.clientData!.orders.any(
+                    (o) =>
+                        o.clientPhone == item.client.phone &&
+                        o.clientName == item.client.name &&
+                        o.isLocalDraft == true &&
+                        o.quantity > 0);
+
                 return Positioned(
                   top: topOffset,
                   right: 8,
@@ -410,38 +421,44 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
                     onTap: () {
                       print(
                           '🛒 Нажатие на корзину клиента: ${item.client.name}');
-
-                      // 1. Выбираем клиента
                       authProvider.selectClient(item.client);
-
-                      // 2. Переходим КОНКРЕТНО в корзину
                       Navigator.pushNamed(context, '/cart');
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        // 🔥 ДИНАМИЧЕСКИЙ ЦВЕТ ФОНА И РАМКИ
-                        color: item.meetsMinimum
-                            ? Colors.green.shade50
-                            : Colors.red.shade50,
+                        // 🔥 ИЗМЕНЯЕМ ЦВЕТ: Если есть черновики - ОРАНЖЕВЫЙ (Внимание!), иначе как обычно
+                        color: hasUnsentDrafts
+                            ? Colors.orange.shade50
+                            : (item.meetsMinimum
+                                ? Colors.green.shade50
+                                : Colors.red.shade50),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: item.meetsMinimum
-                              ? Colors.green.shade200
-                              : Colors.red.shade200,
+                          color: hasUnsentDrafts
+                              ? Colors.orange.shade400 // Яркая рамка
+                              : (item.meetsMinimum
+                                  ? Colors.green.shade200
+                                  : Colors.red.shade200),
+                          // Если есть черновики, делаем рамку потолще
+                          width: hasUnsentDrafts ? 2.0 : 1.0,
                         ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // 🔥 ДИНАМИЧЕСКИЙ ЦВЕТ ИКОНКИ
                           Icon(
-                            Icons.shopping_cart,
+                            // 🔥 ИКОНКА: Если есть черновики - warning знак
+                            hasUnsentDrafts
+                                ? Icons.warning_amber_rounded
+                                : Icons.shopping_cart,
                             size: 18,
-                            color: item.meetsMinimum
-                                ? Colors.green.shade700
-                                : Colors.red.shade700,
+                            color: hasUnsentDrafts
+                                ? Colors.orange.shade700
+                                : (item.meetsMinimum
+                                    ? Colors.green.shade700
+                                    : Colors.red.shade700),
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -449,10 +466,11 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              // 🔥 ДИНАМИЧЕСКИЙ ЦВЕТ ТЕКСТА
-                              color: item.meetsMinimum
-                                  ? Colors.green.shade800
-                                  : Colors.red.shade800,
+                              color: hasUnsentDrafts
+                                  ? Colors.orange.shade800
+                                  : (item.meetsMinimum
+                                      ? Colors.green.shade800
+                                      : Colors.red.shade800),
                             ),
                           ),
                         ],
