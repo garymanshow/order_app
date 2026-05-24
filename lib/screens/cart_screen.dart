@@ -97,6 +97,7 @@ class CartScreen extends StatelessWidget {
                             order.priceListId,
                             order.quantity - product.multiplicity,
                             product.multiplicity,
+                            Navigator.of(context).context,
                           );
                         },
                       ),
@@ -112,6 +113,7 @@ class CartScreen extends StatelessWidget {
                             order.priceListId,
                             order.quantity + product.multiplicity,
                             product.multiplicity,
+                            Navigator.of(context).context,
                           );
                         },
                       ),

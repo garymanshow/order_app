@@ -68,8 +68,9 @@ class _PriceListScreenState extends State<PriceListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<AuthProvider, CartProvider>(
-      builder: (context, authProvider, cartProvider, child) {
+    // 🔥 СЛУШАЕМ ТОЛЬКО AuthProvider. Он отвечает за список товаров и общую сумму.
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, child) {
         if (!authProvider.isAuthenticated || authProvider.isLoading) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -107,11 +108,13 @@ class _PriceListScreenState extends State<PriceListScreen> {
         }
 
         // Инициализация CartProvider если нужно
+        final cartProvider = Provider.of<CartProvider>(context, listen: false);
+
         if (!cartProvider.isInitialized) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             cartProvider.loadCartForClient(
               currentClient,
-              clientData.orders, // Передаем ГЛОБАЛЬНЫЙ список всех заказов
+              clientData.orders,
               clientData.products,
             );
             cartProvider.loadPriceListMode();
@@ -134,17 +137,13 @@ class _PriceListScreenState extends State<PriceListScreen> {
           clientData: clientData,
         );
 
-        final clientOrders = clientData.orders
+        // 🔥 Читаем сумму напрямую из массива (без лишних переменных)
+        double total = clientData.orders
             .where((o) =>
                 o.clientPhone == currentClient.phone &&
                 o.clientName == currentClient.name &&
                 o.quantity > 0)
-            .toList();
-
-        double total = 0;
-        for (var order in clientOrders) {
-          total += order.totalPrice;
-        }
+            .fold(0.0, (sum, o) => sum + o.totalPrice);
 
         final titleText = total > 0
             ? 'Прайс-лист: выбрано на сумму ${total.toStringAsFixed(2)}'
@@ -167,11 +166,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
               onPressed: () {
                 final authProvider =
                     Provider.of<AuthProvider>(context, listen: false);
-
-                // 🔥 СБРАСЫВАЕМ ВЫБОР КЛИЕНТА
                 authProvider.resetClientSelection();
-
-                // Используем pushReplacementNamed для возврата
                 Navigator.pushReplacementNamed(context, '/');
               },
             ),
@@ -190,7 +185,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
                       );
                       _checkNotificationStatus();
                     },
-                    tooltip: 'Уведомления о заказах',
+                    tooltip: 'Уведомления о заказов',
                   ),
                   if (_showNotificationDot)
                     Positioned(
@@ -249,14 +244,17 @@ class _PriceListScreenState extends State<PriceListScreen> {
           body: filteredProducts.isEmpty
               ? const Center(child: Text('Нет товаров для отображения'))
               : ListView.builder(
-                  key: ValueKey(currentClient.phone),
+                  // УБРАЛИ ValueKey СЮДА, ОН БОЛЬШЕ НЕ НУЖЕН
                   padding: const EdgeInsets.all(8),
                   itemCount: filteredProducts.length,
                   itemBuilder: (context, index) {
                     final product = filteredProducts[index];
-                    final quantity = cartProvider.getQuantity(product.id);
+
+                    final cartProvider =
+                        Provider.of<CartProvider>(context, listen: false);
 
                     return GestureDetector(
+                      key: ValueKey(product.id), // Ключ только по ID товара
                       onTap: () {
                         Navigator.push(
                           context,
@@ -270,12 +268,15 @@ class _PriceListScreenState extends State<PriceListScreen> {
                       },
                       child: ProductCard(
                         product: product,
-                        quantity: quantity,
+                        quantity: cartProvider
+                            .getQuantity(product.id), // Читаем напрямую
                         onQuantityChanged: (newQuantity) {
                           cartProvider.setQuantity(
+                            // Вызываем БЕЗ await
                             product.id,
                             newQuantity,
                             product.multiplicity,
+                            Navigator.of(context).context,
                           );
                         },
                       ),

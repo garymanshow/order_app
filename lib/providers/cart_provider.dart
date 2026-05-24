@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:collection/collection.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -16,6 +17,7 @@ import 'auth_provider.dart';
 
 class CartProvider with ChangeNotifier {
   Client? _currentClient;
+  List<OrderItem> _allOrders = [];
   List<Product>? _allProducts;
   DeliveryCondition? _deliveryCondition;
   PriceListMode _priceListMode = PriceListMode.full;
@@ -33,21 +35,14 @@ class CartProvider with ChangeNotifier {
   // ==========================================
 
   List<OrderItem> get cartItems {
-    if (_currentClient == null || _auth?.clientData == null) return [];
-    return _auth!.clientData!.orders
-        .where((o) =>
-            o.clientPhone == _currentClient!.phone &&
-            o.clientName == _currentClient!.name &&
-            o.quantity > 0)
-        .toList();
+    if (_currentClient == null || _allOrders.isEmpty) return [];
+    return _allOrders.where((o) => o.quantity > 0).toList();
   }
 
   int getQuantity(String productId) {
-    if (_currentClient == null || _auth?.clientData == null) return 0;
-    final order = _auth!.clientData!.orders.firstWhereOrNull((o) =>
-        o.clientPhone == _currentClient!.phone &&
-        o.clientName == _currentClient!.name &&
-        o.priceListId == productId);
+    if (_currentClient == null || _allOrders.isEmpty) return 0;
+    final order =
+        _allOrders.firstWhereOrNull((o) => o.priceListId == productId);
     return order?.quantity ?? 0;
   }
 
@@ -63,7 +58,9 @@ class CartProvider with ChangeNotifier {
       Client client, List<OrderItem> globalOrders, List<Product> allProducts) {
     _currentClient = client;
     _allProducts = allProducts;
-    // НИКАКОЙ ЛОКАЛЬНОЙ ПАМЯТИ. Мы просто запоминаем, кто сейчас выбран.
+    // Забираем нужные товары в локальную память
+    _syncFromGlobal();
+
     _isInitialized = true;
     _updateDeliveryCondition();
     notifyListeners();
@@ -86,7 +83,7 @@ class CartProvider with ChangeNotifier {
   void reset() {
     _currentClient = null;
     _isInitialized = false;
-    // _allOrders НЕ ТРОГАЕМ!
+//    _allOrders.clear(); // Очищаем корзину при выходе из прайса
     notifyListeners();
   }
 
@@ -104,38 +101,25 @@ class CartProvider with ChangeNotifier {
   // ==========================================
   // ЛОГИКА КОРЗИНЫ
   // ==========================================
-
-  Future<void> setQuantity(
-      String productId, int quantity, int multiplicity) async {
-    if (_currentClient == null ||
-        _allProducts == null ||
-        _auth?.clientData == null) {
-      return;
-    }
+  Future<int> setQuantity(String productId, int quantity, int multiplicity,
+      BuildContext context) async {
+    if (_currentClient == null || _allProducts == null) return 0;
 
     final adjustedQuantity =
         ((quantity / multiplicity).round() * multiplicity).clamp(0, 999);
     final product = _allProducts!.firstWhere((p) => p.id == productId);
 
-    // ИЩЕМ И МЕНЯЕМ СРАЗУ В ГЛОБАЛЬНОМ СПИСКЕ (через AuthProvider)
-    final globalOrders = _auth!.clientData!.orders;
-
-    final existingIndex = globalOrders.indexWhere((o) =>
-        o.clientPhone == _currentClient!.phone &&
-        o.clientName == _currentClient!.name &&
-        o.priceListId == productId);
+    final existingIndex =
+        _allOrders.indexWhere((o) => o.priceListId == productId);
 
     if (adjustedQuantity <= 0) {
-      if (existingIndex != -1) {
-        globalOrders.removeAt(existingIndex);
-      }
+      if (existingIndex != -1) _allOrders.removeAt(existingIndex);
     } else if (existingIndex != -1) {
-      final orderToUpdate = globalOrders[existingIndex];
-      orderToUpdate.quantity = adjustedQuantity;
-      orderToUpdate.totalPrice = product.price * adjustedQuantity;
-      orderToUpdate.status = '';
+      _allOrders[existingIndex].quantity = adjustedQuantity;
+      _allOrders[existingIndex].totalPrice = product.price * adjustedQuantity;
+      _allOrders[existingIndex].status = '';
     } else {
-      globalOrders.add(OrderItem(
+      _allOrders.add(OrderItem(
         status: '',
         productName: product.name,
         quantity: adjustedQuantity,
@@ -147,24 +131,50 @@ class CartProvider with ChangeNotifier {
       ));
     }
 
-    // Сохраняем и будим ТОЛЬКО AuthProvider. Он обновит и шапку прайса, и экран выбора.
     await _saveOrdersToPreferences();
-    _auth!.notifyListeners();
+    // Обновляем UI только этого провайдера и шапки
+    notifyListeners();
+
+    // И синхронизируем обратно с AuthProvider, чтобы экран выбора клиентов видел сумму
+    if (_auth?.clientData != null) {
+      _auth!.clientData!.orders.removeWhere((o) =>
+          o.clientPhone == _currentClient!.phone &&
+          o.clientName == _currentClient!.name);
+      _auth!.clientData!.orders.addAll(_allOrders);
+      _auth!.notifyListeners();
+    }
+
+    // 🔥 ПРИНУДИТЕЛЬНАЯ ПЕРИСОВКА ДЛЯ ПРАЙСА (Решение бага кэша в Web)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      (context as Element).markNeedsBuild();
+    });
+
+    return adjustedQuantity;
   }
 
   void clearClientsCart(List<String> successClientKeys) {
-    if (_auth?.clientData == null) return;
-    final globalOrders = _auth!.clientData!.orders;
+    if (_allOrders.isEmpty) return;
 
-    globalOrders.removeWhere((order) {
+    _allOrders.removeWhere((order) {
       if (order.quantity <= 0) return false;
       final key = '${order.clientPhone}_${order.clientName}';
       return successClientKeys.contains(key);
     });
 
     _saveOrdersToPreferences();
-    _auth!.notifyListeners(); // Будим экран выбора
+
+    // Синхронизируем удаление с AuthProvider
+    if (_auth?.clientData != null) {
+      _auth!.clientData!.orders.removeWhere((o) =>
+          o.clientPhone == _currentClient!.phone &&
+          o.clientName == _currentClient!.name);
+      _auth!.clientData!.orders.addAll(_allOrders);
+      _auth!.notifyListeners();
+    }
+
+    notifyListeners();
   }
+
   // ==========================================
   // ОТПРАВКА
   // ==========================================
@@ -350,7 +360,7 @@ class CartProvider with ChangeNotifier {
   }
 
   Future<void> _saveOrdersToPreferences() async {
-    if (_auth?.clientData == null) return; // Было: if (_allOrders == null)
+    if (_auth?.clientData == null) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('all_orders',
         jsonEncode(_auth!.clientData!.orders.map((o) => o.toJson()).toList()));
@@ -363,8 +373,6 @@ class CartProvider with ChangeNotifier {
 
   void forceUpdateAllOrdersForSubmission(
       List<OrderItem> allOrders, Client? client) {
-    // Используется на экране выбора клиентов для отправки пачкой.
-    // Заменяем глобальный список на переданный (хоть это и тот же самый список)
     if (_auth?.clientData != null) {
       _auth!.clientData!.orders = allOrders;
     }
@@ -373,9 +381,31 @@ class CartProvider with ChangeNotifier {
   }
 
   void updateData(List<OrderItem>? allOrders, List<Product>? allProducts) {
-    // Если этот метод где-то вызывается, просто обновляем продукты
     _allProducts = allProducts;
     _updateDeliveryCondition();
     notifyListeners();
+  }
+
+  // 🔥 ЖЕЛЕЗОБЕТОННОЕ ОБНОВЛЕНИЕ UI ДЛЯ WEB
+  void _forceUIUpdate() {
+    if (_auth != null) {
+      // Если мы находимся внутри виджета, просто вызываем rebuild дерева
+      if (_auth!.navigatorKey.currentContext != null) {
+        (_auth!.navigatorKey.currentContext as Element).markNeedsBuild();
+      }
+    }
+  }
+
+  // 🔥 СИНХРОНИЗАТОР: Забираем свежие данные из AuthProvider
+  void _syncFromGlobal() {
+    if (_currentClient != null && _auth?.clientData != null) {
+      final globalOrders = _auth!.clientData!.orders;
+      // Оставляем ТОЛЬКО товары текущего клиента
+      _allOrders = globalOrders
+          .where((o) =>
+              o.clientPhone == _currentClient!.phone &&
+              o.clientName == _currentClient!.name)
+          .toList();
+    }
   }
 }

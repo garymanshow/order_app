@@ -456,6 +456,7 @@ class ProductDetailCard extends StatelessWidget {
                                     product.id,
                                     quantity - product.packagingQuantity,
                                     product.packagingQuantity,
+                                    Navigator.of(context).context,
                                   )
                               : null,
                         ),
@@ -476,6 +477,7 @@ class ProductDetailCard extends StatelessWidget {
                             product.id,
                             quantity + product.packagingQuantity,
                             product.packagingQuantity,
+                            Navigator.of(context).context,
                           ),
                         ),
                       ],
