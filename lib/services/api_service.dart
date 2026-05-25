@@ -326,6 +326,14 @@ class ApiService {
         return json;
       }).toList();
 
+      // 🔥 СЛЕДСТВИЕ: ПЕЧАТАЕМ ТО, ЧТО МЫ ДЕЙСТВИТЕЛЬНО ОТПРАВЛЯЕМ НА СЕРВЕР
+      print('🕵️‍♂️ ОТПРАВКА КЛИЕНТА: ${client.clientName}');
+      print('🕵️‍♂️ КОЛ-ВО ПОЗИЦИЙ В ПАКЕТЕ: ${items.length}');
+      for (var itemJson in items) {
+        print('🕵️‍♂️ JSON ДЛЯ SERVERA: $itemJson');
+      }
+      // КОНЕЦ СЛЕДСТВИЯ
+
       final success = await createOrder(
         clientId: client.clientPhone,
         employeeId: 'автомат',

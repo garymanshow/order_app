@@ -480,22 +480,37 @@ class AuthProvider with ChangeNotifier {
   // ЗАЩИТА ОТ ЗАБЫВЧИВОСТИ МЕНЕДЖЕРА
   // ==========================================
 
-  /// Удаляет успешно отправленные заказы из локального списка,
-  /// чтобы они не висели мертвым грузом до завтрашней синхронизации
-  void removeSuccessfullySentOrders(List<OrderItem> sentOrders) {
+  /// Меняем статус локальных заказов на "Отправлено на сервер"
+  void markOrdersAsSent(List<OrderItem> sentOrders) {
     if (_clientData == null) return;
 
-    // Собираем ключи отправленных (Телефон_Имя_ID_Товара)
-    final sentKeys = sentOrders
-        .map((o) => '${o.clientPhone}_${o.clientName}_${o.priceListId}')
-        .toSet();
+    // Фильтруем только валидные заказы (у которых есть ID и Имя)
+    final validSentOrders = sentOrders
+        .where((o) => o.clientName.isNotEmpty && o.priceListId.isNotEmpty)
+        .toList();
 
-    // Удаляем из локального списка ТОЛЬКО те, что улетели
-    _clientData!.orders.removeWhere((o) =>
-        sentKeys.contains('${o.clientPhone}_${o.clientName}_${o.priceListId}'));
+    if (validSentOrders.isEmpty) return;
 
-    // Сохраняем очищенное состояние в кэш
+    // 🔥 МАГИЯ: Мы НЕ УДАЛЯЕМ заказы. Мы просто меняем у них флаг!
+    for (int i = 0; i < _clientData!.orders.length; i++) {
+      final localOrder = _clientData!.orders[i];
+
+      // Ищем этот заказ в списке успешно отправленных
+      final wasSent = validSentOrders.any((sentOrder) =>
+          localOrder.clientPhone == sentOrder.clientPhone &&
+          localOrder.clientName == sentOrder.clientName &&
+          localOrder.priceListId == sentOrder.priceListId);
+
+      if (wasSent) {
+        // Меняем флаг на false (больше не черновик)
+        _clientData!.orders[i] = localOrder.copyWith(isLocalDraft: false);
+      }
+    }
+
+    // Сохраняем обновленное состояние в кэш
     saveToCache();
+
+    // Заставляем главный экран перерисоваться (появятся синие кнопки)
     notifyListeners();
   }
 

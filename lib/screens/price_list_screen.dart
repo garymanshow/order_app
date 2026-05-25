@@ -111,6 +111,9 @@ class _PriceListScreenState extends State<PriceListScreen> {
         final cartProvider = Provider.of<CartProvider>(context, listen: false);
 
         if (!cartProvider.isInitialized) {
+          // 🔥 СНАЧАЛА УСТАНАВЛИВАЕМ СВЯЗЬ!
+          cartProvider.setAuthProvider(authProvider);
+
           WidgetsBinding.instance.addPostFrameCallback((_) {
             cartProvider.loadCartForClient(
               currentClient,

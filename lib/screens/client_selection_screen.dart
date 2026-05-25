@@ -155,12 +155,12 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
     }
   }
 
-  // Метод отправки всех заказов
+  // Отправка всех заказов
   Future<void> _submitAllOrders(
       BuildContext context, AuthProvider authProvider) async {
     final apiService = ApiService();
 
-    // 🔥 БЕРЕМ ИЗ ГЛОБАЛЬНОГО СПИСКА ВСЁ, ЧТО ОФОРМЛЕНО
+    // Берем из глобального списка всё, что оформлено
     final allOrders = authProvider.clientData!.orders;
     final ordersReadyToSend = allOrders
         .where((o) => o.status == 'оформлен' && o.quantity > 0)
@@ -230,19 +230,50 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
 
     if (confirm != true) return;
 
-    // 🔥 ПЕРЕДАЕМ ТОЛЬКО ОФОРМЛЕННЫЕ ЗАКАЗЫ НАПРЯМУЮ В ОТПРАВКУ
-    final success = await apiService.submitOrderBatch(ordersReadyToSend);
+    // --- ЗДЕСЬ СОЗДАЮТСЯ ПЕРЕМЕННЫЕ ---
+    final failedClients = clientsWithIssues;
 
+    // Простая и понятная группировка по клиентам
+    final validOrders = <String, List<OrderItem>>{};
+    for (var item in ordersReadyToSend) {
+      // Пропускаем тех, кто не прошел по минимальной сумме
+      if (failedClients.any((f) => item.clientName.startsWith(f))) continue;
+
+      final key = '${item.clientPhone}_${item.clientName}';
+      validOrders.putIfAbsent(key, () => []);
+      validOrders[key]!.add(item);
+    }
+
+    if (validOrders.isEmpty) return;
+
+    // Вызываем отправку
+    final success = await apiService
+        .submitOrderBatch(validOrders.values.expand((list) => list).toList());
+
+    // --- ЗДЕСЬ ОНИ ИСПОЛЬЗУЮТСЯ ---
     if (context.mounted) {
       if (success) {
-        // Успешно отправленные заказы нужно удалить из локальной базы,
-        // чтобы они не висели со статусом "оформлен" до следующей синхронизации
-        authProvider.removeSuccessfullySentOrders(ordersReadyToSend);
+        // Отправляем на сервер ТОЛЬКО те заказы, которые реально улетели
+        final actuallySentOrders =
+            validOrders.values.expand((list) => list).toList();
+
+        if (actuallySentOrders.isNotEmpty) {
+          authProvider.markOrdersAsSent(actuallySentOrders);
+        }
+
+        String successText =
+            '✅ Успешно отправлено заказов: ${validOrders.length}';
+        if (failedClients.isNotEmpty) {
+          successText +=
+              '\n⚠️ Пропущено из-за минималки: ${failedClients.length}';
+        }
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Заказы успешно отправлены!'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Text(successText),
+            backgroundColor:
+                failedClients.isNotEmpty ? Colors.orange : Colors.green,
+            duration: const Duration(seconds: 4),
           ),
         );
       } else {
@@ -402,78 +433,112 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
 
                 if (!hasItems) return const SizedBox.shrink();
 
-                // Высота одной строки ListTile примерно 72 пикселя + отступ
                 final topOffset = index * 72.0 + 16.0;
 
-                // Проверяем, есть ли среди заказов этого клиента не отправленные (черновики)
-                final hasUnsentDrafts = authProvider.clientData!.orders.any(
-                    (o) =>
+                // 🔥 ЛОГИКА ОПРЕДЕЛЕНИЯ СТАТУСА ОТПРАВКИ
+                final clientOrders = authProvider.clientData!.orders
+                    .where((o) =>
                         o.clientPhone == item.client.phone &&
                         o.clientName == item.client.name &&
-                        o.isLocalDraft == true &&
-                        o.quantity > 0);
+                        o.quantity > 0 &&
+                        o.status == 'оформлен')
+                    .toList();
+
+                final hasUnsentDrafts =
+                    clientOrders.any((o) => o.isLocalDraft == true);
+                // Если есть хоть один черновик — считаем весь заказ не отправленным.
+                // Если черновиков нет, значит всё чисто отправлено на сервер.
+                final isFullySent = clientOrders.isNotEmpty && !hasUnsentDrafts;
+
+                // 🔥 НАСТРОЙКИ ЦВЕТОВ С УЧЕТОМ МИНИМАЛЬНОЙ СУММЫ И СТАТУСА ОТПРАВКИ
+                Color bgColor;
+                Color borderColor;
+                Color iconColor;
+                Color textColor;
+                IconData iconData;
+                String tooltipMessage;
+                double borderWidth = 1.0;
+
+                if (hasUnsentDrafts) {
+                  // --- ЗАКАЗ ЕЩЕ НЕ ОТПРАВЛЕН ---
+                  if (!item.meetsMinimum) {
+                    // Не отправлен + Нет минималки (Двойная тревога)
+                    bgColor = Colors.red.shade50;
+                    borderColor = Colors.red.shade400;
+                    iconColor =
+                        Colors.orange.shade700; // Оранжевый знак "внимание"
+                    textColor = Colors.red.shade800;
+                    iconData = Icons.warning_amber_rounded;
+                    tooltipMessage =
+                        '⚠️ Заказ не будет отправлен! (меньше минималки)';
+                    borderWidth = 2.0;
+                  } else {
+                    // Не отправлен + Минималка есть (Пора отправлять)
+                    bgColor = Colors.orange.shade50;
+                    borderColor = Colors.orange.shade400;
+                    iconColor = Colors.orange.shade700;
+                    textColor = Colors.orange.shade800;
+                    iconData = Icons.warning_amber_rounded;
+                    tooltipMessage = '⚠️ Заказ готов к отправке (не отправлен)';
+                    borderWidth = 2.0;
+                  }
+                } else if (isFullySent) {
+                  // --- ЗАКАЗ УСПЕШНО ОТПРАВЛЕН НА СЕРВЕР ---
+                  bgColor = Colors.blue.shade50;
+                  borderColor = Colors.blue.shade200;
+                  iconColor = Colors.blue.shade700;
+                  textColor = Colors.blue.shade800;
+                  iconData = Icons.thumb_up;
+                  tooltipMessage = '✅ Заказ отправлен';
+                } else {
+                  // Эта ветка технически не сработает из-за hasItems,
+                  // но оставляем для безопасности компиляции
+                  bgColor = Colors.green.shade50;
+                  borderColor = Colors.green.shade200;
+                  iconColor = Colors.green.shade700;
+                  textColor = Colors.green.shade800;
+                  iconData = Icons.shopping_cart;
+                  tooltipMessage = 'Корзина';
+                }
 
                 return Positioned(
                   top: topOffset,
                   right: 8,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () {
-                      print(
-                          '🛒 Нажатие на корзину клиента: ${item.client.name}');
-                      authProvider.selectClient(item.client);
-                      Navigator.pushNamed(context, '/cart');
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        // 🔥 ИЗМЕНЯЕМ ЦВЕТ: Если есть черновики - ОРАНЖЕВЫЙ (Внимание!), иначе как обычно
-                        color: hasUnsentDrafts
-                            ? Colors.orange.shade50
-                            : (item.meetsMinimum
-                                ? Colors.green.shade50
-                                : Colors.red.shade50),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: hasUnsentDrafts
-                              ? Colors.orange.shade400 // Яркая рамка
-                              : (item.meetsMinimum
-                                  ? Colors.green.shade200
-                                  : Colors.red.shade200),
-                          // Если есть черновики, делаем рамку потолще
-                          width: hasUnsentDrafts ? 2.0 : 1.0,
+                  child: Tooltip(
+                    message: tooltipMessage,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () {
+                        authProvider.selectClient(item.client);
+                        Navigator.pushNamed(context, '/cart');
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: borderColor,
+                            width:
+                                borderWidth, // Толстая рамка для тревожных состояний
+                          ),
                         ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            // 🔥 ИКОНКА: Если есть черновики - warning знак
-                            hasUnsentDrafts
-                                ? Icons.warning_amber_rounded
-                                : Icons.shopping_cart,
-                            size: 18,
-                            color: hasUnsentDrafts
-                                ? Colors.orange.shade700
-                                : (item.meetsMinimum
-                                    ? Colors.green.shade700
-                                    : Colors.red.shade700),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${item.total.toStringAsFixed(0)} ₽',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: hasUnsentDrafts
-                                  ? Colors.orange.shade800
-                                  : (item.meetsMinimum
-                                      ? Colors.green.shade800
-                                      : Colors.red.shade800),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(iconData, size: 18, color: iconColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${item.total.toStringAsFixed(0)} ₽',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: textColor,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
