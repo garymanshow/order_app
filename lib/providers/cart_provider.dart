@@ -60,13 +60,20 @@ class CartProvider with ChangeNotifier {
     _currentClient = client;
     _allProducts = allProducts;
 
-    // 🔥 ЗАГРУЖАЕМ В ПЕСОЧНИЦУ: Только заказы этого клиента со статусом "оформлен"
+    // 🔥 РЕНТГЕН
+    print('🏷️ loadCartForClient для: ${client.name}');
+    print('🏷️ Всего глобальных заказов пришло: ${globalOrders.length}');
+
     _allOrders = globalOrders
         .where((o) =>
             o.clientPhone == client.phone &&
             o.clientName == client.name &&
             o.status == 'оформлен')
         .toList();
+
+    // 🔥 РЕНТГЕН
+    print(
+        '🏷️ Отфильтровано в песочницу (оформленных у этого клиента): ${_allOrders.length}');
 
     _isInitialized = true;
     _updateDeliveryCondition();
@@ -88,8 +95,6 @@ class CartProvider with ChangeNotifier {
   }
 
   void reset() {
-    // При выходе из клиента ВОЗВРАЩАЕМ изменения в AuthProvider, но НЕ ОЧИЩАЕМ песочницу!
-    _syncToGlobal(saveToDisk: true);
     _currentClient = null;
     _isInitialized = false;
     notifyListeners();
@@ -178,15 +183,31 @@ class CartProvider with ChangeNotifier {
 
   /// Выгружает текущие заказы из песочницы обратно в общий список AuthProvider
   void _syncToGlobal({required bool saveToDisk}) {
-    if (_auth?.clientData == null || _currentClient == null) return;
+    print('🔍 _syncToGlobal ЗАПУЩЕН');
+    print('🔍 _auth is null? ${_auth == null}');
+    print('🔍 _auth.clientData is null? ${_auth?.clientData == null}');
+    print(
+        '🔍 _currentClient phone: ${_currentClient?.phone}, name: ${_currentClient?.name}');
+    print('🔍 Размер песочницы _allOrders: ${_allOrders.length}');
+
+    if (_auth?.clientData == null || _currentClient == null) {
+      print('❌ _syncToGlobal ПРЕРВАН: Нет данных или клиента');
+      return;
+    }
 
     // 1. Удаляем старые записи по этому клиенту из глобального списка
+    final beforeCount = _auth!.clientData!.orders.length;
     _auth!.clientData!.orders.removeWhere((o) =>
         o.clientPhone == _currentClient!.phone &&
         o.clientName == _currentClient!.name);
+    print(
+        '🔍 Удалено старых записей: ${beforeCount - _auth!.clientData!.orders.length}');
 
     // 2. Добавляем актуальные из песочницы
     _auth!.clientData!.orders.addAll(_allOrders);
+    print('🔍 Добавлено новых из песочницы: ${_allOrders.length}');
+    print(
+        '🔍 ИТОГО в глобальном списке стало: ${_auth!.clientData!.orders.length}');
 
     // 3. Сообщаем UI обновить суммы на главном экране
     _auth!.notifyListeners();
