@@ -37,7 +37,7 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
     });
   }
 
-  // Расчет суммы клиента: Берем ВСЁ со статусом "оформлен" (и отправленное, и накликанное)
+  // Расчет суммы клиента
   double _calculateClientTotal(
     Client client,
     List<OrderItem> orders,
@@ -48,7 +48,7 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
         .where((o) =>
             o.clientPhone == client.phone &&
             o.clientName == client.name &&
-            o.status == 'оформлен' && // <--- Жесткий фильтр по статусу
+            o.status == 'оформлен' && // Фильтруем ТОЛЬКО по статусу!
             o.quantity > 0)
         .toList();
 
@@ -70,10 +70,11 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
 
-    // Проверяем, есть ли неотправленные заказы через глобальный список
+    // Проверяем, есть ли ЛОКАЛЬНЫЕ НЕОТПРАВЛЕННЫЕ заказы (синие не считаются!)
     bool hasUnsaved = false;
     if (authProvider.clientData != null) {
-      hasUnsaved = authProvider.clientData!.orders.any((o) => o.quantity > 0);
+      hasUnsaved = authProvider.clientData!.orders.any((o) =>
+          o.status == 'оформлен' && o.isLocalDraft == true && o.quantity > 0);
     }
 
     if (hasUnsaved) {
@@ -171,6 +172,20 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
         const SnackBar(content: Text('Нет заказов для отправки')),
       );
       return;
+    }
+
+    // 🔥 НОВАЯ ПРОВЕРКА: Есть ли хоть один НАСТОЯЩИЙ черновик?
+    // Если все заказы на сервере (isLocalDraft == false), отправлять нечего.
+    final hasActualDrafts =
+        ordersReadyToSend.any((o) => o.isLocalDraft == true);
+    if (!hasActualDrafts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Все текущие заказы уже отправлены на сервер'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+      return; // Прерываем отправку
     }
 
     // Проверяем минимальные суммы для всех клиентов
@@ -350,6 +365,10 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
         final hasIssues = clientsWithTotals
             .any((item) => item.total > 0 && !item.meetsMinimum);
 
+        // 🔥 НОВОЕ: Проверяем, есть ли ХОТЯ БЫ ОДИН заказ, который МОЖНО отправить
+        final hasValidOrders = clientsWithTotals
+            .any((item) => item.total > 0 && item.meetsMinimum);
+
         return Scaffold(
           appBar: AppBar(
             title: Text(
@@ -366,17 +385,26 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
               onPressed: () => _logoutAndReturnToAuth(context),
             ),
             actions: [
-              if (totalAllClients > 0)
-                IconButton(
-                  icon: Icon(
-                    Icons.shopping_cart_checkout,
-                    color: hasIssues ? Colors.orange : null,
-                  ),
-                  tooltip: hasIssues
-                      ? 'Оформить заказы (есть проблемы с минимальными суммами)'
-                      : 'Оформить все заказы',
-                  onPressed: () => _submitAllOrders(context, authProvider),
+              // 🔥 ОБНОВЛЕННАЯ КНОПКА ОФОРМИТЬ
+              IconButton(
+                icon: Icon(
+                  Icons.shopping_cart_checkout,
+                  // Активна только если есть валидные заказы
+                  color: hasValidOrders
+                      ? (hasIssues ? Colors.orange : null)
+                      : Colors.grey.shade400,
                 ),
+                tooltip: !hasValidOrders
+                    ? 'Все заказы ниже минимальной суммы'
+                    : (hasIssues
+                        ? 'Оформить (есть проблемы с минималкой)'
+                        : 'Оформить все заказы'),
+                // Выключена, если нет ни одного валидного заказа
+                onPressed: hasValidOrders
+                    ? () => _submitAllOrders(context, authProvider)
+                    : null,
+              ),
+
               if (kDebugMode)
                 IconButton(
                   icon: const Icon(Icons.settings_backup_restore,
@@ -386,124 +414,98 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
                 ),
             ],
           ),
-          body: Stack(
-            children: [
-              // Основной список клиентов
-              ListView.builder(
-                itemCount: clientsWithTotals.length,
-                itemBuilder: (context, index) {
-                  final item = clientsWithTotals[index];
-                  final hasItems = item.total > 0;
+          body: ListView.builder(
+            itemCount: clientsWithTotals.length,
+            itemBuilder: (context, index) {
+              final item = clientsWithTotals[index];
+              final hasItems = item.total > 0;
 
-                  return ListTile(
-                    title: Text(item.client.name ?? ''),
-                    subtitle: hasItems
-                        ? Text(
-                            '${item.total.toStringAsFixed(2)} ₽',
-                            style: TextStyle(
-                              color:
-                                  item.meetsMinimum ? Colors.green : Colors.red,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          )
-                        : Text(
-                            'Минимальная сумма: ${item.client.minOrderAmount?.toStringAsFixed(0) ?? '0'} ₽',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
-                            ),
-                          ),
-                    // Отступ справа, чтобы текст не залезал под кнопку корзины
-                    contentPadding: const EdgeInsets.only(
-                        left: 16, right: 80, top: 8, bottom: 8),
-                    onTap: () {
-                      print('🔍 Выбран клиент для прайса: ${item.client.name}');
-                      authProvider.selectClient(item.client);
-                      Navigator.pushReplacementNamed(context, '/price');
-                    },
-                  );
-                },
-              ),
+              if (!hasItems) {
+                // Если нет товаров - рисуем обычную простую строку
+                return ListTile(
+                  title: Text(item.client.name ?? ''),
+                  subtitle: Text(
+                    'Минимальная сумма: ${item.client.minOrderAmount?.toStringAsFixed(0) ?? '0'} ₽',
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  onTap: () {
+                    authProvider.selectClient(item.client);
+                    Navigator.pushReplacementNamed(context, '/price');
+                  },
+                );
+              }
 
-              // 🔥 ПЛАВАЮЩИЕ КНОПКИ КОРЗИН СПРАВА
-              ...clientsWithTotals.asMap().entries.map((entry) {
-                final index = entry.key;
-                final item = entry.value;
-                final hasItems = item.total > 0;
+              // 🔥 ЛОГИКА ОПРЕДЕЛЕНИЯ СТАТУСА ОТПРАВКИ
+              final clientOrders = authProvider.clientData!.orders
+                  .where((o) =>
+                      o.clientPhone == item.client.phone &&
+                      o.clientName == item.client.name &&
+                      o.quantity > 0 &&
+                      o.status == 'оформлен')
+                  .toList();
 
-                if (!hasItems) return const SizedBox.shrink();
+              final hasUnsentDrafts =
+                  clientOrders.any((o) => o.isLocalDraft == true);
+              final isFullySent = clientOrders.isNotEmpty && !hasUnsentDrafts;
 
-                final topOffset = index * 72.0 + 16.0;
+              // 🔥 НАСТРОЙКИ ЦВЕТОВ И ИКОНОК (без изменений)
+              Color bgColor;
+              Color borderColor;
+              Color iconColor;
+              Color textColor;
+              IconData iconData;
+              String tooltipMessage;
+              double borderWidth = 1.0;
 
-                // 🔥 ЛОГИКА ОПРЕДЕЛЕНИЯ СТАТУСА ОТПРАВКИ
-                final clientOrders = authProvider.clientData!.orders
-                    .where((o) =>
-                        o.clientPhone == item.client.phone &&
-                        o.clientName == item.client.name &&
-                        o.quantity > 0 &&
-                        o.status == 'оформлен')
-                    .toList();
-
-                final hasUnsentDrafts =
-                    clientOrders.any((o) => o.isLocalDraft == true);
-                // Если есть хоть один черновик — считаем весь заказ не отправленным.
-                // Если черновиков нет, значит всё чисто отправлено на сервер.
-                final isFullySent = clientOrders.isNotEmpty && !hasUnsentDrafts;
-
-                // 🔥 НАСТРОЙКИ ЦВЕТОВ С УЧЕТОМ МИНИМАЛЬНОЙ СУММЫ И СТАТУСА ОТПРАВКИ
-                Color bgColor;
-                Color borderColor;
-                Color iconColor;
-                Color textColor;
-                IconData iconData;
-                String tooltipMessage;
-                double borderWidth = 1.0;
-
-                if (hasUnsentDrafts) {
-                  // --- ЗАКАЗ ЕЩЕ НЕ ОТПРАВЛЕН ---
-                  if (!item.meetsMinimum) {
-                    // Не отправлен + Нет минималки (Двойная тревога)
-                    bgColor = Colors.red.shade50;
-                    borderColor = Colors.red.shade400;
-                    iconColor =
-                        Colors.orange.shade700; // Оранжевый знак "внимание"
-                    textColor = Colors.red.shade800;
-                    iconData = Icons.warning_amber_rounded;
-                    tooltipMessage =
-                        '⚠️ Заказ не будет отправлен! (меньше минималки)';
-                    borderWidth = 2.0;
-                  } else {
-                    // Не отправлен + Минималка есть (Пора отправлять)
-                    bgColor = Colors.orange.shade50;
-                    borderColor = Colors.orange.shade400;
-                    iconColor = Colors.orange.shade700;
-                    textColor = Colors.orange.shade800;
-                    iconData = Icons.warning_amber_rounded;
-                    tooltipMessage = '⚠️ Заказ готов к отправке (не отправлен)';
-                    borderWidth = 2.0;
-                  }
-                } else if (isFullySent) {
-                  // --- ЗАКАЗ УСПЕШНО ОТПРАВЛЕН НА СЕРВЕР ---
-                  bgColor = Colors.blue.shade50;
-                  borderColor = Colors.blue.shade200;
-                  iconColor = Colors.blue.shade700;
-                  textColor = Colors.blue.shade800;
-                  iconData = Icons.thumb_up;
-                  tooltipMessage = '✅ Заказ отправлен';
+              if (hasUnsentDrafts) {
+                if (!item.meetsMinimum) {
+                  bgColor = Colors.red.shade50;
+                  borderColor = Colors.red.shade400;
+                  iconColor = Colors.orange.shade700;
+                  textColor = Colors.red.shade800;
+                  iconData = Icons.warning_amber_rounded;
+                  tooltipMessage =
+                      '⚠️ Закажите еще! Сумма меньше минималки. Заказ не отправлен!';
+                  borderWidth = 2.0;
                 } else {
-                  // Эта ветка технически не сработает из-за hasItems,
-                  // но оставляем для безопасности компиляции
-                  bgColor = Colors.green.shade50;
-                  borderColor = Colors.green.shade200;
-                  iconColor = Colors.green.shade700;
-                  textColor = Colors.green.shade800;
-                  iconData = Icons.shopping_cart;
-                  tooltipMessage = 'Корзина';
+                  bgColor = Colors.orange.shade50;
+                  borderColor = Colors.orange.shade400;
+                  iconColor = Colors.orange.shade700;
+                  textColor = Colors.orange.shade800;
+                  iconData = Icons.warning_amber_rounded;
+                  tooltipMessage = '⚠️ Заказ готов к отправке (не отправлен)';
+                  borderWidth = 2.0;
                 }
+              } else if (isFullySent) {
+                bgColor = Colors.blue.shade50;
+                borderColor = Colors.blue.shade200;
+                iconColor = Colors.blue.shade700;
+                textColor = Colors.blue.shade800;
+                iconData = Icons.thumb_up;
+                tooltipMessage = '✅ Заказ принят сервером';
+              } else {
+                bgColor = Colors.green.shade50;
+                borderColor = Colors.green.shade200;
+                iconColor = Colors.green.shade700;
+                textColor = Colors.green.shade800;
+                iconData = Icons.shopping_cart;
+                tooltipMessage = 'Корзина';
+              }
 
-                return Positioned(
-                  top: topOffset,
-                  right: 8,
+              // 🚀 НОВАЯ СТРОКА: РИСУЕМ КНОПКУ ПРЯМО ВНУТРИ ListTile
+              return ListTile(
+                title: Text(item.client.name ?? ''),
+                subtitle: Text(
+                  '${item.total.toStringAsFixed(2)} ₽',
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                // Резервируем место справа шириной 120 пикселей
+                contentPadding: const EdgeInsets.only(left: 16, right: 8),
+                trailing: SizedBox(
+                  width: 120, // Фиксированная ширина, чтобы сумма не прыгала
                   child: Tooltip(
                     message: tooltipMessage,
                     child: InkWell(
@@ -519,22 +521,25 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
                           color: bgColor,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: borderColor,
-                            width:
-                                borderWidth, // Толстая рамка для тревожных состояний
-                          ),
+                              color: borderColor, width: borderWidth),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment:
+                              MainAxisAlignment.end, // Прижимаем к правому краю
                           children: [
                             Icon(iconData, size: 18, color: iconColor),
                             const SizedBox(width: 4),
-                            Text(
-                              '${item.total.toStringAsFixed(0)} ₽',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: textColor,
+                            Flexible(
+                              // Если сумма длинная, она сожмется, а не вылезет
+                              child: Text(
+                                '${item.total.toStringAsFixed(0)} ₽',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -542,9 +547,13 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
                       ),
                     ),
                   ),
-                );
-              }),
-            ],
+                ),
+                onTap: () {
+                  authProvider.selectClient(item.client);
+                  Navigator.pushReplacementNamed(context, '/price');
+                },
+              );
+            },
           ),
         );
       },

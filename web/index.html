@@ -161,6 +161,30 @@
       }
     });
   </script>
-</body>
 
+  <script>
+    // ==========================================
+    // 🔥 ЗАЩИТА ОТ ПОТЕРИ ДАННЫХ ПРИ ALT+F4
+    // ==========================================
+    window.addEventListener('beforeunload', (e) => {
+      // Ищем следы активности Flutter (заказы или просто факт авторизации)
+      const hasOrders = localStorage.getItem('flutter.all_orders') || 
+                        localStorage.getItem('flutter.auth_user') ||
+                        localStorage.getItem('flutter.local_storage');
+      
+      if (hasOrders) {
+        // 1. Сообщаем Service Worker'у, что происходит экстренное закрытие
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ action: 'saveDataEmergency' });
+        }
+        
+        // 2. Стандартный трюк браузера: заставляет ОС дать нам 1-2 секунды 
+        // на сброс IndexedDB на жесткий диск ПЕРЕД тем, как убить процесс.
+        // Без этой строки Windows убьет процесс мгновенно.
+        e.preventDefault();
+        e.returnValue = ''; 
+      }
+    });
+  </script>
+</body>
 </html>

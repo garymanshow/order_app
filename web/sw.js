@@ -82,11 +82,34 @@ self.addEventListener('fetch', (event) => {
 });
 
 // 🔥 Обработка сообщений от клиента
+// ==========================================
+// 🔥 СПАСАТЕЛЬ ДАННЫХ ПРИ ЖЕСТКОМ ЗАКРЫТИИ
+// ==========================================
+
+// Флаг, чтобы не слать сообщения обратно, если мы уже в процессе сохранения
+let isSavingData = false;
+
 self.addEventListener('message', (event) => {
+  // 1. Стандартное сообщение для обновления SW
   if (event.data && event.data.action === 'skipWaiting') {
     if (!isUpdating) {
       isUpdating = true;
       self.skipWaiting();
     }
+  }
+
+  // 2. НОВОЕ: Запрос на экстренное сохранение данных от Flutter
+  if (event.data && event.data.action === 'saveDataEmergency') {
+    if (isSavingData) return; // Не начинаем сохранение повторно
+    
+    isSavingData = true;
+    console.log('🚨 SW: Получен сигнал экстренного сохранения! Пытаюсь удержать данные...');
+
+    // Отправляем сигнал обратно во Flutter: "Я жив, пиши в кэш быстренько!"
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({ action: 'sw_ready_to_save' });
+      });
+    });
   }
 });

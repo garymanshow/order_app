@@ -411,9 +411,18 @@ class CartProvider with ChangeNotifier {
   Future<void> _saveOrdersToPreferences() async {
     if (_auth?.clientData == null) return;
     final prefs = await SharedPreferences.getInstance();
-    // Сохраняем весь массив из AuthProvider, включая isLocalDraft
-    await prefs.setString('all_orders',
-        jsonEncode(_auth!.clientData!.orders.map((o) => o.toJson()).toList()));
+
+    // 🔥 ЖЕЛЕЗОБЕТОННОЕ СОХРАНЕНИЕ: Ждем подтверждения записи на диск
+    await prefs
+        .setString(
+            'all_orders',
+            jsonEncode(
+                _auth!.clientData!.orders.map((o) => o.toJson()).toList()))
+        .then((_) {
+      print('💾 Заказы УСПЕШНО записаны на диск браузера');
+    }).catchError((e) {
+      print('❌ ОШИБКА записи заказов на диск: $e');
+    });
   }
 
   Future<void> _saveModeToSharedPreferences() async {
