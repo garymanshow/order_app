@@ -1,6 +1,5 @@
 // lib/screens/client_selection_screen.dart
 import 'package:flutter/foundation.dart';
-//import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -421,45 +420,20 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
               final item = clientsWithTotals[index];
               final hasItems = item.total > 0;
 
-                  return ListTile(
-                    title: Text(item.client.name ?? ''),
-                    subtitle: hasItems
-                        ? Text(
-                            '${item.total.toStringAsFixed(2)} ₽',
-                            style: TextStyle(
-                              color:
-                                  item.meetsMinimum ? Colors.green : Colors.red,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          )
-                        : Text(
-                            'Минимальная сумма: ${item.client.minOrderAmount?.toStringAsFixed(0) ?? '0'} ₽',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
-                            ),
-                          ),
-                    // Отступ справа, чтобы текст не залезал под кнопку корзины
-                    contentPadding: const EdgeInsets.only(
-                        left: 16, right: 80, top: 8, bottom: 8),
-                    onTap: () {
-                      print('🔍 Выбран клиент для прайса: ${item.client.name}');
-                      authProvider.selectClient(item.client);
-                      Navigator.pushReplacementNamed(context, '/price');
-                    },
-                  );
-                },
-              ),
-
-              // 🔥 ПЛАВАЮЩИЕ КНОПКИ КОРЗИН СПРАВА
-              ...clientsWithTotals.asMap().entries.map((entry) {
-                final index = entry.key;
-                final item = entry.value;
-                final hasItems = item.total > 0;
-
-                if (!hasItems) return const SizedBox.shrink();
-
-                final topOffset = index * 72.0 + 16.0;
+              if (!hasItems) {
+                // Если нет товаров - рисуем обычную простую строку
+                return ListTile(
+                  title: Text(item.client.name ?? ''),
+                  subtitle: Text(
+                    'Минимальная сумма: ${item.client.minOrderAmount?.toStringAsFixed(0) ?? '0'} ₽',
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  onTap: () {
+                    authProvider.selectClient(item.client);
+                    Navigator.pushReplacementNamed(context, '/price');
+                  },
+                );
+              }
 
               // 🔥 ЛОГИКА ОПРЕДЕЛЕНИЯ СТАТУСА ОТПРАВКИ
               final clientOrders = authProvider.clientData!.orders
