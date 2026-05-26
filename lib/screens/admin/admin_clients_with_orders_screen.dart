@@ -607,7 +607,9 @@ class _AdminClientsWithOrdersScreenState
                       const Spacer(),
 
                       // 2. КНОПКА МАССОВОГО ИЗМЕНЕНИЯ СТАТУСА
-                      if (_filteredOrders.isNotEmpty)
+                      if (_filteredOrders.isNotEmpty &&
+                          _selectedStatus ==
+                              'оформлен') // <--- ДОБАВЛЕНА ПРОВЕРКА
                         PopupMenuButton<String>(
                           icon: Icon(Icons.sync_alt,
                               color: Colors.grey[700], size: 20),
@@ -622,7 +624,7 @@ class _AdminClientsWithOrdersScreenState
                           icon: Icon(Icons.sync_alt,
                               color: Colors.grey[300], size: 20),
                           onPressed: null,
-                          tooltip: 'Нет заказов',
+                          tooltip: 'Нет заказов или они уже в работе',
                         ),
 
                       // КНОПКА ИСКЛЮЧЕНИЯ ПОЗИЦИЙ (Только для фильтра "Оформлен")
