@@ -26,7 +26,7 @@ class WarehouseService {
         return user.phone;
       }
     } catch (e) {
-      print('⚠️ Ошибка получения телефона пользователя: $e');
+      debugPrint('⚠️ Ошибка получения телефона пользователя: $e');
     }
 
     return null;
@@ -53,7 +53,7 @@ class WarehouseService {
 
       return [];
     } catch (e) {
-      print('❌ Ошибка получения операций склада: $e');
+      debugPrint('❌ Ошибка получения операций склада: $e');
       return [];
     }
   }
@@ -84,7 +84,7 @@ class WarehouseService {
 
       return [];
     } catch (e) {
-      print('❌ Ошибка получения отфильтрованных операций: $e');
+      debugPrint('❌ Ошибка получения отфильтрованных операций: $e');
       return [];
     }
   }
@@ -95,7 +95,7 @@ class WarehouseService {
       final ingredients = operations.map((op) => op.name).toSet().toList();
       return ingredients;
     } catch (e) {
-      print('❌ Ошибка получения списка ингредиентов: $e');
+      debugPrint('❌ Ошибка получения списка ингредиентов: $e');
       return [];
     }
   }
@@ -161,7 +161,7 @@ class WarehouseService {
 
       return alerts;
     } catch (e) {
-      print('❌ Ошибка получения уведомлений: $e');
+      debugPrint('❌ Ошибка получения уведомлений: $e');
       return [];
     }
   }
@@ -190,7 +190,7 @@ class WarehouseService {
 
       return response;
     } catch (e) {
-      print('❌ Ошибка добавления операции: $e');
+      debugPrint('❌ Ошибка добавления операции: $e');
       return false;
     }
   }
@@ -212,7 +212,7 @@ class WarehouseService {
 
       return response;
     } catch (e) {
-      print('❌ Ошибка добавления операций: $e');
+      debugPrint('❌ Ошибка добавления операций: $e');
       return false;
     }
   }
@@ -276,7 +276,7 @@ class WarehouseService {
 
       return packagingNames;
     } catch (e) {
-      print('❌ Ошибка получения списка тары: $e');
+      debugPrint('❌ Ошибка получения списка тары: $e');
       return [];
     }
   }

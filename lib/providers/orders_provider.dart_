@@ -58,7 +58,7 @@ class OrdersProvider with ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      print('Ошибка загрузки заказов: $e');
+      debugPrint('Ошибка загрузки заказов: $e');
     }
   }
 
@@ -87,14 +87,14 @@ class OrdersProvider with ChangeNotifier {
             metadata[sheetName] =
                 SheetMetadata(lastUpdate: lastUpdate, editor: editor ?? '');
           } catch (e) {
-            print('Ошибка парсинга даты для листа $sheetName: $e');
+            debugPrint('Ошибка парсинга даты для листа $sheetName: $e');
           }
         }
       }
 
       return metadata;
     } catch (e) {
-      print('Ошибка загрузки метаданных: $e');
+      debugPrint('Ошибка загрузки метаданных: $e');
       return {};
     }
   }
@@ -129,7 +129,7 @@ class OrdersProvider with ChangeNotifier {
 
       await loadOrders();
     } catch (e) {
-      print('Ошибка обновления статуса: $e');
+      debugPrint('Ошибка обновления статуса: $e');
       rethrow;
     }
   }
@@ -163,7 +163,7 @@ class OrdersProvider with ChangeNotifier {
 
   Future<void> _sendNotificationToManager(OrderItem order) async {
     // Реализация отправки уведомления
-    print('Уведомление менеджеру: Новый заказ "${order.productName}"');
+    debugPrint('Уведомление менеджеру: Новый заказ "${order.productName}"');
   }
 }
 

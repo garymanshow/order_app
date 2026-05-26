@@ -1,4 +1,5 @@
 // lib/screens/driver_route_screen.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -37,9 +38,9 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
   Future<void> _initPushService() async {
     try {
       await _pushService.initialize(EnvService.vapidPublicKey);
-      print('✅ Push сервис инициализирован');
+      debugPrint('✅ Push сервис инициализирован');
     } catch (e) {
-      print('⚠️ Ошибка инициализации push: $e');
+      debugPrint('⚠️ Ошибка инициализации push: $e');
     }
   }
 
@@ -84,9 +85,9 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('driver_statuses', jsonEncode(_deliveryStatuses));
-      print('✅ Статусы сохранены локально');
+      debugPrint('✅ Статусы сохранены локально');
     } catch (e) {
-      print('⚠️ Ошибка сохранения статусов: $e');
+      debugPrint('⚠️ Ошибка сохранения статусов: $e');
     }
   }
 
@@ -98,10 +99,10 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
         setState(() {
           _deliveryStatuses = Map<String, String>.from(jsonDecode(saved));
         });
-        print('✅ Статусы загружены: $_deliveryStatuses');
+        debugPrint('✅ Статусы загружены: $_deliveryStatuses');
       }
     } catch (e) {
-      print('⚠️ Ошибка загрузки статусов: $e');
+      debugPrint('⚠️ Ошибка загрузки статусов: $e');
     }
   }
 
@@ -213,7 +214,7 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
         await prefs.remove('driver_statuses');
 
         _sendNotificationsToManagers().catchError((e) {
-          print('⚠️ Фоновая отправка уведомлений: $e');
+          debugPrint('⚠️ Фоновая отправка уведомлений: $e');
         });
 
         if (mounted) {
@@ -229,7 +230,7 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
         throw Exception('Ошибка отправки отчёта');
       }
     } catch (e) {
-      print('❌ Ошибка: $e');
+      debugPrint('❌ Ошибка: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -249,7 +250,7 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
       final currentUser = authProvider.currentUser;
 
       if (currentUser == null || currentUser.phone == null) {
-        print('⚠️ Пользователь не авторизован');
+        debugPrint('⚠️ Пользователь не авторизован');
         return;
       }
 
@@ -263,7 +264,7 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
           [];
 
       if (managers.isEmpty) {
-        print('ℹ️ Нет менеджеров для уведомлений');
+        debugPrint('ℹ️ Нет менеджеров для уведомлений');
         return;
       }
 
@@ -284,18 +285,19 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
 
           if (success) {
             successCount++;
-            print('📨 Уведомление отправлено менеджеру: ${manager.name}');
+            debugPrint('📨 Уведомление отправлено менеджеру: ${manager.name}');
           }
 
           await Future.delayed(const Duration(milliseconds: 200));
         } catch (e) {
-          print('❌ Ошибка отправки менеджеру ${manager.name}: $e');
+          debugPrint('❌ Ошибка отправки менеджеру ${manager.name}: $e');
         }
       }
 
-      print('📨 Отправлено уведомлений: $successCount из ${managers.length}');
+      debugPrint(
+          '📨 Отправлено уведомлений: $successCount из ${managers.length}');
     } catch (e) {
-      print('⚠️ Ошибка отправки уведомлений: $e');
+      debugPrint('⚠️ Ошибка отправки уведомлений: $e');
     }
   }
 
@@ -319,9 +321,9 @@ class _DriverRouteScreenState extends State<DriverRouteScreen> {
       final clientDataJson = authProvider.clientData!.toJson();
       await prefs.setString('client_data', jsonEncode(clientDataJson));
 
-      print('✅ Локальные заказы обновлены');
+      debugPrint('✅ Локальные заказы обновлены');
     } catch (e) {
-      print('⚠️ Ошибка обновления локальных заказов: $e');
+      debugPrint('⚠️ Ошибка обновления локальных заказов: $e');
     }
   }
 

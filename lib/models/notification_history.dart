@@ -1,4 +1,5 @@
 // lib/models/notification_history.dart
+import 'package:flutter/foundation.dart';
 import '../utils/parsing_utils.dart';
 
 class NotificationHistory {
@@ -95,7 +96,7 @@ class NotificationHistory {
         }
       }
     } catch (e) {
-      print('Ошибка парсинга даты: $e');
+      debugPrint('Ошибка парсинга даты: $e');
     }
     return DateTime.now();
   }

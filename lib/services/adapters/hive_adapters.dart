@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:flutter/foundation.dart';
 import '../../models/order_item.dart';
 import '../../models/filling.dart';
 import '../../models/composition.dart';
@@ -28,7 +29,7 @@ void registerHiveAdapters() {
   Hive.registerAdapter(TransportConditionAdapter());
   // =========================
 
-  print('✅ Все Hive адаптеры зарегистрированы');
+  debugPrint('✅ Все Hive адаптеры зарегистрированы');
 }
 
 // Адаптер для OrderItem

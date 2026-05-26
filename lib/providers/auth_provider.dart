@@ -82,7 +82,7 @@ class AuthProvider with ChangeNotifier {
 
   // ================== ИНИЦИАЛИЗАЦИЯ ==================
   Future<void> init() async {
-    print('🟢 AuthProvider.init() START');
+    debugPrint('🟢 AuthProvider.init() START');
     _isLoading = true;
     notifyListeners();
 
@@ -92,7 +92,7 @@ class AuthProvider with ChangeNotifier {
     final hasCachedData = await _loadCachedData();
 
     if (hasCachedData) {
-      print('✅ Загружены кэшированные данные');
+      debugPrint('✅ Загружены кэшированные данные');
 
       // 🔥 ЗАЩИТА: Проверяем, не забыл ли менеджер отправить заказы перед закрытием вкладки
       await _restoreUnsentDrafts();
@@ -107,7 +107,7 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
     }
 
-    print('🟢 AuthProvider.init() END');
+    debugPrint('🟢 AuthProvider.init() END');
   }
 
   // 🔥 Вспомогательный метод для легкой проверки при старте
@@ -119,14 +119,14 @@ class AuthProvider with ChangeNotifier {
       );
 
       if (result != null && result['hasUpdates'] == true) {
-        print(
+        debugPrint(
             '🔄 Данные на сервере обновились, запускаем полную синхронизацию');
         await _syncService.sync();
       } else {
-        print('💤 Данные актуальны, лишних запросов нет');
+        debugPrint('💤 Данные актуальны, лишних запросов нет');
       }
     } catch (e) {
-      print('⚠️ Легкая проверка метаданных не удалась: $e');
+      debugPrint('⚠️ Легкая проверка метаданных не удалась: $e');
     }
   }
 
@@ -173,15 +173,15 @@ class AuthProvider with ChangeNotifier {
 
         _clientData?.buildIndexes();
 
-        print('📦 Кэшированные данные загружены:');
-        print('   - Заказов: ${orders.length}');
-        print('   - Продуктов: ${products.length}');
-        print('   - Начинок: ${fillings.length}');
-        print('   - Составов: ${compositions.length}');
-        print('   - Категорий: ${priceCategories.length}');
+        debugPrint('📦 Кэшированные данные загружены:');
+        debugPrint('   - Заказов: ${orders.length}');
+        debugPrint('   - Продуктов: ${products.length}');
+        debugPrint('   - Начинок: ${fillings.length}');
+        debugPrint('   - Составов: ${compositions.length}');
+        debugPrint('   - Категорий: ${priceCategories.length}');
         // === НОВОЕ: Логи ===
-        print('   - Усл. хранения: ${storageConditions.length}');
-        print('   - Усл. транспортировки: ${transportConditions.length}');
+        debugPrint('   - Усл. хранения: ${storageConditions.length}');
+        debugPrint('   - Усл. транспортировки: ${transportConditions.length}');
         // ===================
 
         return true;
@@ -189,7 +189,7 @@ class AuthProvider with ChangeNotifier {
 
       return false;
     } catch (e) {
-      print('❌ Ошибка загрузки кэша: $e');
+      debugPrint('❌ Ошибка загрузки кэша: $e');
       return false;
     }
   }
@@ -201,13 +201,13 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      print('🟢 login() начат с телефоном: $phone');
+      debugPrint('🟢 login() начат с телефоном: $phone');
 
       final normalizedPhone = PhoneValidator.normalizePhone(phone);
       if (normalizedPhone == null) {
         throw Exception('Неверный формат телефона');
       }
-      print('🟢 Нормализованный телефон: $normalizedPhone');
+      debugPrint('🟢 Нормализованный телефон: $normalizedPhone');
 
       // Загружаем локальные метаданные для сравнения
       final localMetadata = _cacheService.getMetadata();
@@ -223,7 +223,7 @@ class AuthProvider with ChangeNotifier {
             localMetadata: localMetadata,
           );
         } catch (e) {
-          print('⚠️ Ошибка сети: $e');
+          debugPrint('⚠️ Ошибка сети: $e');
           authResponse = null;
         }
       }
@@ -235,7 +235,7 @@ class AuthProvider with ChangeNotifier {
           await _handleServerResponse(authResponse, normalizedPhone, context);
           _isOffline = false;
         } catch (e) {
-          print('❌ Ошибка обработки ответа сервера: $e');
+          debugPrint('❌ Ошибка обработки ответа сервера: $e');
           // Если ошибка при парсинге, пробуем кэш
           final hasCache = await _loadCachedData();
           if (hasCache && _currentUser != null) {
@@ -267,7 +267,7 @@ class AuthProvider with ChangeNotifier {
         _handlePushSubscriptionSafe(_currentUser!.phone!);
       }
     } catch (e) {
-      print('❌ Критическая ошибка входа: $e');
+      debugPrint('❌ Критическая ошибка входа: $e');
       _currentUser = null;
       _clientData = null;
       _metadata = null;
@@ -307,7 +307,7 @@ class AuthProvider with ChangeNotifier {
     try {
       await _handlePushSubscription(phone);
     } catch (e) {
-      print('⚠️ PUSH ошибка (безопасный режим): $e');
+      debugPrint('⚠️ PUSH ошибка (безопасный режим): $e');
       // Ошибка здесь никак не повлияет на состояние авторизации
     }
   }
@@ -354,7 +354,7 @@ class AuthProvider with ChangeNotifier {
           .toList();
     } else {
       if (userData['Роль'] != null && userData['Роль'].toString().isNotEmpty) {
-        print('🕵️‍♂️ Обнаружен сотрудник с ролью: ${userData['Роль']}');
+        debugPrint('🕵️‍♂️ Обнаружен сотрудник с ролью: ${userData['Роль']}');
         _currentUser = Employee.fromJson(userData);
       } else if (userData['role'] != null) {
         _currentUser = Employee.fromJson(userData);
@@ -449,7 +449,7 @@ class AuthProvider with ChangeNotifier {
       await _cacheService.saveMetadata(_metadata!);
     }
 
-    print('✅ Данные сохранены в Hive кэш');
+    debugPrint('✅ Данные сохранены в Hive кэш');
   }
 
   // 🔥 МЕТОД ДЛЯ СИНХРОНИЗАЦИИ ОФЛАЙН-ЗАКАЗОВ С ИНТЕРФЕЙСОМ
@@ -459,11 +459,11 @@ class AuthProvider with ChangeNotifier {
       if (_clientData != null) {
         _clientData!.orders = freshOrders;
         notifyListeners(); // Заставляет экраны пересобраться с новыми данными
-        print(
+        debugPrint(
             '🔄 Заказы в интерфейсе обновлены из кэша (после офлайн-отправки)');
       }
     } catch (e) {
-      print('❌ Ошибка обновления заказов из кэша: $e');
+      debugPrint('❌ Ошибка обновления заказов из кэша: $e');
     }
   }
 
@@ -535,7 +535,7 @@ class AuthProvider with ChangeNotifier {
 
       if (unsentDrafts.isEmpty) return;
 
-      print(
+      debugPrint(
           '🛡️ НАЙДЕНЫ НЕОТПРАВЛЕННЫЕ ЧЕРНОВИКИ: ${unsentDrafts.length} шт. Восстанавливаем...');
 
       if (_clientData != null) {
@@ -556,10 +556,10 @@ class AuthProvider with ChangeNotifier {
         await prefs.remove('all_orders');
 
         notifyListeners();
-        print('✅ ЧЕРНОВИКИ УСПЕШНО ВОССТАНОВЛЕНЫ В СПИСОК ЗАКАЗОВ');
+        debugPrint('✅ ЧЕРНОВИКИ УСПЕШНО ВОССТАНОВЛЕНЫ В СПИСОК ЗАКАЗОВ');
       }
     } catch (e) {
-      print('⚠️ Ошибка восстановления черновиков: $e');
+      debugPrint('⚠️ Ошибка восстановления черновиков: $e');
     }
   }
 
@@ -603,7 +603,7 @@ class AuthProvider with ChangeNotifier {
         await _handleClientPushSubscription(pushService);
       }
     } catch (e) {
-      print('❌ Ошибка в _handlePushSubscription: $e');
+      debugPrint('❌ Ошибка в _handlePushSubscription: $e');
     }
   }
 
@@ -941,7 +941,8 @@ class AuthProvider with ChangeNotifier {
         try {
           result[entry.key] = SheetMetadata.fromJson(value);
         } catch (e) {
-          print('⚠️ Ошибка десериализации метаданных для ${entry.key}: $e');
+          debugPrint(
+              '⚠️ Ошибка десериализации метаданных для ${entry.key}: $e');
         }
       } else if (value is SheetMetadata) {
         // Если уже SheetMetadata, просто добавляем
@@ -999,7 +1000,7 @@ class AuthProvider with ChangeNotifier {
         // Вызываем жесткий сброс (обнуляем всё, включая _allOrders)
         cartProvider.hardReset();
       } catch (e) {
-        print('⚠️ Не удалось сбросить корзину при выходе: $e');
+        debugPrint('⚠️ Не удалось сбросить корзину при выходе: $e');
       }
     }
 
@@ -1018,16 +1019,16 @@ class AuthProvider with ChangeNotifier {
       // Очищаем Hive
       await _cacheService.clearAll();
 
-      print('✅ Все данные очищены при выходе');
+      debugPrint('✅ Все данные очищены при выходе');
     } catch (e) {
-      print('❌ Ошибка при выходе: $e');
+      debugPrint('❌ Ошибка при выходе: $e');
     }
   }
 
   Future<void> clearAllCache() async {
     if (!kDebugMode) return;
     await _cacheService.clearAll();
-    print('🧹 Весь кэш очищен');
+    debugPrint('🧹 Весь кэш очищен');
   }
 
   @override

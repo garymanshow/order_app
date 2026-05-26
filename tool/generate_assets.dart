@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 void main() {
-  print('🔄 Генерация asset-файлов...');
+  debugPrint('🔄 Генерация asset-файлов...');
 
   // Создаем папку generated если её нет
   final generatedDir = Directory('lib/generated');
@@ -16,14 +17,14 @@ void main() {
   // Здесь можно добавить другие генераторы
   // _generateProductAssets();
 
-  print('✅ Генерация завершена');
+  debugPrint('✅ Генерация завершена');
 }
 
 void _generateAuthAssets() {
   final authDir = Directory('assets/images/auth');
 
   if (!authDir.existsSync()) {
-    print('⚠️ Папка assets/images/auth не найдена, создаем пустой файл');
+    debugPrint('⚠️ Папка assets/images/auth не найдена, создаем пустой файл');
     _writeAuthAssetsFile([]);
     return;
   }
@@ -41,7 +42,7 @@ void _generateAuthAssets() {
   // Сортируем для стабильности
   backgroundFiles.sort();
 
-  print('📸 Найдено фоновых изображений: ${backgroundFiles.length}');
+  debugPrint('📸 Найдено фоновых изображений: ${backgroundFiles.length}');
   _writeAuthAssetsFile(backgroundFiles);
 }
 
@@ -72,5 +73,5 @@ class AuthAssets {
 ''';
 
   File('lib/generated/auth_assets.dart').writeAsStringSync(code);
-  print('📄 Сгенерирован lib/generated/auth_assets.dart');
+  debugPrint('📄 Сгенерирован lib/generated/auth_assets.dart');
 }

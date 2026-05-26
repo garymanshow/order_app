@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:contacts_service/contacts_service.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
@@ -111,7 +111,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
           .toList()
         ..sort();
     } catch (e) {
-      print('⚠️ Ошибка загрузки городов: $e');
+      debugPrint('⚠️ Ошибка загрузки городов: $e');
       _availableCities = [];
     }
   }
@@ -185,7 +185,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
         }
       }
     } catch (e) {
-      print('Ошибка получения из буфера: $e');
+      debugPrint('Ошибка получения из буфера: $e');
     }
   }
 
@@ -325,7 +325,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
         }
       }
     } catch (e) {
-      print('Ошибка выбора контакта: $e');
+      debugPrint('Ошибка выбора контакта: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка при выборе контакта')),
       );
@@ -338,9 +338,9 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
 
     try {
       await _apiService.updateOrdersPhone(oldPhone, newPhone);
-      print('🔄 Обновление телефона в заказах: $oldPhone -> $newPhone');
+      debugPrint('🔄 Обновление телефона в заказах: $oldPhone -> $newPhone');
     } catch (e) {
-      print('❌ Ошибка обновления телефона в заказах: $e');
+      debugPrint('❌ Ошибка обновления телефона в заказах: $e');
     }
   }
 
@@ -401,7 +401,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
           await _updateOrdersPhone(oldPhone, newPhone);
         }
 
-        print('✅ Клиент обновлен локально: ${client.name}');
+        debugPrint('✅ Клиент обновлен локально: ${client.name}');
       } else {
         // СОЗДАНИЕ
         final currentClients =
@@ -413,7 +413,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
 
         await _apiService.createClient(client);
 
-        print('✅ Новый клиент создан локально: ${client.name}');
+        debugPrint('✅ Новый клиент создан локально: ${client.name}');
       }
 
       await _saveClientDataToPrefs(authProvider);
@@ -428,7 +428,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
         );
       }
     } catch (e) {
-      print('❌ Ошибка сохранения клиента: $e');
+      debugPrint('❌ Ошибка сохранения клиента: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -449,7 +449,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
       final clientDataJson = authProvider.clientData!.toJson();
       await prefs.setString('client_data', jsonEncode(clientDataJson));
     } catch (e) {
-      print('❌ Ошибка сохранения ClientData: $e');
+      debugPrint('❌ Ошибка сохранения ClientData: $e');
     }
   }
 

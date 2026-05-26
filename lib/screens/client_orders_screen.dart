@@ -76,7 +76,7 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
         final normalizedDate = DateTime(date.year, date.month, date.day);
         ordersByDate.putIfAbsent(normalizedDate, () => []).add(order);
       } else {
-        print('❌ Не удалось распарсить дату: "${order.date}"');
+        debugPrint('❌ Не удалось распарсить дату: "${order.date}"');
       }
     }
 
@@ -86,8 +86,8 @@ class _ClientOrdersScreenState extends State<ClientOrdersScreen> {
       _isInitialized = true;
     });
 
-    print('📅 Загружено заказов для календаря: ${clientOrders.length}');
-    print('📅 Долг: $_totalDebt');
+    debugPrint('📅 Загружено заказов для календаря: ${clientOrders.length}');
+    debugPrint('📅 Долг: $_totalDebt');
   }
 
   List<OrderItem> _getOrdersForDay(DateTime day) {

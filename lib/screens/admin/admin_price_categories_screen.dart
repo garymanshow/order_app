@@ -52,7 +52,7 @@ class _AdminPriceCategoriesScreenState
       _filteredCategories = categories;
     });
 
-    print('📊 Загружено категорий: ${categories.length}');
+    debugPrint('📊 Загружено категорий: ${categories.length}');
   }
 
   // 🔥 РАСЧЕТ СТАТИСТИКИ ПО КАТЕГОРИЯМ
@@ -489,7 +489,7 @@ class _AdminPriceCategoriesScreenState
         throw Exception('Ошибка удаления категории');
       }
     } catch (e) {
-      print('❌ Ошибка удаления категории: $e');
+      debugPrint('❌ Ошибка удаления категории: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Ошибка удаления: $e'),

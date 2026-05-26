@@ -1,4 +1,5 @@
 // lib/screens/two_factor_screen.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/employee.dart';
@@ -40,7 +41,7 @@ class _TwoFactorScreenState extends State<TwoFactorScreen> {
         Navigator.pop(context, false);
       }
     } catch (e) {
-      print('❌ Ошибка Google Sign-In: $e');
+      debugPrint('❌ Ошибка Google Sign-In: $e');
       _showErrorDialog(
           'Ошибка входа', 'Не удалось выполнить вход через Google');
     } finally {

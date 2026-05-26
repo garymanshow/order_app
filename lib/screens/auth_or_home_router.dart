@@ -1,4 +1,5 @@
 // lib/screens/auth_or_home_router.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/employee.dart';
@@ -31,10 +32,11 @@ class _AuthOrHomeRouterState extends State<AuthOrHomeRouter> {
     final authProvider = Provider.of<AuthProvider>(context);
     final cacheService = Provider.of<CacheService>(context, listen: false);
 
-    print('🔄 AuthOrHomeRouter build:');
-    print('   - isLoading: ${authProvider.isLoading}');
-    print('   - isAuthenticated: ${authProvider.isAuthenticated}');
-    print('   - forceLanding: ${widget.forceLanding}'); // <--- Лог для отладки
+    debugPrint('🔄 AuthOrHomeRouter build:');
+    debugPrint('   - isLoading: ${authProvider.isLoading}');
+    debugPrint('   - isAuthenticated: ${authProvider.isAuthenticated}');
+    debugPrint(
+        '   - forceLanding: ${widget.forceLanding}'); // <--- Лог для отладки
 
     // 🔥 ЗАГРУЗКА
     if (authProvider.isLoading) {
@@ -81,7 +83,7 @@ class _AuthOrHomeRouterState extends State<AuthOrHomeRouter> {
   Widget _buildUnauthenticatedRoute(CacheService cacheService) {
     // 🔥 НОВОЕ: Если нажали "Назад" из авторизации — принудительно витрина
     if (widget.forceLanding) {
-      print('🎯 Принудительный возврат → LandingScreen');
+      debugPrint('🎯 Принудительный возврат → LandingScreen');
       return const LandingScreen();
     }
 
@@ -97,12 +99,12 @@ class _AuthOrHomeRouterState extends State<AuthOrHomeRouter> {
 
         // 🔥 НОВОЕ УСТРОЙСТВО → показываем лендинг
         if (snapshot.data == false || snapshot.hasError) {
-          print('🎯 Новое устройство → LandingScreen');
+          debugPrint('🎯 Новое устройство → LandingScreen');
           return const LandingScreen();
         }
 
         // 🔥 ВОЗВРАЩАЮЩИЙСЯ ПОЛЬЗОВАТЕЛЬ → сразу вход
-        print('🎯 Возвращающийся пользователь → AuthPhoneScreen');
+        debugPrint('🎯 Возвращающийся пользователь → AuthPhoneScreen');
         return const AuthPhoneScreen();
       },
     );

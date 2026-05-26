@@ -39,7 +39,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
       if (authProvider.clientData == null) {
-        print('⚠️ Данные клиента не загружены');
+        debugPrint('⚠️ Данные клиента не загружены');
       }
     } catch (e) {
       setState(() => _error = 'Ошибка загрузки данных: $e');

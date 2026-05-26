@@ -104,7 +104,7 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
         }
       });
     } catch (e) {
-      print('❌ Ошибка загрузки ролей: $e');
+      debugPrint('❌ Ошибка загрузки ролей: $e');
       setState(() {
         _availableRoles = [
           'Администратор',
@@ -181,7 +181,7 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
           authProvider.clientData!.clients[index] = employee as Client;
           authProvider.clientData!.buildIndexes();
           await _apiService.updateEmployee(employee);
-          print('✅ Сотрудник обновлен: ${employee.name}');
+          debugPrint('✅ Сотрудник обновлен: ${employee.name}');
         }
       } else {
         // Создание
@@ -189,7 +189,7 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
         authProvider.clientData!.clients.add(employee as Client);
         authProvider.clientData!.buildIndexes();
         await _apiService.createEmployee(employee);
-        print('✅ Новый сотрудник создан: ${employee.name}');
+        debugPrint('✅ Новый сотрудник создан: ${employee.name}');
       }
 
       await _saveEmployeesToPrefs(authProvider);
@@ -199,7 +199,7 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
         _showSnackBar('Сотрудник успешно сохранен', Colors.green);
       }
     } catch (e) {
-      print('❌ Ошибка сохранения сотрудника: $e');
+      debugPrint('❌ Ошибка сохранения сотрудника: $e');
 
       String errorMessage = 'Ошибка сохранения';
       if (e is http.ClientException) {
@@ -223,7 +223,7 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
       final clientDataJson = authProvider.clientData!.toJson();
       await prefs.setString('client_data', jsonEncode(clientDataJson));
     } catch (e) {
-      print('❌ Ошибка сохранения ClientData: $e');
+      debugPrint('❌ Ошибка сохранения ClientData: $e');
     }
   }
 

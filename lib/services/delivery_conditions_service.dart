@@ -10,16 +10,17 @@ import '../models/client.dart';
 class DeliveryConditionsService {
   // 🔥 ПОЛУЧЕНИЕ УСЛОВИЙ ДОСТАВКИ ИЗ ЛОКАЛЬНЫХ ДАННЫХ
   Future<List<DeliveryCondition>> fetchConditions(BuildContext context) async {
-    print('📦 Загрузка условий доставки из локальных данных...');
+    debugPrint('📦 Загрузка условий доставки из локальных данных...');
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final deliveryConditions =
         authProvider.clientData?.deliveryConditions ?? [];
 
-    print('📋 Всего загружено условий доставки: ${deliveryConditions.length}');
+    debugPrint(
+        '📋 Всего загружено условий доставки: ${deliveryConditions.length}');
 
     for (final condition in deliveryConditions) {
-      print('📋 Условие — Пункт: "${condition.location}", '
+      debugPrint('📋 Условие — Пункт: "${condition.location}", '
           'Мин.сумма заказа: ${condition.deliveryAmount}, '
           'Наценка: ${condition.hiddenMarkup ?? 0}%');
     }
@@ -121,7 +122,8 @@ class DeliveryConditionsService {
           (c) => c.location.toLowerCase() == condition.location.toLowerCase());
 
       if (existing) {
-        print('⚠️ Условие для пункта ${condition.location} уже существует');
+        debugPrint(
+            '⚠️ Условие для пункта ${condition.location} уже существует');
         return false;
       }
 
@@ -130,10 +132,11 @@ class DeliveryConditionsService {
 
       await _saveToPrefs(authProvider);
 
-      print('✅ Условие доставки добавлено для пункта: ${condition.location}');
+      debugPrint(
+          '✅ Условие доставки добавлено для пункта: ${condition.location}');
       return true;
     } catch (e) {
-      print('❌ Ошибка добавления условия доставки: $e');
+      debugPrint('❌ Ошибка добавления условия доставки: $e');
       return false;
     }
   }
@@ -167,15 +170,16 @@ class DeliveryConditionsService {
         authProvider.clientData!.buildIndexes();
         await _saveToPrefs(authProvider);
 
-        print('✅ Условие доставки обновлено для пункта: ${condition.location}');
-        print(
+        debugPrint(
+            '✅ Условие доставки обновлено для пункта: ${condition.location}');
+        debugPrint(
             '   Мин.сумма: ${condition.deliveryAmount}₽, Наценка: ${condition.hiddenMarkup}%');
         return true;
       }
 
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления условия доставки: $e');
+      debugPrint('❌ Ошибка обновления условия доставки: $e');
       return false;
     }
   }
@@ -212,8 +216,8 @@ class DeliveryConditionsService {
       }
     }
 
-    print('📊 Обновлено клиентов в городе "$location": $updatedCount');
-    print('   Новая минимальная сумма заказа: $newMinAmount₽');
+    debugPrint('📊 Обновлено клиентов в городе "$location": $updatedCount');
+    debugPrint('   Новая минимальная сумма заказа: $newMinAmount₽');
   }
 
   // 🔥 УДАЛЕНИЕ УСЛОВИЯ ДОСТАВКИ
@@ -233,13 +237,13 @@ class DeliveryConditionsService {
       if (removedCount > 0) {
         authProvider.clientData!.buildIndexes();
         await _saveToPrefs(authProvider);
-        print('✅ Условие доставки удалено для пункта: $location');
+        debugPrint('✅ Условие доставки удалено для пункта: $location');
         return true;
       }
 
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления условия доставки: $e');
+      debugPrint('❌ Ошибка удаления условия доставки: $e');
       return false;
     }
   }
@@ -250,9 +254,9 @@ class DeliveryConditionsService {
       final prefs = await SharedPreferences.getInstance();
       final clientDataJson = authProvider.clientData!.toJson();
       await prefs.setString('client_data', jsonEncode(clientDataJson));
-      print('✅ ClientData сохранен в SharedPreferences');
+      debugPrint('✅ ClientData сохранен в SharedPreferences');
     } catch (e) {
-      print('❌ Ошибка сохранения ClientData: $e');
+      debugPrint('❌ Ошибка сохранения ClientData: $e');
     }
   }
 }

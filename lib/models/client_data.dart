@@ -1,4 +1,5 @@
 // lib/models/client_data.dart
+import 'package:flutter/foundation.dart';
 import 'composition.dart';
 import 'client_category.dart';
 import 'client.dart';
@@ -74,7 +75,7 @@ class ClientData {
   }
 
   factory ClientData.fromJson(Map<String, dynamic> json) {
-    print('🔍 ClientData.fromJson keys: ${json.keys}');
+    debugPrint('🔍 ClientData.fromJson keys: ${json.keys}');
     final clientData = ClientData();
 
     // 🔥 Безопасная обработка списка продуктов

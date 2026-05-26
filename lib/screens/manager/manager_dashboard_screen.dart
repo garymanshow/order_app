@@ -87,7 +87,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen>
         });
       }
     } catch (e) {
-      print('Ошибка загрузки статистики заказов: $e');
+      debugPrint('Ошибка загрузки статистики заказов: $e');
     }
   }
 
@@ -100,7 +100,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen>
         _productBalances = balances['products'] ?? {};
       });
     } catch (e) {
-      print('Ошибка загрузки остатков производства: $e');
+      debugPrint('Ошибка загрузки остатков производства: $e');
     }
   }
 
@@ -111,7 +111,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen>
         _lowStockAlerts = alerts;
       });
     } catch (e) {
-      print('Ошибка загрузки уведомлений склада: $e');
+      debugPrint('Ошибка загрузки уведомлений склада: $e');
     }
   }
 
@@ -159,7 +159,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen>
 
       _productionPlan = planningService.calculatePlan();
     } catch (e) {
-      print('Ошибка расчёта плана: $e');
+      debugPrint('Ошибка расчёта плана: $e');
     } finally {
       setState(() => _isLoadingPlan = false);
     }

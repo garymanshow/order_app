@@ -56,7 +56,8 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final allOrders = authProvider.clientData?.orders ?? [];
 
-    print('🔍 [Админ-календарь] Всего заказов получено: ${allOrders.length}');
+    debugPrint(
+        '🔍 [Админ-календарь] Всего заказов получено: ${allOrders.length}');
 
     final Map<DateTime, List<OrderItem>> ordersByDate = {};
 
@@ -69,11 +70,11 @@ class _AdminOrdersCalendarScreenState extends State<AdminOrdersCalendarScreen> {
         final normalized = DateTime(date.year, date.month, date.day);
         ordersByDate.putIfAbsent(normalized, () => []).add(order);
       } else {
-        print('❌ Не удалось распарсить дату: "${order.date}"');
+        debugPrint('❌ Не удалось распарсить дату: "${order.date}"');
       }
     }
 
-    print('📊 Уникальных дней с заказами: ${ordersByDate.keys.length}');
+    debugPrint('📊 Уникальных дней с заказами: ${ordersByDate.keys.length}');
 
     setState(() {
       _ordersByDate = ordersByDate;

@@ -1,6 +1,7 @@
 // lib/services/sync_service.dart
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'cache_service.dart';
 import 'api_service.dart';
 import '../models/order_item.dart';
@@ -26,7 +27,7 @@ class SyncService {
 
     _cache = await CacheService.getInstance();
     _isInitialized = true;
-    print('✅ SyncService инициализирован');
+    debugPrint('✅ SyncService инициализирован');
   }
 
   void startPeriodicSync() {
@@ -38,18 +39,18 @@ class SyncService {
     // Подписываемся на изменения подключения
     _connectivity.onConnectivityChanged.listen((result) {
       if (!result.contains(ConnectivityResult.none)) {
-        print('🌐 Интернет появился, запускаем синхронизацию');
+        debugPrint('🌐 Интернет появился, запускаем синхронизацию');
         sync();
       }
     });
 
-    print('🔄 Запущена периодическая синхронизация (каждые 5 минут)');
+    debugPrint('🔄 Запущена периодическая синхронизация (каждые 5 минут)');
   }
 
   void stopPeriodicSync() {
     _syncTimer?.cancel();
     _syncTimer = null;
-    print('🔄 Периодическая синхронизация остановлена');
+    debugPrint('🔄 Периодическая синхронизация остановлена');
   }
 
   void setAuthProvider(AuthProvider auth) {
@@ -60,14 +61,14 @@ class SyncService {
     if (!_isInitialized || _isSyncing) return;
     _isSyncing = true;
 
-    print('🔄 Начало синхронизации...');
+    debugPrint('🔄 Начало синхронизации...');
 
     try {
       // 1. Получаем метаданные с сервера
       final serverMetadata = await _api.fetchMetadata();
 
       if (serverMetadata == null) {
-        print('⚠️ Не удалось получить метаданные с сервера');
+        debugPrint('⚠️ Не удалось получить метаданные с сервера');
         return;
       }
 
@@ -79,7 +80,7 @@ class SyncService {
         final local = localMetadata[entry.key];
         if (local == null || local.lastUpdate != entry.value.lastUpdate) {
           sheetsToUpdate.add(entry.key);
-          print('📋 Лист "${entry.key}" требует обновления');
+          debugPrint('📋 Лист "${entry.key}" требует обновления');
         }
       }
 
@@ -91,10 +92,10 @@ class SyncService {
       // 4. Отправляем отложенные операции
       await _sendPendingOperations();
 
-      print(
+      debugPrint(
           '✅ Синхронизация завершена, обновлено листов: ${sheetsToUpdate.length}');
     } catch (e) {
-      print('❌ Ошибка синхронизации: $e');
+      debugPrint('❌ Ошибка синхронизации: $e');
     } finally {
       _isSyncing = false;
     }
@@ -109,7 +110,7 @@ class SyncService {
             final orders =
                 ordersData.map((json) => OrderItem.fromJson(json)).toList();
             await _cache.saveOrders(orders);
-            print('📦 Загружено ${orders.length} заказов');
+            debugPrint('📦 Загружено ${orders.length} заказов');
           }
           break;
 
@@ -119,7 +120,7 @@ class SyncService {
             final fillings =
                 fillingsData.map((json) => Filling.fromJson(json)).toList();
             await _cache.saveFillings(fillings);
-            print('🥣 Загружено ${fillings.length} начинок');
+            debugPrint('🥣 Загружено ${fillings.length} начинок');
           }
           break;
 
@@ -134,7 +135,7 @@ class SyncService {
             final products =
                 productsData.map((json) => Product.fromJson(json)).toList();
             await _cache.saveProducts(products);
-            print('📦 Загружено ${products.length} продуктов');
+            debugPrint('📦 Загружено ${products.length} продуктов');
           }
           break;
 
@@ -142,15 +143,15 @@ class SyncService {
           final categoriesData = await _api.fetchPriceCategories();
           if (categoriesData != null) {
             await _cache.savePriceCategories(categoriesData);
-            print('📂 Загружено ${categoriesData.length} категорий');
+            debugPrint('📂 Загружено ${categoriesData.length} категорий');
           }
           break;
 
         default:
-          print('⚠️ Неизвестный лист для синхронизации: $sheetName');
+          debugPrint('⚠️ Неизвестный лист для синхронизации: $sheetName');
       }
     } catch (e) {
-      print('❌ Ошибка загрузки листа $sheetName: $e');
+      debugPrint('❌ Ошибка загрузки листа $sheetName: $e');
     }
   }
 
@@ -159,7 +160,7 @@ class SyncService {
 
     if (pending.isEmpty) return;
 
-    print('📤 Отправка отложенных операций: ${pending.length}');
+    debugPrint('📤 Отправка отложенных операций: ${pending.length}');
 
     for (var op in pending) {
       try {
@@ -173,7 +174,7 @@ class SyncService {
           case 'create':
             if (entity == 'order') {
               success = await _createOrderFromData(data);
-              print(
+              debugPrint(
                   '📝 Создание заказа из очереди: ${success ? 'успешно' : 'ошибка'}');
             }
             break;
@@ -185,24 +186,26 @@ class SyncService {
             if (entity == 'order') {
               final order = OrderItem.fromJson(data);
               success = await _api.updateOrders([order]);
-              print('🔄 Обновление заказа: ${success ? 'успешно' : 'ошибка'}');
+              debugPrint(
+                  '🔄 Обновление заказа: ${success ? 'успешно' : 'ошибка'}');
             }
             break;
         }
 
         if (success) {
           await _cache.removeOperation(id);
-          print('✅ Операция из очереди выполнена: $type/$entity');
+          debugPrint('✅ Операция из очереди выполнена: $type/$entity');
 
           // Обновляем UI, если это был заказ
           if (entity == 'order') {
             _auth?.refreshOrdersFromCache();
           }
         } else {
-          print('⚠️ Не удалось выполнить операцию из очереди: $type/$entity');
+          debugPrint(
+              '⚠️ Не удалось выполнить операцию из очереди: $type/$entity');
         }
       } catch (e) {
-        print('❌ Ошибка отправки операции из очереди: $e');
+        debugPrint('❌ Ошибка отправки операции из очереди: $e');
       }
     }
   }
@@ -238,7 +241,7 @@ class SyncService {
         comment: comment,
       );
     } catch (e) {
-      print('❌ Ошибка в _createOrderFromData: $e');
+      debugPrint('❌ Ошибка в _createOrderFromData: $e');
       return false;
     }
   }
@@ -269,7 +272,7 @@ class SyncService {
       data: orderData,
     );
 
-    print('📦 Заказ добавлен в очередь (офлайн-режим)');
+    debugPrint('📦 Заказ добавлен в очередь (офлайн-режим)');
 
     // Пытаемся отправить сразу, если есть интернет
     final connectivityResult = await _connectivity.checkConnectivity();

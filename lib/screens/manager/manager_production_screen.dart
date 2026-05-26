@@ -42,7 +42,7 @@ class _ManagerProductionScreenState extends State<ManagerProductionScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print('Ошибка загрузки данных производства: $e');
+      debugPrint('Ошибка загрузки данных производства: $e');
       setState(() => _isLoading = false);
     }
   }

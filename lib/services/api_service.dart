@@ -1,6 +1,7 @@
 // lib/services/api_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import '../models/order_item.dart';
 import '../models/sheet_metadata.dart';
 import '../models/status_update.dart';
@@ -34,11 +35,11 @@ class ApiService {
 
     final body = jsonEncode(data);
 
-    print('\n📤 ===== ЗАПРОС К GAS =====');
-    print('📤 URL: $url');
-    print('📤 Action: $action');
-    print('📤 Headers: $headers');
-    print('📤 Body: $body');
+    debugPrint('\n📤 ===== ЗАПРОС К GAS =====');
+    debugPrint('📤 URL: $url');
+    debugPrint('📤 Action: $action');
+    debugPrint('📤 Headers: $headers');
+    debugPrint('📤 Body: $body');
 
     try {
       final response = await http.post(
@@ -47,21 +48,21 @@ class ApiService {
         body: body,
       );
 
-      print('📥 Статус: ${response.statusCode}');
-      print('📥 Ответ: ${response.body}');
-      print('📥 ===== КОНЕЦ ЗАПРОСА =====\n');
+      debugPrint('📥 Статус: ${response.statusCode}');
+      debugPrint('📥 Ответ: ${response.body}');
+      debugPrint('📥 ===== КОНЕЦ ЗАПРОСА =====\n');
 
       return response;
     } catch (e) {
-      print('❌ Ошибка запроса: $e');
+      debugPrint('❌ Ошибка запроса: $e');
       rethrow;
     }
   }
 
   // 🔧 ТЕСТОВЫЙ МЕТОД
   Future<bool> testConnection() async {
-    print('\n🔧 ===== ТЕСТИРОВАНИЕ СОЕДИНЕНИЯ =====');
-    print('🔧 URL: $_scriptUrl');
+    debugPrint('\n🔧 ===== ТЕСТИРОВАНИЕ СОЕДИНЕНИЯ =====');
+    debugPrint('🔧 URL: $_scriptUrl');
 
     try {
       final response = await _makeRequest('test', {});
@@ -69,21 +70,21 @@ class ApiService {
       if (response.statusCode == 200) {
         final body = response.body.trim();
         if (body.startsWith('<!DOCTYPE') || body.startsWith('<html')) {
-          print('❌ Получен HTML вместо JSON!');
+          debugPrint('❌ Получен HTML вместо JSON!');
           return false;
         }
 
         final Map<String, dynamic> data = jsonDecode(response.body);
-        print('🔧 Ответ: $data');
-        print('🔧 ===== ТЕСТ УСПЕШЕН =====\n');
+        debugPrint('🔧 Ответ: $data');
+        debugPrint('🔧 ===== ТЕСТ УСПЕШЕН =====\n');
         return data['status'] == 'success' || data['success'] == true;
       } else {
-        print('🔧 ===== ТЕСТ НЕ УДАЛСЯ =====\n');
+        debugPrint('🔧 ===== ТЕСТ НЕ УДАЛСЯ =====\n');
         return false;
       }
     } catch (e) {
-      print('🔧 Ошибка: $e');
-      print('🔧 ===== ТЕСТ НЕ УДАЛСЯ =====\n');
+      debugPrint('🔧 Ошибка: $e');
+      debugPrint('🔧 ===== ТЕСТ НЕ УДАЛСЯ =====\n');
       return false;
     }
   }
@@ -93,10 +94,10 @@ class ApiService {
     required String phone,
     required Map<String, SheetMetadata> localMetadata,
   }) async {
-    print('\n🔐 ===== НАЧАЛО АУТЕНТИФИКАЦИИ =====');
-    print('🔐 Телефон: $phone');
-    print('🔐 URL скрипта: $_scriptUrl');
-    print('🔐 Локальные метаданные: ${localMetadata.length} листов');
+    debugPrint('\n🔐 ===== НАЧАЛО АУТЕНТИФИКАЦИИ =====');
+    debugPrint('🔐 Телефон: $phone');
+    debugPrint('🔐 URL скрипта: $_scriptUrl');
+    debugPrint('🔐 Локальные метаданные: ${localMetadata.length} листов');
 
     try {
       final data = {
@@ -111,20 +112,20 @@ class ApiService {
       if (response.statusCode == 200) {
         try {
           final Map<String, dynamic> result = jsonDecode(response.body);
-          print('🔍 Распарсенный JSON:');
-          print('🔍 status: ${result['status']}');
-          print('🔍 success: ${result['success']}');
-          print('🔍 message: ${result['message']}');
-          print(
+          debugPrint('🔍 Распарсенный JSON:');
+          debugPrint('🔍 status: ${result['status']}');
+          debugPrint('🔍 success: ${result['success']}');
+          debugPrint('🔍 message: ${result['message']}');
+          debugPrint(
               '🔍 user: ${result['user'] != null ? 'присутствует' : 'отсутствует'}');
-          print(
+          debugPrint(
               '🔍 metadata: ${result['metadata'] != null ? 'присутствует' : 'отсутствует'}');
-          print(
+          debugPrint(
               '🔍 data: ${result['data'] != null ? 'присутствует' : 'отсутствует'}');
 
           if (result['success'] == true && result['user'] != null) {
-            print('✅ Аутентификация успешна!');
-            print('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ =====\n');
+            debugPrint('✅ Аутентификация успешна!');
+            debugPrint('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ =====\n');
 
             return {
               'user': result['user'],
@@ -132,25 +133,25 @@ class ApiService {
               'metadata': result['metadata'] ?? {},
             };
           } else {
-            print('⚠️ Аутентификация не удалась: ${result['message']}');
-            print('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ОШИБКА) =====\n');
+            debugPrint('⚠️ Аутентификация не удалась: ${result['message']}');
+            debugPrint('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ОШИБКА) =====\n');
             return null;
           }
         } catch (e) {
-          print('❌ Ошибка парсинга JSON: $e');
-          print('❌ Сырой ответ: ${response.body}');
-          print('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ОШИБКА) =====\n');
+          debugPrint('❌ Ошибка парсинга JSON: $e');
+          debugPrint('❌ Сырой ответ: ${response.body}');
+          debugPrint('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ОШИБКА) =====\n');
           rethrow;
         }
       } else {
-        print('❌ HTTP ошибка: ${response.statusCode}');
-        print('❌ Тело ответа: ${response.body}');
-        print('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ОШИБКА) =====\n');
+        debugPrint('❌ HTTP ошибка: ${response.statusCode}');
+        debugPrint('❌ Тело ответа: ${response.body}');
+        debugPrint('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ОШИБКА) =====\n');
         throw Exception('Ошибка аутентификации: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ Критическая ошибка в authenticate: $e');
-      print('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ИСКЛЮЧЕНИЕ) =====\n');
+      debugPrint('❌ Критическая ошибка в authenticate: $e');
+      debugPrint('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ИСКЛЮЧЕНИЕ) =====\n');
       rethrow;
     }
   }
@@ -174,7 +175,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('❌ Ошибка получения подписок: $e');
+      debugPrint('❌ Ошибка получения подписок: $e');
       return [];
     }
   }
@@ -201,7 +202,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка отправки уведомления: $e');
+      debugPrint('❌ Ошибка отправки уведомления: $e');
       return false;
     }
   }
@@ -219,7 +220,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки данных клиента: $e');
+      debugPrint('❌ Ошибка загрузки данных клиента: $e');
       return null;
     }
   }
@@ -245,7 +246,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки продуктов: $e');
+      debugPrint('❌ Ошибка загрузки продуктов: $e');
       return null;
     }
   }
@@ -280,7 +281,7 @@ class ApiService {
       if (response.statusCode == 200) {
         // Защита от пустого ответа
         if (response.body.isEmpty || response.body.trim() == '{}') {
-          print('⚠️ Сервер вернул пустой ответ 200. Считаем успехом.');
+          debugPrint('⚠️ Сервер вернул пустой ответ 200. Считаем успехом.');
           return true;
         }
 
@@ -288,15 +289,16 @@ class ApiService {
           final Map<String, dynamic> result = jsonDecode(response.body);
           return result['success'] == true || result['status'] == 'success';
         } catch (e) {
-          print('⚠️ Ошибка парсинга ответа, но статус 200. Считаем успехом.');
+          debugPrint(
+              '⚠️ Ошибка парсинга ответа, но статус 200. Считаем успехом.');
           return true;
         }
       } else {
-        print('❌ Ошибка создания заказа: ${response.statusCode}');
+        debugPrint('❌ Ошибка создания заказа: ${response.statusCode}');
         return false;
       }
     } catch (e) {
-      print('❌ Ошибка создания заказа: $e');
+      debugPrint('❌ Ошибка создания заказа: $e');
       return false;
     }
   }
@@ -327,10 +329,10 @@ class ApiService {
       }).toList();
 
       // 🔥 СЛЕДСТВИЕ: ПЕЧАТАЕМ ТО, ЧТО МЫ ДЕЙСТВИТЕЛЬНО ОТПРАВЛЯЕМ НА СЕРВЕР
-      print('🕵️‍♂️ ОТПРАВКА КЛИЕНТА: ${client.clientName}');
-      print('🕵️‍♂️ КОЛ-ВО ПОЗИЦИЙ В ПАКЕТЕ: ${items.length}');
+      debugPrint('🕵️‍♂️ ОТПРАВКА КЛИЕНТА: ${client.clientName}');
+      debugPrint('🕵️‍♂️ КОЛ-ВО ПОЗИЦИЙ В ПАКЕТЕ: ${items.length}');
       for (var itemJson in items) {
-        print('🕵️‍♂️ JSON ДЛЯ SERVERA: $itemJson');
+        debugPrint('🕵️‍♂️ JSON ДЛЯ SERVERA: $itemJson');
       }
       // КОНЕЦ СЛЕДСТВИЯ
 
@@ -377,11 +379,11 @@ class ApiService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       } else {
-        print('❌ Ошибка создания заказа: ${response.statusCode}');
+        debugPrint('❌ Ошибка создания заказа: ${response.statusCode}');
         return null;
       }
     } catch (e) {
-      print('❌ Ошибка создания заказа: $e');
+      debugPrint('❌ Ошибка создания заказа: $e');
       return null;
     }
   }
@@ -413,7 +415,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления заказа: $e');
+      debugPrint('❌ Ошибка удаления заказа: $e');
       return false;
     }
   }
@@ -439,7 +441,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления позиций: $e');
+      debugPrint('❌ Ошибка удаления позиций: $e');
       return false;
     }
   }
@@ -467,7 +469,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки заказов: $e');
+      debugPrint('❌ Ошибка загрузки заказов: $e');
       return null;
     }
   }
@@ -496,7 +498,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления статуса заказа: $e');
+      debugPrint('❌ Ошибка обновления статуса заказа: $e');
       return false;
     }
   }
@@ -516,7 +518,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления статусов заказов: $e');
+      debugPrint('❌ Ошибка обновления статусов заказов: $e');
       return false;
     }
   }
@@ -526,9 +528,9 @@ class ApiService {
     String? phone,
     required Map<String, SheetMetadata> localMetadata,
   }) async {
-    print('\n🔍 ===== ПРОВЕРКА МЕТАДАННЫХ (checkOnly) =====');
-    print('🔍 Телефон: ${phone ?? "(гость)"}');
-    print('🔍 Локальные метаданные: ${localMetadata.length} листов');
+    debugPrint('\n🔍 ===== ПРОВЕРКА МЕТАДАННЫХ (checkOnly) =====');
+    debugPrint('🔍 Телефон: ${phone ?? "(гость)"}');
+    debugPrint('🔍 Локальные метаданные: ${localMetadata.length} листов');
 
     try {
       final data = {
@@ -545,13 +547,13 @@ class ApiService {
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body) as Map<String, dynamic>;
 
-        print('🔍 Статус: ${result['status']}');
-        print('🔍 hasUpdates: ${result['hasUpdates']}');
-        print('🔍 changedSheets: ${result['changedSheets']}');
+        debugPrint('🔍 Статус: ${result['status']}');
+        debugPrint('🔍 hasUpdates: ${result['hasUpdates']}');
+        debugPrint('🔍 changedSheets: ${result['changedSheets']}');
 
         if (result['success'] == true && result['checkOnly'] == true) {
-          print('✅ Проверка метаданных успешна!');
-          print('🔍 ===== КОНЕЦ ПРОВЕРКИ =====\n');
+          debugPrint('✅ Проверка метаданных успешна!');
+          debugPrint('🔍 ===== КОНЕЦ ПРОВЕРКИ =====\n');
 
           // Возвращаем только нужные поля
           return {
@@ -564,7 +566,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка checkMetadataUpdates: $e');
+      debugPrint('❌ Ошибка checkMetadataUpdates: $e');
       return null;
     }
   }
@@ -584,7 +586,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки метаданных: $e');
+      debugPrint('❌ Ошибка загрузки метаданных: $e');
       return null;
     }
   }
@@ -601,7 +603,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления метаданных: $e');
+      debugPrint('❌ Ошибка обновления метаданных: $e');
       return false;
     }
   }
@@ -616,7 +618,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка экспорта данных: $e');
+      debugPrint('❌ Ошибка экспорта данных: $e');
       return null;
     }
   }
@@ -635,7 +637,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления заказов: $e');
+      debugPrint('❌ Ошибка обновления заказов: $e');
       return false;
     }
   }
@@ -651,7 +653,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка импорта данных: $e');
+      debugPrint('❌ Ошибка импорта данных: $e');
       return false;
     }
   }
@@ -674,7 +676,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения состава продукта: $e');
+      debugPrint('❌ Ошибка получения состава продукта: $e');
       return null;
     }
   }
@@ -695,7 +697,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения состава начинки: $e');
+      debugPrint('❌ Ошибка получения состава начинки: $e');
       return null;
     }
   }
@@ -715,7 +717,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения начинки: $e');
+      debugPrint('❌ Ошибка получения начинки: $e');
       return null;
     }
   }
@@ -735,7 +737,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения начинки по названию: $e');
+      debugPrint('❌ Ошибка получения начинки по названию: $e');
       return null;
     }
   }
@@ -755,7 +757,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки операций склада: $e');
+      debugPrint('❌ Ошибка загрузки операций склада: $e');
       return null;
     }
   }
@@ -779,7 +781,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки отфильтрованных операций: $e');
+      debugPrint('❌ Ошибка загрузки отфильтрованных операций: $e');
       return null;
     }
   }
@@ -803,7 +805,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка добавления операции склада: $e');
+      debugPrint('❌ Ошибка добавления операции склада: $e');
       return false;
     }
   }
@@ -824,7 +826,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка добавления операций: $e');
+      debugPrint('❌ Ошибка добавления операций: $e');
       return false;
     }
   }
@@ -842,7 +844,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления складской операции: $e');
+      debugPrint('❌ Ошибка удаления складской операции: $e');
       return false;
     }
   }
@@ -860,7 +862,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления складской операции: $e');
+      debugPrint('❌ Ошибка обновления складской операции: $e');
       return false;
     }
   }
@@ -880,7 +882,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения складской операции: $e');
+      debugPrint('❌ Ошибка получения складской операции: $e');
       return null;
     }
   }
@@ -898,7 +900,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка создания начинки: $e');
+      debugPrint('❌ Ошибка создания начинки: $e');
       return false;
     }
   }
@@ -914,7 +916,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления начинки: $e');
+      debugPrint('❌ Ошибка обновления начинки: $e');
       return false;
     }
   }
@@ -931,7 +933,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления начинки: $e');
+      debugPrint('❌ Ошибка удаления начинки: $e');
       return false;
     }
   }
@@ -949,7 +951,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки начинок: $e');
+      debugPrint('❌ Ошибка загрузки начинок: $e');
       return null;
     }
   }
@@ -967,7 +969,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения остатков производства: $e');
+      debugPrint('❌ Ошибка получения остатков производства: $e');
       return null;
     }
   }
@@ -985,7 +987,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения предупреждений: $e');
+      debugPrint('❌ Ошибка получения предупреждений: $e');
       return null;
     }
   }
@@ -1011,7 +1013,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения состава: $e');
+      debugPrint('❌ Ошибка получения состава: $e');
       return null;
     }
   }
@@ -1029,7 +1031,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения ингредиентов: $e');
+      debugPrint('❌ Ошибка получения ингредиентов: $e');
       return null;
     }
   }
@@ -1045,7 +1047,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка добавления элемента состава: $e');
+      debugPrint('❌ Ошибка добавления элемента состава: $e');
       return false;
     }
   }
@@ -1061,7 +1063,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления элемента состава: $e');
+      debugPrint('❌ Ошибка обновления элемента состава: $e');
       return false;
     }
   }
@@ -1078,7 +1080,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления элемента состава: $e');
+      debugPrint('❌ Ошибка удаления элемента состава: $e');
       return false;
     }
   }
@@ -1098,7 +1100,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки единиц измерения: $e');
+      debugPrint('❌ Ошибка загрузки единиц измерения: $e');
       return null;
     }
   }
@@ -1114,7 +1116,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка добавления единицы измерения: $e');
+      debugPrint('❌ Ошибка добавления единицы измерения: $e');
       return false;
     }
   }
@@ -1136,7 +1138,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления единицы измерения: $e');
+      debugPrint('❌ Ошибка обновления единицы измерения: $e');
       return false;
     }
   }
@@ -1153,7 +1155,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления единицы измерения: $e');
+      debugPrint('❌ Ошибка удаления единицы измерения: $e');
       return false;
     }
   }
@@ -1173,7 +1175,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки производственных операций: $e');
+      debugPrint('❌ Ошибка загрузки производственных операций: $e');
       return null;
     }
   }
@@ -1204,7 +1206,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки отфильтрованных операций: $e');
+      debugPrint('❌ Ошибка загрузки отфильтрованных операций: $e');
       return null;
     }
   }
@@ -1228,7 +1230,7 @@ class ApiService {
         if (unit != null && unit.isNotEmpty) 'unit': unit,
       };
 
-      print('📝 Создание производственной операции: $data');
+      debugPrint('📝 Создание производственной операции: $data');
 
       final response = await _makeRequest('createProductionOperation', data);
 
@@ -1238,7 +1240,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка создания производственной операции: $e');
+      debugPrint('❌ Ошибка создания производственной операции: $e');
       return false;
     }
   }
@@ -1272,7 +1274,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления производственной операции: $e');
+      debugPrint('❌ Ошибка обновления производственной операции: $e');
       return false;
     }
   }
@@ -1289,7 +1291,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления производственной операции: $e');
+      debugPrint('❌ Ошибка удаления производственной операции: $e');
       return false;
     }
   }
@@ -1315,7 +1317,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения статистики производства: $e');
+      debugPrint('❌ Ошибка получения статистики производства: $e');
       return null;
     }
   }
@@ -1333,7 +1335,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка массового создания операций: $e');
+      debugPrint('❌ Ошибка массового создания операций: $e');
       return false;
     }
   }
@@ -1357,7 +1359,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка создания категории товара: $e');
+      debugPrint('❌ Ошибка создания категории товара: $e');
       return false;
     }
   }
@@ -1374,7 +1376,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления категории товара: $e');
+      debugPrint('❌ Ошибка обновления категории товара: $e');
       return false;
     }
   }
@@ -1391,7 +1393,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления категории товара: $e');
+      debugPrint('❌ Ошибка удаления категории товара: $e');
       return false;
     }
   }
@@ -1413,7 +1415,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки категорий товаров: $e');
+      debugPrint('❌ Ошибка загрузки категорий товаров: $e');
       return null;
     }
   }
@@ -1430,7 +1432,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка создания продукта: $e');
+      debugPrint('❌ Ошибка создания продукта: $e');
       return false;
     }
   }
@@ -1447,7 +1449,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления продукта: $e');
+      debugPrint('❌ Ошибка обновления продукта: $e');
       return false;
     }
   }
@@ -1464,7 +1466,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления продукта: $e');
+      debugPrint('❌ Ошибка удаления продукта: $e');
       return false;
     }
   }
@@ -1481,7 +1483,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка создания клиента: $e');
+      debugPrint('❌ Ошибка создания клиента: $e');
       return false;
     }
   }
@@ -1498,7 +1500,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления клиента: $e');
+      debugPrint('❌ Ошибка обновления клиента: $e');
       return false;
     }
   }
@@ -1515,7 +1517,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления клиента: $e');
+      debugPrint('❌ Ошибка удаления клиента: $e');
       return false;
     }
   }
@@ -1532,7 +1534,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка создания сотрудника: $e');
+      debugPrint('❌ Ошибка создания сотрудника: $e');
       return false;
     }
   }
@@ -1549,7 +1551,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления сотрудника: $e');
+      debugPrint('❌ Ошибка обновления сотрудника: $e');
       return false;
     }
   }
@@ -1566,7 +1568,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления сотрудника: $e');
+      debugPrint('❌ Ошибка удаления сотрудника: $e');
       return false;
     }
   }
@@ -1583,7 +1585,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка создания условия доставки: $e');
+      debugPrint('❌ Ошибка создания условия доставки: $e');
       return false;
     }
   }
@@ -1600,7 +1602,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления условия доставки: $e');
+      debugPrint('❌ Ошибка обновления условия доставки: $e');
       return false;
     }
   }
@@ -1617,7 +1619,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления условия доставки: $e');
+      debugPrint('❌ Ошибка удаления условия доставки: $e');
       return false;
     }
   }
@@ -1638,7 +1640,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка обновления телефона в заказах: $e');
+      debugPrint('❌ Ошибка обновления телефона в заказах: $e');
       return false;
     }
   }
@@ -1657,7 +1659,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка массового обновления заказов: $e');
+      debugPrint('❌ Ошибка массового обновления заказов: $e');
       return false;
     }
   }
@@ -1684,7 +1686,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка пакетной операции: $e');
+      debugPrint('❌ Ошибка пакетной операции: $e');
       return false;
     }
   }
@@ -1710,7 +1712,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка сохранения подписки: $e');
+      debugPrint('❌ Ошибка сохранения подписки: $e');
       return false;
     }
   }
@@ -1728,7 +1730,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка удаления подписки: $e');
+      debugPrint('❌ Ошибка удаления подписки: $e');
       return false;
     }
   }
@@ -1746,7 +1748,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('❌ Ошибка получения подписок: $e');
+      debugPrint('❌ Ошибка получения подписок: $e');
       return [];
     }
   }
@@ -1777,7 +1779,7 @@ class ApiService {
       }
       return {'sent': 0, 'failed': targetPhones.length};
     } catch (e) {
-      print('❌ Ошибка массовой отправки: $e');
+      debugPrint('❌ Ошибка массовой отправки: $e');
       return {'sent': 0, 'failed': targetPhones.length};
     }
   }
@@ -1803,7 +1805,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка отправки клиенту: $e');
+      debugPrint('❌ Ошибка отправки клиенту: $e');
       return false;
     }
   }
@@ -1829,7 +1831,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка отправки обратной связи: $e');
+      debugPrint('❌ Ошибка отправки обратной связи: $e');
       return false;
     }
   }
@@ -1852,7 +1854,7 @@ class ApiService {
       }
       return {'success': false, 'message': 'Ошибка отправки'};
     } catch (e) {
-      print('❌ Ошибка массовой отправки: $e');
+      debugPrint('❌ Ошибка массовой отправки: $e');
       return {'success': false, 'message': e.toString()};
     }
   }
@@ -1880,7 +1882,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка загрузки контактов админа: $e');
+      debugPrint('❌ Ошибка загрузки контактов админа: $e');
       return null;
     }
   }
@@ -1915,7 +1917,7 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Ошибка сохранения условий: $e');
+      debugPrint('❌ Ошибка сохранения условий: $e');
       return false;
     }
   }

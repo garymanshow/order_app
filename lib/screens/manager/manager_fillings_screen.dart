@@ -62,7 +62,7 @@ class _ManagerFillingsScreenState extends State<ManagerFillingsScreen> {
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      print('Ошибка загрузки начинок: $e');
+      debugPrint('Ошибка загрузки начинок: $e');
       setState(() => _isLoading = false);
     }
   }

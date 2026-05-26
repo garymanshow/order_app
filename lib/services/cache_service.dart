@@ -1,5 +1,6 @@
 // lib/services/cache_service.dart
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter/foundation.dart';
 import '../models/order_item.dart';
 import '../models/filling.dart';
 import '../models/composition.dart';
@@ -99,7 +100,7 @@ class CacheService {
     _contacts = await Hive.openBox<Map<String, dynamic>>(_contactsBox);
 
     _isInitialized = true;
-    print('✅ CacheService инициализирован');
+    debugPrint('✅ CacheService инициализирован');
   }
 
   // ==================== ЗАКАЗЫ ====================
@@ -111,7 +112,7 @@ class CacheService {
       final key = '${order.clientPhone}_${order.productName}_${order.date}';
       await _orders.put(key, order);
     }
-    print('📦 Сохранено ${orders.length} заказов');
+    debugPrint('📦 Сохранено ${orders.length} заказов');
   }
 
   /// Получает все заказы из кэша
@@ -137,7 +138,7 @@ class CacheService {
     for (var filling in fillings) {
       await _fillings.put(filling.entityId, filling);
     }
-    print('🥣 Сохранено ${fillings.length} начинок');
+    debugPrint('🥣 Сохранено ${fillings.length} начинок');
   }
 
   /// Получает все начинки из кэша
@@ -158,7 +159,7 @@ class CacheService {
     for (var comp in compositions) {
       await _compositions.put(comp.id, comp);
     }
-    print('📝 Сохранено ${compositions.length} элементов состава');
+    debugPrint('📝 Сохранено ${compositions.length} элементов состава');
   }
 
   /// Получает все элементы состава из кэша
@@ -181,7 +182,7 @@ class CacheService {
     for (var cond in conditions) {
       await _storageConditions.put(cond.id, cond);
     }
-    print('🧊 Сохранено ${conditions.length} условий хранения');
+    debugPrint('🧊 Сохранено ${conditions.length} условий хранения');
   }
 
   /// Получает условия хранения из кэша
@@ -198,7 +199,7 @@ class CacheService {
     for (var cond in conditions) {
       await _transportConditions.put(cond.id, cond);
     }
-    print('🚚 Сохранено ${conditions.length} условий транспортировки');
+    debugPrint('🚚 Сохранено ${conditions.length} условий транспортировки');
   }
 
   /// Получает условия транспортировки из кэша
@@ -214,7 +215,7 @@ class CacheService {
     for (var product in products) {
       await _products.put(product.id, product);
     }
-    print('📦 Сохранено ${products.length} продуктов');
+    debugPrint('📦 Сохранено ${products.length} продуктов');
   }
 
   /// Получает все продукты из кэша
@@ -235,7 +236,7 @@ class CacheService {
     for (var category in categories) {
       await _priceCategories.put(category.id, category);
     }
-    print('📂 Сохранено ${categories.length} категорий');
+    debugPrint('📂 Сохранено ${categories.length} категорий');
   }
 
   /// Получает все категории из кэша
@@ -257,7 +258,7 @@ class CacheService {
     for (var op in operations) {
       await _warehouseOperations.put(op.id, op);
     }
-    print('🏭 Сохранено ${operations.length} складских операций');
+    debugPrint('🏭 Сохранено ${operations.length} складских операций');
   }
 
   /// Получает все складские операции из кэша
@@ -280,7 +281,7 @@ class CacheService {
       final key = op.rowId?.toString() ?? op.name;
       await _productionOperations.put(key, op);
     }
-    print('🏭 Сохранено ${operations.length} производственных операций');
+    debugPrint('🏭 Сохранено ${operations.length} производственных операций');
   }
 
   /// Получает все производственные операции из кэша
@@ -303,7 +304,7 @@ class CacheService {
     for (var unit in units) {
       await _units.put(unit.code, unit);
     }
-    print('📏 Сохранено ${units.length} единиц измерения');
+    debugPrint('📏 Сохранено ${units.length} единиц измерения');
   }
 
   /// Получает все единицы измерения из кэша
@@ -339,7 +340,7 @@ class CacheService {
         'editor': entry.value.editor,
       });
     }
-    print('📊 Сохранено метаданных: ${metadata.length}');
+    debugPrint('📊 Сохранено метаданных: ${metadata.length}');
   }
 
   /// Получает метаданные из кэша
@@ -359,7 +360,7 @@ class CacheService {
             editor: value['editor'] as String? ?? '',
           );
         } catch (e) {
-          print('⚠️ Ошибка парсинга метаданных для $key: $e');
+          debugPrint('⚠️ Ошибка парсинга метаданных для $key: $e');
           result[key] = SheetMetadata(
             lastUpdate: DateTime.now(),
             editor: value['editor'] as String? ?? '',
@@ -387,7 +388,7 @@ class CacheService {
     for (var i = 0; i < contacts.length; i++) {
       await _contacts.put(i.toString(), contacts[i]);
     }
-    print('📞 Сохранено ${contacts.length} контактов администраторов');
+    debugPrint('📞 Сохранено ${contacts.length} контактов администраторов');
   }
 
   /// Получает контакты администраторов из кэша
@@ -398,7 +399,7 @@ class CacheService {
   /// Очищает кэш контактов
   Future<void> clearAdminContacts() async {
     await _contacts.clear();
-    print('🗑️ Кэш контактов очищен');
+    debugPrint('🗑️ Кэш контактов очищен');
   }
 
   // ==================== ОЧЕРЕДЬ ОПЕРАЦИЙ ====================
@@ -419,7 +420,7 @@ class CacheService {
       'synced': false,
     };
     await _pendingOperations.put(id, operation);
-    print('📤 Добавлена операция в очередь: $type/$entity');
+    debugPrint('📤 Добавлена операция в очередь: $type/$entity');
   }
 
   /// Получает все несинхронизированные операции
@@ -470,14 +471,14 @@ class CacheService {
     await _pendingOperations.clear();
     await _metadata.clear();
     await _contacts.clear();
-    print('🗑️ Все кэши очищены');
+    debugPrint('🗑️ Все кэши очищены');
   }
 
   /// Очищает только данные пользователя (заказы, корзину), но оставляет справочники
   Future<void> clearUserData() async {
     await _orders.clear();
     await _pendingOperations.clear();
-    print('🗑️ Пользовательские данные очищены');
+    debugPrint('🗑️ Пользовательские данные очищены');
   }
 
   // 🔥 ПРОВЕРКА: было ли устройство использовано ранее?
@@ -486,7 +487,7 @@ class CacheService {
       final box = await _getBox('settings');
       return box.get(_keyHasBeenUsed, defaultValue: false) as bool;
     } catch (e) {
-      print('⚠️ Ошибка проверки hasBeenUsed: $e');
+      debugPrint('⚠️ Ошибка проверки hasBeenUsed: $e');
       return false;
     }
   }
@@ -497,7 +498,7 @@ class CacheService {
       final box = await _getBox('settings');
       await box.put(_keyHasBeenUsed, true);
     } catch (e) {
-      print('⚠️ Ошибка markAsUsed: $e');
+      debugPrint('⚠️ Ошибка markAsUsed: $e');
     }
   }
 
@@ -507,7 +508,7 @@ class CacheService {
       final box = await _getBox('settings');
       return box.get(_keyLastPhone) as String?;
     } catch (e) {
-      print('⚠️ Ошибка getLastPhone: $e');
+      debugPrint('⚠️ Ошибка getLastPhone: $e');
       return null;
     }
   }
@@ -518,7 +519,7 @@ class CacheService {
       final box = await _getBox('settings');
       await box.put(_keyLastPhone, phone);
     } catch (e) {
-      print('⚠️ Ошибка saveLastPhone: $e');
+      debugPrint('⚠️ Ошибка saveLastPhone: $e');
     }
   }
 
@@ -548,7 +549,7 @@ class CacheService {
 
       return now.difference(lastCheck) >= const Duration(hours: 24);
     } catch (e) {
-      print('⚠️ Ошибка shouldCheckMetadata: $e');
+      debugPrint('⚠️ Ошибка shouldCheckMetadata: $e');
       return true;
     }
   }
@@ -559,7 +560,7 @@ class CacheService {
       final box = await _getBox('settings');
       await box.put(_keyLastMetadataCheck, DateTime.now().toIso8601String());
     } catch (e) {
-      print('⚠️ Ошибка markMetadataChecked: $e');
+      debugPrint('⚠️ Ошибка markMetadataChecked: $e');
     }
   }
 
@@ -569,7 +570,7 @@ class CacheService {
       final box = await _getBox('settings');
       await box.put(_keyPendingUpdates, sheetNames);
     } catch (e) {
-      print('⚠️ Ошибка setPendingUpdates: $e');
+      debugPrint('⚠️ Ошибка setPendingUpdates: $e');
     }
   }
 
@@ -580,7 +581,7 @@ class CacheService {
       final list = box.get(_keyPendingUpdates);
       return list is List ? List<String>.from(list) : [];
     } catch (e) {
-      print('⚠️ Ошибка getPendingUpdates: $e');
+      debugPrint('⚠️ Ошибка getPendingUpdates: $e');
       return [];
     }
   }
@@ -591,7 +592,7 @@ class CacheService {
       final box = await _getBox('settings');
       await box.put(_keyPendingUpdates, []);
     } catch (e) {
-      print('⚠️ Ошибка clearPendingUpdates: $e');
+      debugPrint('⚠️ Ошибка clearPendingUpdates: $e');
     }
   }
 

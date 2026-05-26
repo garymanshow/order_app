@@ -48,10 +48,10 @@ void main() async {
 
   // 🔥 КРИТИЧНАЯ ИНИЦИАЛИЗАЦИЯ (до показа UI)
   await EnvService.init();
-  print('✅ EnvService инициализирован');
+  debugPrint('✅ EnvService инициализирован');
 
   await Hive.initFlutter();
-  print('✅ Hive инициализирован');
+  debugPrint('✅ Hive инициализирован');
 
   // 👇 ВРЕМЕННО ВКЛЮЧАЕМ ОЧИСТКУ ДЛЯ УСТРАНЕНИЯ ОШИБКИ "connection is closing"
   // Это удалит старую базу, которая могла повредиться.
@@ -60,7 +60,7 @@ void main() async {
   //print('🔥 Hive очищен (deleteFromDisk)');
 
   cacheService = await CacheService.getInstance();
-  print('✅ CacheService инициализирован');
+  debugPrint('✅ CacheService инициализирован');
 
   final unitService = UnitService(ApiService());
 
@@ -73,7 +73,7 @@ void main() async {
 
   // 🔥 НЕ КРИТИЧНОЕ — В ФОНЕ
   Future.microtask(() async {
-    print('🔄 Фоновая инициализация...');
+    debugPrint('🔄 Фоновая инициализация...');
 
     try {
       // SyncService
@@ -87,17 +87,17 @@ void main() async {
           navigatorKey.currentContext!,
           listen: false));
 
-      print('✅ SyncService инициализирован');
+      debugPrint('✅ SyncService инициализирован');
 
       // Предзагрузка изображений
       final preloader = ImagePreloader();
       await preloader.initCache();
       await preloader.preloadAuthBackgrounds();
-      print('✅ Изображения предзагружены');
+      debugPrint('✅ Изображения предзагружены');
 
       // Локализация
       await initializeDateFormatting('ru_RU', null);
-      print('✅ Локализация инициализирована');
+      debugPrint('✅ Локализация инициализирована');
 
       // Подписка на интернет
       Connectivity().onConnectivityChanged.listen((result) {
@@ -106,10 +106,10 @@ void main() async {
         }
       });
 
-      print('✅ Фоновая инициализация завершена!');
+      debugPrint('✅ Фоновая инициализация завершена!');
     } catch (e, stack) {
-      print('❌ Ошибка фона: $e');
-      print('Stack: $stack');
+      debugPrint('❌ Ошибка фона: $e');
+      debugPrint('Stack: $stack');
     }
   });
 }
@@ -128,7 +128,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => ThemeProvider()..init()),
         ChangeNotifierProvider(
           create: (context) {
-            print('🟢 Создание AuthProvider');
+            debugPrint('🟢 Создание AuthProvider');
             final provider = AuthProvider(
               navigatorKey: navigatorKey,
             );
@@ -138,7 +138,7 @@ class MyApp extends StatelessWidget {
               provider.setSilentSync(silentSync!);
             }
 
-            print('🟢 Вызов AuthProvider.init()');
+            debugPrint('🟢 Вызов AuthProvider.init()');
             provider.init();
             return provider;
           },
@@ -214,11 +214,11 @@ class _MyAppContentState extends State<MyAppContent>
     final themeProvider = Provider.of<ThemeProvider>(context);
     final connectivityResult = Provider.of<ConnectivityResult>(context);
 
-    print(
+    debugPrint(
         '🟢 MyAppContent: authProvider.isLoading = ${authProvider.isLoading}');
-    print(
+    debugPrint(
         '🟢 MyAppContent: authProvider.isAuthenticated = ${authProvider.isAuthenticated}');
-    print('🟢 MyAppContent: connectivity = $connectivityResult');
+    debugPrint('🟢 MyAppContent: connectivity = $connectivityResult');
 
     return NetworkIndicator(
       child: MaterialApp(

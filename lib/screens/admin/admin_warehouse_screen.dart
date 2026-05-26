@@ -97,7 +97,7 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
         await _loadFromServer();
       }
     } catch (e) {
-      print('❌ Ошибка загрузки данных склада: $e');
+      debugPrint('❌ Ошибка загрузки данных склада: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -118,7 +118,7 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
         }
       }
     } catch (e) {
-      print('⚠️ Ошибка загрузки с сервера: $e');
+      debugPrint('⚠️ Ошибка загрузки с сервера: $e');
     }
   }
 
@@ -356,7 +356,7 @@ class _AdminWarehouseScreenState extends State<AdminWarehouseScreen> {
         _clearForm();
       });
     } catch (e) {
-      print('❌ Ошибка сохранения: $e');
+      debugPrint('❌ Ошибка сохранения: $e');
       _showSnackBar('Ошибка сохранения: $e', Colors.red);
     }
   }

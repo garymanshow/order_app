@@ -102,7 +102,7 @@ class _AdminExcludePositionsScreenState
           final clientDataJson = authProvider.clientData!.toJson();
           await prefs.setString('client_data', jsonEncode(clientDataJson));
         } catch (e) {
-          print('❌ Ошибка сохранения после исключения позиций: $e');
+          debugPrint('❌ Ошибка сохранения после исключения позиций: $e');
         }
 
         // 3. Отправляем пушы затронутым клиентам (если API вернуло их список)

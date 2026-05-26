@@ -221,7 +221,7 @@ class _LandingScreenState extends State<LandingScreen>
         });
       }
     } catch (e) {
-      print('❌ Ошибка загрузки витрины: $e');
+      debugPrint('❌ Ошибка загрузки витрины: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }

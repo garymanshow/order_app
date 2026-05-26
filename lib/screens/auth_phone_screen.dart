@@ -1,5 +1,6 @@
 // lib/screens/auth_phone_screen.dart
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -266,7 +267,7 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
                             // Для отладки
                             final normalized =
                                 PhoneValidator.normalizePhone(value);
-                            print('📞 Ввод: $value -> $normalized');
+                            debugPrint('📞 Ввод: $value -> $normalized');
                           },
                         ),
                         const SizedBox(height: 16),

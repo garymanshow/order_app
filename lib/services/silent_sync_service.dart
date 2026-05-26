@@ -1,5 +1,6 @@
 // lib/services/silent_sync_service.dart
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 import 'cache_service.dart';
 import '../providers/auth_provider.dart';
@@ -27,7 +28,8 @@ class SilentSyncService {
   Future<void> checkIfNeeded() async {
     // 🔥 Безопасная проверка: если auth ещё не установлен — выходим
     if (_auth == null) {
-      print('⚠️ SilentSyncService: AuthProvider не установлен, пропускаем');
+      debugPrint(
+          '⚠️ SilentSyncService: AuthProvider не установлен, пропускаем');
       return;
     }
 
@@ -66,7 +68,7 @@ class SilentSyncService {
         // 🔥 FIX: _auth! после проверки выше
         _auth!.setHasPendingUpdates(true, changedSheets);
 
-        print('✅ Найдено обновлений: ${changedSheets.join(', ')}');
+        debugPrint('✅ Найдено обновлений: ${changedSheets.join(', ')}');
 
         // 5. Если WiFi → качаем полные данные сразу в фоне
         if (connectivity == ConnectivityResult.wifi) {
@@ -74,7 +76,7 @@ class SilentSyncService {
         }
       }
     } catch (e) {
-      print('⚠️ Ошибка тихой проверки: $e');
+      debugPrint('⚠️ Ошибка тихой проверки: $e');
     }
   }
 
@@ -92,14 +94,14 @@ class SilentSyncService {
 
       // 🔥 ШАГ 2: Если обновлений нет - СРАЗУ ВЫХОДИМ (Экономим лимиты!)
       if (checkResult == null || checkResult['hasUpdates'] != true) {
-        print('💤 Фоновая проверка: обновлений нет');
+        debugPrint('💤 Фоновая проверка: обновлений нет');
         await _cache.clearPendingUpdates();
         _auth?.setHasPendingUpdates(false, []);
         return;
       }
 
       // 🔥 ШАГ 3: Обновления есть - качаем полный пакет
-      print('🔄 Фоновая проверка: найдены обновления, скачиваем...');
+      debugPrint('🔄 Фоновая проверка: найдены обновления, скачиваем...');
       final result = await _api.authenticate(
         phone: phone,
         localMetadata: _cache.getMetadata(),
@@ -124,10 +126,10 @@ class SilentSyncService {
 
         await _cache.clearPendingUpdates();
         _auth?.setHasPendingUpdates(false, []);
-        print('✅ Фоновое обновление завершено');
+        debugPrint('✅ Фоновое обновление завершено');
       }
     } catch (e) {
-      print('❌ Ошибка фонового обновления: $e');
+      debugPrint('❌ Ошибка фонового обновления: $e');
     }
   }
 

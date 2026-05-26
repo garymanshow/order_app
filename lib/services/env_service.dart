@@ -1,6 +1,6 @@
 // lib/services/env_service.dart
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart' show dotenv;
 // 🔥 Используем dart:js для надежного доступа к window
 import 'dart:js' as js;
@@ -17,7 +17,7 @@ class EnvService {
   static Future<void> init() async {
     if (_isInitialized) return;
 
-    print('\n📁 ===== ИНИЦИАЛИЗАЦИЯ EnvService =====');
+    debugPrint('\n📁 ===== ИНИЦИАЛИЗАЦИЯ EnvService =====');
 
     // 1. Попытка загрузить из Flutter Dotenv
     await _loadFromDotenv();
@@ -30,27 +30,27 @@ class EnvService {
     // 3. Проверка обязательных переменных
     final scriptUrl = get('APP_SCRIPT_URL');
     if (scriptUrl == null || scriptUrl.isEmpty) {
-      print('❌ Доступные переменные: ${_envCache.keys.toList()}');
+      debugPrint('❌ Доступные переменные: ${_envCache.keys.toList()}');
       throw Exception('APP_SCRIPT_URL не найден!');
     }
 
     _printLoadedVars();
     _isInitialized = true;
-    print('📁 ===== ИНИЦИАЛИЗАЦИЯ ЗАВЕРШЕНА =====\n');
+    debugPrint('📁 ===== ИНИЦИАЛИЗАЦИЯ ЗАВЕРШЕНА =====\n');
   }
 
   /// Загрузка из файла .env
   static Future<void> _loadFromDotenv() async {
     try {
       await dotenv.load(fileName: "assets/.env");
-      print('✅ .env загружен из assets');
+      debugPrint('✅ .env загружен из assets');
       dotenv.env.forEach((key, value) {
         if (value.isNotEmpty) {
           _envCache[key] = value;
         }
       });
     } catch (e) {
-      print('⚠️ .env файл не найден (нормально для GitHub Pages)');
+      debugPrint('⚠️ .env файл не найден (нормально для GitHub Pages)');
     }
   }
 
@@ -59,7 +59,7 @@ class EnvService {
     try {
       // 🔥 ПРОВЕРЯЕМ СУЩЕСТВОВАНИЕ ОБЪЕКТА
       if (js.context['ENV'] == null) {
-        print('⚠️ window.ENV не определен');
+        debugPrint('⚠️ window.ENV не определен');
         return;
       }
 
@@ -77,14 +77,14 @@ class EnvService {
 
           if (value != null && value is String && value.isNotEmpty) {
             _envCache[key] = value;
-            print('📌 $key: загружен из window.ENV');
+            debugPrint('📌 $key: загружен из window.ENV');
           }
         } catch (e) {
           // Игнорируем ошибки чтения конкретного ключа
         }
       }
     } catch (e) {
-      print('⚠️ Ошибка чтения window.ENV: $e');
+      debugPrint('⚠️ Ошибка чтения window.ENV: $e');
     }
   }
 
@@ -99,11 +99,11 @@ class EnvService {
       get('GOOGLE_DRIVE_IMAGES_FOLDER_ID') ?? '';
 
   static void _printLoadedVars() {
-    print('\n📋 ЗАГРУЖЕННЫЕ ПЕРЕМЕННЫЕ:');
-    print('   APP_SCRIPT_URL: ${_maskUrl(scriptUrl)}');
-    print('   APP_SCRIPT_SECRET: ${scriptSecret.isNotEmpty ? '✓' : '✗'}');
-    print('   VAPID_PUBLIC_KEY: ${vapidPublicKey.isNotEmpty ? '✓' : '✗'}');
-    print(
+    debugPrint('\n📋 ЗАГРУЖЕННЫЕ ПЕРЕМЕННЫЕ:');
+    debugPrint('   APP_SCRIPT_URL: ${_maskUrl(scriptUrl)}');
+    debugPrint('   APP_SCRIPT_SECRET: ${scriptSecret.isNotEmpty ? '✓' : '✗'}');
+    debugPrint('   VAPID_PUBLIC_KEY: ${vapidPublicKey.isNotEmpty ? '✓' : '✗'}');
+    debugPrint(
         '   GOOGLE_DRIVE_IMAGES_FOLDER_ID: ${googleDriveImagesFolderID.isNotEmpty ? '✓' : '✗'}');
   }
 

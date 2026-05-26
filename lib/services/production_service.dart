@@ -1,4 +1,5 @@
 // lib/services/production_service.dart
+import 'package:flutter/foundation.dart';
 import '../models/order.dart';
 import '../models/production_operation.dart';
 import '../models/warehouse_operation.dart';
@@ -78,7 +79,7 @@ class ProductionService {
   // Инициализация - загрузка всех данных
   Future<void> initialize() async {
     try {
-      print('🔄 Инициализация ProductionService...');
+      debugPrint('🔄 Инициализация ProductionService...');
 
       // Загружаем все производственные операции
       final operations = await _apiService.fetchProductionOperations();
@@ -121,11 +122,11 @@ class ProductionService {
         }
       }
 
-      print('✅ ProductionService инициализирован');
-      print('   Начинок: ${_fillingBalance.length} видов');
-      print('   Готовой продукции: ${_productBalance.length} видов');
+      debugPrint('✅ ProductionService инициализирован');
+      debugPrint('   Начинок: ${_fillingBalance.length} видов');
+      debugPrint('   Готовой продукции: ${_productBalance.length} видов');
     } catch (e) {
-      print('❌ Ошибка инициализации ProductionService: $e');
+      debugPrint('❌ Ошибка инициализации ProductionService: $e');
     }
   }
 
@@ -152,7 +153,7 @@ class ProductionService {
         }
       }
     } catch (e) {
-      print('Ошибка загрузки справочников: $e');
+      debugPrint('Ошибка загрузки справочников: $e');
     }
   }
 
@@ -205,21 +206,21 @@ class ProductionService {
     required double quantityKg,
     required DateTime date,
   }) async {
-    print('🏭 Производство начинки: $fillingName $quantityKg кг');
+    debugPrint('🏭 Производство начинки: $fillingName $quantityKg кг');
 
     try {
       // Получаем состав начинки
       final composition = await _apiService.getCompositionForFilling(fillingId);
 
       if (composition == null || composition.isEmpty) {
-        print('❌ Состав начинки не найден');
+        debugPrint('❌ Состав начинки не найден');
         return false;
       }
 
       // Получаем вес порции начинки
       final filling = await _apiService.getFilling(fillingId);
       if (filling == null) {
-        print('❌ Начинка не найдена');
+        debugPrint('❌ Начинка не найдена');
         return false;
       }
 
@@ -227,15 +228,15 @@ class ProductionService {
               filling['Количество']?.toString().replaceAll(',', '.') ?? '0') ??
           0;
       if (portionWeight <= 0) {
-        print('❌ Не указан вес порции начинки');
+        debugPrint('❌ Не указан вес порции начинки');
         return false;
       }
 
       // Рассчитываем коэффициент
       final multiplier = (quantityKg * 1000) / portionWeight;
 
-      print('   Вес порции: $portionWeight г');
-      print('   Коэффициент: $multiplier');
+      debugPrint('   Вес порции: $portionWeight г');
+      debugPrint('   Коэффициент: $multiplier');
 
       // Списание ингредиентов
       for (var item in composition) {
@@ -266,7 +267,7 @@ class ProductionService {
         );
 
         await _warehouseService.addOperation(writeOff);
-        print(
+        debugPrint(
             '   ✓ Списано: $ingredientName - ${metricQuantity.toStringAsFixed(3)} кг');
       }
 
@@ -285,13 +286,13 @@ class ProductionService {
         final key = 'filling_$fillingId';
         _fillingBalance[key] = (_fillingBalance[key] ?? 0) + quantityKg;
 
-        print('✅ Производство начинки завершено');
-        print('   Остаток начинки: ${_fillingBalance[key]} кг');
+        debugPrint('✅ Производство начинки завершено');
+        debugPrint('   Остаток начинки: ${_fillingBalance[key]} кг');
       }
 
       return success;
     } catch (e) {
-      print('❌ Ошибка производства начинки: $e');
+      debugPrint('❌ Ошибка производства начинки: $e');
       return false;
     }
   }
@@ -305,14 +306,14 @@ class ProductionService {
     required int quantity,
     required DateTime date,
   }) async {
-    print('🏭 Выпуск продукции: $productName $quantity шт');
+    debugPrint('🏭 Выпуск продукции: $productName $quantity шт');
 
     try {
       // Получаем состав продукта
       final composition = await _apiService.getCompositionForProduct(productId);
 
       if (composition == null || composition.isEmpty) {
-        print('❌ Состав продукта не найден');
+        debugPrint('❌ Состав продукта не найден');
         return false;
       }
 
@@ -331,8 +332,8 @@ class ProductionService {
           final available = _fillingBalance[fillingKey] ?? 0;
 
           if (available < requiredKg) {
-            print('❌ Не хватает начинки ${filling['Наименование']}');
-            print('   Нужно: $requiredKg кг, есть: $available кг');
+            debugPrint('❌ Не хватает начинки ${filling['Наименование']}');
+            debugPrint('   Нужно: $requiredKg кг, есть: $available кг');
             return false;
           }
         }
@@ -357,7 +358,7 @@ class ProductionService {
           _fillingBalance[fillingKey] =
               (_fillingBalance[fillingKey] ?? 0) - requiredKg;
 
-          print(
+          debugPrint(
               '   🥣 Списана начинка: ${filling['Наименование']} - $requiredKg кг');
         } else {
           // Это прямой ингредиент - списываем со склада
@@ -380,7 +381,7 @@ class ProductionService {
           );
 
           await _warehouseService.addOperation(writeOff);
-          print('   ✓ Списано: $ingredientName - $requiredKg кг');
+          debugPrint('   ✓ Списано: $ingredientName - $requiredKg кг');
         }
       }
 
@@ -399,13 +400,13 @@ class ProductionService {
         final key = 'product_$productId';
         _productBalance[key] = (_productBalance[key] ?? 0) + quantity;
 
-        print('✅ Выпуск продукции завершен');
-        print('   Остаток продукции: ${_productBalance[key]} шт');
+        debugPrint('✅ Выпуск продукции завершен');
+        debugPrint('   Остаток продукции: ${_productBalance[key]} шт');
       }
 
       return success;
     } catch (e) {
-      print('❌ Ошибка выпуска продукции: $e');
+      debugPrint('❌ Ошибка выпуска продукции: $e');
       return false;
     }
   }
@@ -414,8 +415,8 @@ class ProductionService {
 
   // Завершение заказа (списание + отгрузка)
   Future<bool> completeOrder(Order order) async {
-    print('📦 Завершение заказа #${order.id}');
-    print('   Продукт: ${order.name} x${order.quantity}');
+    debugPrint('📦 Завершение заказа #${order.id}');
+    debugPrint('   Продукт: ${order.name} x${order.quantity}');
 
     try {
       // Получаем состав продукта
@@ -423,7 +424,7 @@ class ProductionService {
           await _apiService.getCompositionForProduct(order.priceListItemId);
 
       if (composition == null || composition.isEmpty) {
-        print('❌ Состав продукта не найден');
+        debugPrint('❌ Состав продукта не найден');
         return false;
       }
 
@@ -447,8 +448,8 @@ class ProductionService {
           final available = _fillingBalance[fillingKey] ?? 0;
 
           if (available < requiredKg) {
-            print('❌ Не хватает начинки ${filling['Наименование']}');
-            print('   Нужно: $requiredKg кг, есть: $available кг');
+            debugPrint('❌ Не хватает начинки ${filling['Наименование']}');
+            debugPrint('   Нужно: $requiredKg кг, есть: $available кг');
             return false;
           }
 
@@ -502,17 +503,17 @@ class ProductionService {
         newStatus: 'доставлен',
       );
 
-      print('✅ Заказ завершен, списано ${writeOffs.length} позиций');
+      debugPrint('✅ Заказ завершен, списано ${writeOffs.length} позиций');
       return true;
     } catch (e) {
-      print('❌ Ошибка завершения заказа: $e');
+      debugPrint('❌ Ошибка завершения заказа: $e');
       return false;
     }
   }
 
   // Массовое завершение заказов
   Future<Map<String, dynamic>> completeOrdersBatch(List<Order> orders) async {
-    print('📦 Массовое завершение ${orders.length} заказов');
+    debugPrint('📦 Массовое завершение ${orders.length} заказов');
 
     final results = {
       'success': 0,
@@ -531,7 +532,7 @@ class ProductionService {
       }
     }
 
-    print(
+    debugPrint(
         '✅ Массовое завершение: ${results['success']} успешно, ${results['failed']} с ошибками');
     return results;
   }
@@ -615,7 +616,7 @@ class ProductionService {
         productsByDay: productsByDay,
       );
     } catch (e) {
-      print('Ошибка получения статистики: $e');
+      debugPrint('Ошибка получения статистики: $e');
       return ProductionStats(
         totalFillingsProduced: 0,
         totalProductsProduced: 0,
@@ -758,7 +759,7 @@ class ProductionService {
         }
       }
     } catch (e) {
-      print('Ошибка парсинга даты: $e');
+      debugPrint('Ошибка парсинга даты: $e');
     }
     return DateTime.now();
   }
@@ -808,7 +809,7 @@ class ProductionService {
           await _warehouseService.getStockBalance(ingredientName, 'кг');
 
       if (available < metricQuantity) {
-        print(
+        debugPrint(
             '❌ Не хватает $ingredientName: нужно $metricQuantity кг, есть $available кг');
         return false;
       }
@@ -840,7 +841,7 @@ class ProductionService {
         final available = _fillingBalance['filling_$fillingId'] ?? 0;
 
         if (available < requiredKg) {
-          print('❌ Не хватает начинки ${filling['Наименование']}');
+          debugPrint('❌ Не хватает начинки ${filling['Наименование']}');
           return false;
         }
       } else {
@@ -857,7 +858,7 @@ class ProductionService {
             await _warehouseService.getStockBalance(ingredientName, 'кг');
 
         if (available < metricQuantity) {
-          print('❌ Не хватает $ingredientName');
+          debugPrint('❌ Не хватает $ingredientName');
           return false;
         }
       }

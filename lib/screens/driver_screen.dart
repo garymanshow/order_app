@@ -1,4 +1,5 @@
 // lib/screens/driver_screen.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,9 +40,9 @@ class _DriverScreenState extends State<DriverScreen> {
         await _pushService.subscribe();
       }
 
-      print('✅ Push сервис инициализирован для водителя');
+      debugPrint('✅ Push сервис инициализирован для водителя');
     } catch (e) {
-      print('⚠️ Ошибка инициализации push: $e');
+      debugPrint('⚠️ Ошибка инициализации push: $e');
     }
   }
 
@@ -75,7 +76,7 @@ class _DriverScreenState extends State<DriverScreen> {
         _hasNewRoute = lastRoute != today && _readyOrdersCount > 0;
       });
     } catch (e) {
-      print('⚠️ Ошибка проверки нового маршрута: $e');
+      debugPrint('⚠️ Ошибка проверки нового маршрута: $e');
     }
   }
 
@@ -88,7 +89,7 @@ class _DriverScreenState extends State<DriverScreen> {
         _hasNewRoute = false;
       });
     } catch (e) {
-      print('⚠️ Ошибка сохранения статуса: $e');
+      debugPrint('⚠️ Ошибка сохранения статуса: $e');
     }
   }
 

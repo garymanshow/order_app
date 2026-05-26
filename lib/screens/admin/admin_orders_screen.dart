@@ -61,7 +61,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
       // Проверяем новые заказы
       _checkNewOrders();
     } catch (e) {
-      print('❌ Ошибка загрузки данных: $e');
+      debugPrint('❌ Ошибка загрузки данных: $e');
       setState(() => _isLoading = false);
     }
   }
@@ -77,7 +77,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
           duration: Duration(seconds: 3),
         ),
       );
-      print('📦 Новых заказов: ${newOrders.length}');
+      debugPrint('📦 Новых заказов: ${newOrders.length}');
     }
   }
 
@@ -119,7 +119,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
         );
       }
     } catch (e) {
-      print('❌ Ошибка: $e');
+      debugPrint('❌ Ошибка: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Ошибка: $e'),
@@ -174,7 +174,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
         );
       }
     } catch (e) {
-      print('❌ Ошибка: $e');
+      debugPrint('❌ Ошибка: $e');
     }
   }
 

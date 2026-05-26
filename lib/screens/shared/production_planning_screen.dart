@@ -87,7 +87,7 @@ class _ProductionPlanningScreenState extends State<ProductionPlanningScreen> {
       setState(() {
         _error = 'Ошибка расчёта плана: $e';
       });
-      print('Ошибка расчёта плана: $e');
+      debugPrint('Ошибка расчёта плана: $e');
     } finally {
       setState(() => _isLoading = false);
     }

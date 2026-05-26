@@ -1,4 +1,5 @@
 // lib/screens/admin_clients_screen.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -118,7 +119,7 @@ class _AdminClientsScreenState extends State<AdminClientsScreen> {
       _showSnackBar('Клиент удален', Colors.green);
     } catch (e) {
       if (!mounted) return;
-      print('❌ Ошибка удаления клиента: $e');
+      debugPrint('❌ Ошибка удаления клиента: $e');
       _showSnackBar('Ошибка удаления: $e', Colors.red);
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -131,7 +132,7 @@ class _AdminClientsScreenState extends State<AdminClientsScreen> {
       final clientDataJson = authProvider.clientData!.toJson();
       await prefs.setString('client_data', jsonEncode(clientDataJson));
     } catch (e) {
-      print('❌ Ошибка сохранения ClientData: $e');
+      debugPrint('❌ Ошибка сохранения ClientData: $e');
     }
   }
 

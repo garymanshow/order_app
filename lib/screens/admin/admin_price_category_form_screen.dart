@@ -92,7 +92,7 @@ class _AdminPriceCategoryFormScreenState
   ) async {
     if (oldPackagingQuantity == newPackagingQuantity) return;
 
-    print('🔄 Обновление товаров категории $categoryId: '
+    debugPrint('🔄 Обновление товаров категории $categoryId: '
         'фасовка $oldPackagingQuantity → $newPackagingQuantity');
 
     int updatedCount = 0;
@@ -127,7 +127,7 @@ class _AdminPriceCategoryFormScreenState
     }
 
     if (updatedCount > 0) {
-      print('✅ Обновлено товаров: $updatedCount');
+      debugPrint('✅ Обновлено товаров: $updatedCount');
 
       // Отправляем обновления на сервер
       for (var product in updatedProducts) {
@@ -216,7 +216,7 @@ class _AdminPriceCategoryFormScreenState
         );
       }
     } catch (e) {
-      print('❌ Ошибка сохранения категории: $e');
+      debugPrint('❌ Ошибка сохранения категории: $e');
       if (mounted) {
         _showSnackBar('Ошибка сохранения: $e', Colors.red);
       }
@@ -231,7 +231,7 @@ class _AdminPriceCategoryFormScreenState
       final clientDataJson = authProvider.clientData!.toJson();
       await prefs.setString('client_data', jsonEncode(clientDataJson));
     } catch (e) {
-      print('❌ Ошибка сохранения ClientData: $e');
+      debugPrint('❌ Ошибка сохранения ClientData: $e');
     }
   }
 

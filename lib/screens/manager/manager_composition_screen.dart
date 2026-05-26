@@ -83,7 +83,7 @@ class _ManagerCompositionScreenState extends State<ManagerCompositionScreen> {
         });
       }
     } catch (e) {
-      print('Ошибка загрузки состава: $e');
+      debugPrint('Ошибка загрузки состава: $e');
       setState(() => _isLoading = false);
     }
   }

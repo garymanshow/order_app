@@ -1,5 +1,6 @@
 // lib/services/notification_history_service.dart
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/notification_history.dart';
 
@@ -15,9 +16,9 @@ class NotificationHistoryService {
       saved.add(jsonEncode(notification.toJson()));
       await prefs.setStringList(_storageKey, saved);
 
-      print('✅ Уведомление сохранено в историю');
+      debugPrint('✅ Уведомление сохранено в историю');
     } catch (e) {
-      print('❌ Ошибка сохранения уведомления: $e');
+      debugPrint('❌ Ошибка сохранения уведомления: $e');
     }
   }
 
@@ -34,7 +35,7 @@ class NotificationHistoryService {
           .toList()
         ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
     } catch (e) {
-      print('❌ Ошибка загрузки истории: $e');
+      debugPrint('❌ Ошибка загрузки истории: $e');
       return [];
     }
   }
@@ -56,7 +57,7 @@ class NotificationHistoryService {
 
       await prefs.setStringList(_storageKey, updated);
     } catch (e) {
-      print('❌ Ошибка обновления статуса: $e');
+      debugPrint('❌ Ошибка обновления статуса: $e');
     }
   }
 
@@ -66,7 +67,7 @@ class NotificationHistoryService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_storageKey);
     } catch (e) {
-      print('❌ Ошибка очистки истории: $e');
+      debugPrint('❌ Ошибка очистки истории: $e');
     }
   }
 }

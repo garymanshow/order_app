@@ -1,4 +1,5 @@
 // lib/models/client.dart
+import 'package:flutter/foundation.dart';
 import 'user.dart';
 import 'client_data.dart';
 import '../utils/parsing_utils.dart';
@@ -73,29 +74,30 @@ class Client extends User {
   }
 
   factory Client.fromJson(Map<String, dynamic> json) {
-    print('🔍 name: ${json['name']} (тип: ${json['name'].runtimeType})');
-    print('🔍 phone: ${json['phone']} (тип: ${json['phone'].runtimeType})');
-    print('🔍 firm: ${json['firm']} (тип: ${json['firm'].runtimeType})');
-    print(
+    debugPrint('🔍 name: ${json['name']} (тип: ${json['name'].runtimeType})');
+    debugPrint(
+        '🔍 phone: ${json['phone']} (тип: ${json['phone'].runtimeType})');
+    debugPrint('🔍 firm: ${json['firm']} (тип: ${json['firm'].runtimeType})');
+    debugPrint(
         '🔍 postalCode: ${json['postalCode']} (тип: ${json['postalCode'].runtimeType})');
-    print(
+    debugPrint(
         '🔍 isLegalEntity: ${json['isLegalEntity']} (тип: ${json['isLegalEntity'].runtimeType})');
-    print('🔍 city: ${json['city']} (тип: ${json['city'].runtimeType})');
-    print(
+    debugPrint('🔍 city: ${json['city']} (тип: ${json['city'].runtimeType})');
+    debugPrint(
         '🔍 deliveryAddress: ${json['deliveryAddress']} (тип: ${json['deliveryAddress'].runtimeType})');
-    print(
+    debugPrint(
         '🔍 hasDelivery: ${json['hasDelivery']} (тип: ${json['hasDelivery'].runtimeType})');
-    print(
+    debugPrint(
         '🔍 comment: ${json['comment']} (тип: ${json['comment'].runtimeType})');
-    print(
+    debugPrint(
         '🔍 latitude: ${json['latitude']} (тип: ${json['latitude'].runtimeType})');
-    print(
+    debugPrint(
         '🔍 longitude: ${json['longitude']} (тип: ${json['longitude'].runtimeType})');
-    print(
+    debugPrint(
         '🔍 discount: ${json['discount']} (тип: ${json['discount'].runtimeType})');
-    print(
+    debugPrint(
         '🔍 minOrderAmount: ${json['minOrderAmount']} (тип: ${json['minOrderAmount'].runtimeType})');
-    print(
+    debugPrint(
         '🔍 fcmToken: ${json['fcmToken']} (тип: ${json['fcmToken'].runtimeType})');
 
     // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ СТРОКИ

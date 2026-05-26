@@ -1,5 +1,6 @@
 // lib/screens/client_selection_screen.dart
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart';
+//import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -109,7 +110,7 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
         Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
       }
     }).catchError((error) {
-      print('❌ Ошибка при выходе: $error');
+      debugPrint('❌ Ошибка при выходе: $error');
       if (context.mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
       }
@@ -417,7 +418,8 @@ class _ClientSelectionScreenState extends State<ClientSelectionScreen> {
                     contentPadding: const EdgeInsets.only(
                         left: 16, right: 80, top: 8, bottom: 8),
                     onTap: () {
-                      print('🔍 Выбран клиент для прайса: ${item.client.name}');
+                      debugPrint(
+                          '🔍 Выбран клиент для прайса: ${item.client.name}');
                       authProvider.selectClient(item.client);
                       Navigator.pushReplacementNamed(context, '/price');
                     },

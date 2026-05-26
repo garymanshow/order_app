@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import '../models/nutrition_info.dart';
 import '../models/product.dart';
 import '../models/storage_condition.dart';

@@ -47,7 +47,7 @@ class _ManagerWarehouseScreenState extends State<ManagerWarehouseScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print('Ошибка загрузки данных склада: $e');
+      debugPrint('Ошибка загрузки данных склада: $e');
       setState(() => _isLoading = false);
     }
   }

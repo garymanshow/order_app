@@ -67,7 +67,7 @@ class _ManagerOrdersScreenState extends State<ManagerOrdersScreen> {
       // Проверяем готовые заказы
       _checkReadyOrders();
     } catch (e) {
-      print('❌ Ошибка загрузки заказов: $e');
+      debugPrint('❌ Ошибка загрузки заказов: $e');
       setState(() => _isLoading = false);
     }
   }
@@ -88,7 +88,7 @@ class _ManagerOrdersScreenState extends State<ManagerOrdersScreen> {
 
       // 🔥 Нужно преобразовать OrderItem в Order для productionService.completeOrder
       // Временно используем заглушку - вам нужно будет адаптировать этот метод
-      print('Отметка заказа как готов: ${order.displayName}');
+      debugPrint('Отметка заказа как готов: ${order.displayName}');
 
       // Обновляем статус через API
       final updatedOrder = order.copyWith(status: 'готов');
@@ -150,7 +150,7 @@ class _ManagerOrdersScreenState extends State<ManagerOrdersScreen> {
         );
       }
     } catch (e) {
-      print('❌ Ошибка: $e');
+      debugPrint('❌ Ошибка: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Ошибка: $e'),
@@ -184,7 +184,7 @@ class _ManagerOrdersScreenState extends State<ManagerOrdersScreen> {
         );
       }
     } catch (e) {
-      print('❌ Ошибка: $e');
+      debugPrint('❌ Ошибка: $e');
     }
   }
 

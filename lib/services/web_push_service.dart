@@ -1,5 +1,5 @@
 // lib/services/web_push_service.dart
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:js_interop';
 import '../services/api_service.dart';
@@ -44,7 +44,7 @@ class WebPushService {
     try {
       final available = await _checkPushManager();
       if (!available) {
-        print('❌ PushManager не доступен');
+        debugPrint('❌ PushManager не доступен');
         return;
       }
 
@@ -52,12 +52,12 @@ class WebPushService {
 
       if (result) {
         _isInitialized = true;
-        print('✅ WebPushService инициализирован');
+        debugPrint('✅ WebPushService инициализирован');
         await _checkSubscriptionStatus();
         _setupNotificationHandler();
       }
     } catch (e) {
-      print('❌ Ошибка инициализации WebPushService: $e');
+      debugPrint('❌ Ошибка инициализации WebPushService: $e');
     }
   }
 
@@ -67,7 +67,7 @@ class WebPushService {
       final result = await pushManager!.init(_vapidPublicKey!).toDart;
       return result.toDart;
     } catch (e) {
-      print('❌ Ошибка инициализации JS: $e');
+      debugPrint('❌ Ошибка инициализации JS: $e');
       return false;
     }
   }
@@ -77,7 +77,7 @@ class WebPushService {
       final type = typeofPushManager.toDart;
       return type != 'undefined';
     } catch (e) {
-      print('❌ Ошибка проверки PushManager: $e');
+      debugPrint('❌ Ошибка проверки PushManager: $e');
       return false;
     }
   }
@@ -88,7 +88,7 @@ class WebPushService {
       final result = await pushManager!.requestPermission().toDart;
       return result.toDart;
     } catch (e) {
-      print('❌ Ошибка запроса разрешения: $e');
+      debugPrint('❌ Ошибка запроса разрешения: $e');
       return null;
     }
   }
@@ -110,7 +110,7 @@ class WebPushService {
   // 🔥 ИСПРАВЛЕНО: Безопасный каст типов внутри обработчика
   void _setupNotificationHandler() {
     if (pushManager == null) {
-      print('⚠️ PushManager is null, cannot set notification handler');
+      debugPrint('⚠️ PushManager is null, cannot set notification handler');
       return;
     }
 
@@ -128,21 +128,21 @@ class WebPushService {
                 notificationData[key.toString()] = value;
               });
 
-              print('📨 Получено уведомление: $notificationData');
+              debugPrint('📨 Получено уведомление: $notificationData');
 
               if (_onNotificationReceived != null) {
                 _onNotificationReceived!(notificationData);
               }
             }
           } catch (e) {
-            print('❌ Ошибка обработки уведомления: $e');
+            debugPrint('❌ Ошибка обработки уведомления: $e');
           }
         }
       }.toJS;
 
       pushManager!.setNotificationHandler(handler);
     } catch (e) {
-      print('❌ Ошибка установки обработчика уведомлений: $e');
+      debugPrint('❌ Ошибка установки обработчика уведомлений: $e');
     }
   }
 
@@ -153,7 +153,7 @@ class WebPushService {
       final permission = await _requestPermission();
 
       if (permission != 'granted') {
-        print('❌ Разрешение не получено');
+        debugPrint('❌ Разрешение не получено');
         return false;
       }
 
@@ -171,7 +171,7 @@ class WebPushService {
 
         await prefs.setBool('push_subscribed', true);
         await prefs.setString('push_user_id', phone);
-        print('✅ Подписка на уведомления оформлена для $phone');
+        debugPrint('✅ Подписка на уведомления оформлена для $phone');
 
         try {
           final subscriptionResult =
@@ -179,13 +179,13 @@ class WebPushService {
           await _sendSubscriptionToServer(
               phone, 'Клиент', subscriptionResult); // Исправил роль на Клиент
         } catch (e) {
-          print('⚠️ Не удалось получить данные подписки: $e');
+          debugPrint('⚠️ Не удалось получить данные подписки: $e');
         }
       }
 
       return success;
     } catch (e) {
-      print('❌ Ошибка подписки: $e');
+      debugPrint('❌ Ошибка подписки: $e');
       return false;
     }
   }
@@ -207,7 +207,7 @@ class WebPushService {
       }
       return null;
     } catch (e) {
-      print('❌ Ошибка получения данных подписки: $e');
+      debugPrint('❌ Ошибка получения данных подписки: $e');
       return null;
     }
   }
@@ -232,14 +232,14 @@ class WebPushService {
           await _sendUnsubscribeToServer(phone);
         }
 
-        print('✅ Отписка от уведомлений выполнена');
+        debugPrint('✅ Отписка от уведомлений выполнена');
         return true;
       } else {
-        print('❌ JS метод unsubscribe вернул false');
+        debugPrint('❌ JS метод unsubscribe вернул false');
         return false;
       }
     } catch (e) {
-      print('❌ Ошибка отписки: $e');
+      debugPrint('❌ Ошибка отписки: $e');
       return false;
     }
   }
@@ -251,7 +251,7 @@ class WebPushService {
       final dynamic rawMap = subscriptionData.dartify();
 
       if (rawMap is! Map) {
-        print('❌ Данные подписки не являются Map');
+        debugPrint('❌ Данные подписки не являются Map');
         return;
       }
 
@@ -271,12 +271,12 @@ class WebPushService {
       );
 
       if (success) {
-        print('✅ Подписка отправлена на сервер для $phone');
+        debugPrint('✅ Подписка отправлена на сервер для $phone');
       } else {
-        print('❌ Ошибка отправки подписки');
+        debugPrint('❌ Ошибка отправки подписки');
       }
     } catch (e) {
-      print('❌ Ошибка отправки подписки на сервер: $e');
+      debugPrint('❌ Ошибка отправки подписки на сервер: $e');
     }
   }
 
@@ -285,14 +285,14 @@ class WebPushService {
       final success = await _apiService.deletePushSubscription(phone);
 
       if (success) {
-        print('✅ Отписка отправлена на сервер для $phone');
+        debugPrint('✅ Отписка отправлена на сервер для $phone');
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('push_user_id');
       } else {
-        print('⚠️ Ошибка отправки отписки');
+        debugPrint('⚠️ Ошибка отправки отписки');
       }
     } catch (e) {
-      print('⚠️ Ошибка отправки отписки: $e');
+      debugPrint('⚠️ Ошибка отправки отписки: $e');
     }
   }
 
@@ -300,7 +300,7 @@ class WebPushService {
     try {
       return await _apiService.getDriverSubscriptions();
     } catch (e) {
-      print('❌ Ошибка получения подписок: $e');
+      debugPrint('❌ Ошибка получения подписок: $e');
       return [];
     }
   }
@@ -308,7 +308,8 @@ class WebPushService {
   Future<void> _checkSubscriptionStatus() async {
     final prefs = await SharedPreferences.getInstance();
     _isSubscribed = prefs.getBool('push_subscribed') ?? false;
-    print('📱 Статус подписки: ${_isSubscribed ? 'подписан' : 'не подписан'}');
+    debugPrint(
+        '📱 Статус подписки: ${_isSubscribed ? 'подписан' : 'не подписан'}');
   }
 
   bool get isSubscribed => _isSubscribed;

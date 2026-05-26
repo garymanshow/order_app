@@ -2,7 +2,7 @@
 import 'dart:convert';
 import 'dart:io' show File;
 import 'dart:html' as html;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -62,7 +62,7 @@ class _PriceListScreenState extends State<PriceListScreen> {
         });
       }
     } catch (e) {
-      print('⚠️ Ошибка проверки статуса уведомлений: $e');
+      debugPrint('⚠️ Ошибка проверки статуса уведомлений: $e');
     }
   }
 

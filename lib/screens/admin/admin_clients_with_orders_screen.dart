@@ -3,7 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:html' as html;
-import 'package:flutter/foundation.dart' show kIsWeb; // Для проверки платформы
+import 'package:flutter/foundation.dart'; // Для проверки платформы
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -178,7 +178,7 @@ class _AdminClientsWithOrdersScreenState
         throw Exception('Ошибка на сервере');
       }
     } catch (e) {
-      print('❌ Ошибка массового обновления: $e');
+      debugPrint('❌ Ошибка массового обновления: $e');
       _showSnackBar('Ошибка обновления: $e', Colors.red);
     } finally {
       setState(() => _isUpdating = false);
@@ -217,7 +217,7 @@ class _AdminClientsWithOrdersScreenState
         throw Exception('Не удалось обновить статусы на сервере');
       }
     } catch (e) {
-      print('❌ Ошибка обновления статусов клиента: $e');
+      debugPrint('❌ Ошибка обновления статусов клиента: $e');
       _showSnackBar('Ошибка обновления статусов: $e', Colors.red);
     } finally {
       setState(() => _isUpdating = false);
@@ -263,7 +263,7 @@ class _AdminClientsWithOrdersScreenState
       final clientDataJson = authProvider.clientData!.toJson();
       await prefs.setString('client_data', jsonEncode(clientDataJson));
     } catch (e) {
-      print('❌ Ошибка сохранения ClientData: $e');
+      debugPrint('❌ Ошибка сохранения ClientData: $e');
     }
   }
 

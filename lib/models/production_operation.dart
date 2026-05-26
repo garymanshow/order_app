@@ -1,3 +1,6 @@
+// lib/models/production_operation.dart
+import 'package:flutter/foundation.dart';
+
 class ProductionOperation {
   final int? rowId; // ID строки в таблице (для обновления/удаления)
   final String sheet; // "Начинки" или "Прайс-лист"
@@ -77,7 +80,7 @@ class ProductionOperation {
         }
       }
     } catch (e) {
-      print('Ошибка парсинга даты: $e');
+      debugPrint('Ошибка парсинга даты: $e');
     }
     return DateTime.now();
   }

@@ -1,6 +1,6 @@
 // lib/screens/notifications_screen.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:js' as js; // 👈 ДОБАВЛЕНО
@@ -47,7 +47,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         final vapidKey = EnvService.vapidPublicKey;
 
         if (vapidKey.isEmpty) {
-          print('⚠️ VAPID ключ не найден');
+          debugPrint('⚠️ VAPID ключ не найден');
           setState(() {
             _error = 'VAPID ключ не настроен';
             _isLoading = false;
@@ -160,9 +160,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         }
       }
 
-      print('📱 Статус уведомлений сохранен: $enabled');
+      debugPrint('📱 Статус уведомлений сохранен: $enabled');
     } catch (e) {
-      print('❌ Ошибка сохранения статуса: $e');
+      debugPrint('❌ Ошибка сохранения статуса: $e');
     }
   }
 

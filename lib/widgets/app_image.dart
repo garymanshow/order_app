@@ -134,7 +134,7 @@ class AppImage extends StatelessWidget {
       height: height,
       fit: fit,
       errorBuilder: (context, error, stackTrace) {
-        print('❌ Ошибка загрузки asset: $assetPath');
+        debugPrint('❌ Ошибка загрузки asset: $assetPath');
         return _buildErrorWidget();
       },
     );
@@ -147,7 +147,7 @@ class AppImage extends StatelessWidget {
       height: height,
       fit: fit,
       errorBuilder: (context, error, stackTrace) {
-        print('❌ Ошибка загрузки сети: $networkUrl');
+        debugPrint('❌ Ошибка загрузки сети: $networkUrl');
         return _buildErrorWidget();
       },
       loadingBuilder: (context, child, loadingProgress) {
@@ -171,12 +171,12 @@ class AppImage extends StatelessWidget {
         height: height,
         fit: fit,
         errorBuilder: (context, error, stackTrace) {
-          print('❌ Ошибка декодирования base64');
+          debugPrint('❌ Ошибка декодирования base64');
           return _buildErrorWidget();
         },
       );
     } catch (e) {
-      print('❌ Ошибка base64: $e');
+      debugPrint('❌ Ошибка base64: $e');
       return _buildErrorWidget();
     }
   }

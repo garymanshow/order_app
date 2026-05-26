@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,8 +62,8 @@ class CartProvider with ChangeNotifier {
     _allProducts = allProducts;
 
     // 🔥 РЕНТГЕН
-    print('🏷️ loadCartForClient для: ${client.name}');
-    print('🏷️ Всего глобальных заказов пришло: ${globalOrders.length}');
+    debugPrint('🏷️ loadCartForClient для: ${client.name}');
+    debugPrint('🏷️ Всего глобальных заказов пришло: ${globalOrders.length}');
 
     _allOrders = globalOrders
         .where((o) =>
@@ -72,7 +73,7 @@ class CartProvider with ChangeNotifier {
         .toList();
 
     // 🔥 РЕНТГЕН
-    print(
+    debugPrint(
         '🏷️ Отфильтровано в песочницу (оформленных у этого клиента): ${_allOrders.length}');
 
     _isInitialized = true;
@@ -183,15 +184,15 @@ class CartProvider with ChangeNotifier {
 
   /// Выгружает текущие заказы из песочницы обратно в общий список AuthProvider
   void _syncToGlobal({required bool saveToDisk}) {
-    print('🔍 _syncToGlobal ЗАПУЩЕН');
-    print('🔍 _auth is null? ${_auth == null}');
-    print('🔍 _auth.clientData is null? ${_auth?.clientData == null}');
-    print(
+    debugPrint('🔍 _syncToGlobal ЗАПУЩЕН');
+    debugPrint('🔍 _auth is null? ${_auth == null}');
+    debugPrint('🔍 _auth.clientData is null? ${_auth?.clientData == null}');
+    debugPrint(
         '🔍 _currentClient phone: ${_currentClient?.phone}, name: ${_currentClient?.name}');
-    print('🔍 Размер песочницы _allOrders: ${_allOrders.length}');
+    debugPrint('🔍 Размер песочницы _allOrders: ${_allOrders.length}');
 
     if (_auth?.clientData == null || _currentClient == null) {
-      print('❌ _syncToGlobal ПРЕРВАН: Нет данных или клиента');
+      debugPrint('❌ _syncToGlobal ПРЕРВАН: Нет данных или клиента');
       return;
     }
 
@@ -200,13 +201,13 @@ class CartProvider with ChangeNotifier {
     _auth!.clientData!.orders.removeWhere((o) =>
         o.clientPhone == _currentClient!.phone &&
         o.clientName == _currentClient!.name);
-    print(
+    debugPrint(
         '🔍 Удалено старых записей: ${beforeCount - _auth!.clientData!.orders.length}');
 
     // 2. Добавляем актуальные из песочницы
     _auth!.clientData!.orders.addAll(_allOrders);
-    print('🔍 Добавлено новых из песочницы: ${_allOrders.length}');
-    print(
+    debugPrint('🔍 Добавлено новых из песочницы: ${_allOrders.length}');
+    debugPrint(
         '🔍 ИТОГО в глобальном списке стало: ${_auth!.clientData!.orders.length}');
 
     // 3. Сообщаем UI обновить суммы на главном экране

@@ -74,7 +74,7 @@ class ProductCard extends StatelessWidget {
                         tooltip: 'Меньше',
                         onPressed: quantity > 0
                             ? () {
-                                print(
+                                debugPrint(
                                     '➖ Уменьшение: ${quantity - product.multiplicity}');
                                 onQuantityChanged(
                                     quantity - product.multiplicity);
@@ -105,7 +105,7 @@ class ProductCard extends StatelessWidget {
                         icon: const Icon(Icons.add, size: 20),
                         tooltip: 'Больше',
                         onPressed: () {
-                          print(
+                          debugPrint(
                               '➕ Увеличение: ${quantity + product.multiplicity}');
                           onQuantityChanged(quantity + product.multiplicity);
                         },

@@ -1,4 +1,6 @@
 // lib/models/sheet_metadata.dart
+import 'package:flutter/foundation.dart';
+
 class SheetMetadata {
   final DateTime lastUpdate;
   final String editor;
@@ -6,11 +8,12 @@ class SheetMetadata {
   SheetMetadata({required this.lastUpdate, required this.editor});
 
   factory SheetMetadata.fromJson(Map<String, dynamic> json) {
-    print('📄 SheetMetadata.fromJson:');
-    print('   - json keys: ${json.keys}');
-    print(
+    debugPrint('📄 SheetMetadata.fromJson:');
+    debugPrint('   - json keys: ${json.keys}');
+    debugPrint(
         '   - lastUpdate raw: ${json['lastUpdate']} (${json['lastUpdate'].runtimeType})');
-    print('   - editor raw: ${json['editor']} (${json['editor'].runtimeType})');
+    debugPrint(
+        '   - editor raw: ${json['editor']} (${json['editor'].runtimeType})');
 
     DateTime parseLastUpdate(dynamic value) {
       if (value == null) return DateTime.now();
@@ -21,7 +24,7 @@ class SheetMetadata {
         try {
           return DateTime.parse(value);
         } catch (e) {
-          print('   ⚠️ Ошибка парсинга даты: $e');
+          debugPrint('   ⚠️ Ошибка парсинга даты: $e');
           return DateTime.now();
         }
       }
@@ -34,7 +37,7 @@ class SheetMetadata {
       editor: json['editor']?.toString() ?? '',
     );
 
-    print('   ✅ Создан SheetMetadata: lastUpdate=${metadata.lastUpdate}');
+    debugPrint('   ✅ Создан SheetMetadata: lastUpdate=${metadata.lastUpdate}');
     return metadata;
   }
 

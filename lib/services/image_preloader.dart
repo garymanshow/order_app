@@ -40,10 +40,10 @@ class ImagePreloader {
         _preloadedAssets.addAll(_cacheTimestamps.keys);
       }
 
-      print(
+      debugPrint(
           '📦 Кэш предзагрузки инициализирован: ${_cacheTimestamps.length} записей');
     } catch (e) {
-      print('❌ Ошибка инициализации кэша: $e');
+      debugPrint('❌ Ошибка инициализации кэша: $e');
     }
   }
 
@@ -55,7 +55,7 @@ class ImagePreloader {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_cacheKey, jsonEncode(_cacheTimestamps));
     } catch (e) {
-      print('❌ Ошибка сохранения в кэш: $e');
+      debugPrint('❌ Ошибка сохранения в кэш: $e');
     }
   }
 
@@ -85,7 +85,7 @@ class ImagePreloader {
             completer.complete(true);
           },
           onError: (dynamic exception, StackTrace? stackTrace) {
-            print('❌ Ошибка предзагрузки asset $assetPath: $exception');
+            debugPrint('❌ Ошибка предзагрузки asset $assetPath: $exception');
             _pendingLoads.remove(assetPath);
             completer.complete(false);
           },
@@ -94,7 +94,7 @@ class ImagePreloader {
 
       return completer.future;
     } catch (e) {
-      print('❌ Ошибка предзагрузки asset $assetPath: $e');
+      debugPrint('❌ Ошибка предзагрузки asset $assetPath: $e');
       _pendingLoads.remove(assetPath);
       completer.complete(false);
       return false;
@@ -124,7 +124,7 @@ class ImagePreloader {
             completer.complete(true);
           },
           onError: (dynamic exception, StackTrace? stackTrace) {
-            print('❌ Ошибка предзагрузки сети $url: $exception');
+            debugPrint('❌ Ошибка предзагрузки сети $url: $exception');
             _pendingLoads.remove(url);
             completer.complete(false);
           },
@@ -133,7 +133,7 @@ class ImagePreloader {
 
       return completer.future;
     } catch (e) {
-      print('❌ Ошибка предзагрузки сети $url: $e');
+      debugPrint('❌ Ошибка предзагрузки сети $url: $e');
       _pendingLoads.remove(url);
       completer.complete(false);
       return false;
@@ -158,18 +158,18 @@ class ImagePreloader {
 
   // Пакетная предзагрузка товаров
   Future<void> preloadProducts(List<Product> products, {int limit = 10}) async {
-    print('🖼️ Предзагрузка изображений товаров (первые $limit)...');
+    debugPrint('🖼️ Предзагрузка изображений товаров (первые $limit)...');
 
     final toLoad = products.take(limit).toList();
     final futures = toLoad.map((p) => preloadProductImage(p));
 
     await Future.wait(futures);
-    print('✅ Предзагрузка товаров завершена');
+    debugPrint('✅ Предзагрузка товаров завершена');
   }
 
   // Предзагрузка фонов авторизации
   Future<void> preloadAuthBackgrounds() async {
-    print('🖼️ Предзагрузка фонов авторизации...');
+    debugPrint('🖼️ Предзагрузка фонов авторизации...');
 
     final futures = AuthAssets.backgrounds.map((path) => preloadAsset(path));
     await Future.wait(futures);
@@ -177,7 +177,7 @@ class ImagePreloader {
     // Предзагружаем логотип
     await preloadAsset(AuthAssets.logo);
 
-    print('✅ Предзагрузка фонов авторизации завершена');
+    debugPrint('✅ Предзагрузка фонов авторизации завершена');
   }
 
   // Очистка кэша
@@ -190,7 +190,7 @@ class ImagePreloader {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_cacheKey);
 
-    print('🗑️ Кэш предзагрузки очищен');
+    debugPrint('🗑️ Кэш предзагрузки очищен');
   }
 
   // Проверка, загружено ли изображение
@@ -200,10 +200,10 @@ class ImagePreloader {
 
   // Статистика
   void printStats() {
-    print('📊 Статистика предзагрузки:');
-    print('   Assets: ${_preloadedAssets.length}');
-    print('   Network: ${_preloadedNetwork.length}');
-    print('   В процессе: ${_pendingLoads.length}');
-    print('   В кэше: ${_cacheTimestamps.length}');
+    debugPrint('📊 Статистика предзагрузки:');
+    debugPrint('   Assets: ${_preloadedAssets.length}');
+    debugPrint('   Network: ${_preloadedNetwork.length}');
+    debugPrint('   В процессе: ${_pendingLoads.length}');
+    debugPrint('   В кэше: ${_cacheTimestamps.length}');
   }
 }

@@ -1,4 +1,5 @@
 // lib/services/auth_service.dart
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
@@ -29,13 +30,14 @@ class AuthService {
     final normalizedPhone = PhoneValidator.normalizePhone(phone);
 
     if (normalizedPhone == null) {
-      print('❌ Неверный формат телефона: $phone');
+      debugPrint('❌ Неверный формат телефона: $phone');
       return null;
     }
 
     // 🔥 Дополнительная валидация для авторизации
     if (!PhoneValidator.isValidAuthPhone(normalizedPhone)) {
-      print('❌ Телефон не прошел валидацию для авторизации: $normalizedPhone');
+      debugPrint(
+          '❌ Телефон не прошел валидацию для авторизации: $normalizedPhone');
       return null;
     }
 
@@ -86,7 +88,7 @@ class AuthService {
 
       return result;
     } catch (e) {
-      print('❌ Ошибка авторизации: $e');
+      debugPrint('❌ Ошибка авторизации: $e');
       return null;
     }
   }
