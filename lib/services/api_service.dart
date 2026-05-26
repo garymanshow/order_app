@@ -474,17 +474,15 @@ class ApiService {
     }
   }
 
-  // 🔥 ОБНОВЛЕНИЕ СТАТУСА ЗАКАЗА (теперь используется и для массового)
+  // 🔥 ОБНОВЛЕНИЕ СТАТУСА ЗАКАЗА (Массовое по статусу)
   Future<bool> updateOrderStatus({
-    required String
-        orderId, // Сюда мы из экрана передаем _selectedStatus (например, 'оформлен')
+    required String oldStatus, // Переименовали переменную для ясности
     required String newStatus,
     String? comment,
   }) async {
     try {
       final data = {
-        'orderData':
-            orderId, // <--- ИЗМЕНЕНО ЗДЕСЬ! Было 'orderId', стало 'orderData'
+        'orderData': oldStatus,
         'newStatus': newStatus,
         if (comment != null) 'comment': comment,
       };
@@ -492,9 +490,12 @@ class ApiService {
       final response = await _makeRequest('updateOrderStatus', data);
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> result = jsonDecode(response.body);
-        return result['success'] ==
-            true; // GAS теперь возвращает поле success: true
+        final Map<String, dynamic> responseBody = jsonDecode(response.body);
+        // 🔥 ИСПРАВЛЕНО: Ищем success внутри data
+        final dataMap = responseBody['data'];
+        if (dataMap is Map<String, dynamic>) {
+          return dataMap['success'] == true;
+        }
       }
       return false;
     } catch (e) {
@@ -503,18 +504,46 @@ class ApiService {
     }
   }
 
-  // 🔥 Обновление статусов по клиентам
+  // 🔥 Обновление статусов по клиентам (Пакетное)
   Future<bool> updateOrderStatuses(List<StatusUpdate> updates) async {
     try {
-      final data = {
-        'updates': updates.map((update) => update.toJson()).toList(),
+      // 1. Собираем строгий Map вручную
+      final List<Map<String, dynamic>> updatesList = [];
+      for (var update in updates) {
+        updatesList.add(update.toJson());
+      }
+
+      final Map<String, dynamic> payload = {
+        'action': 'updateOrderStatuses',
+        'updates': updatesList,
       };
 
-      final response = await _makeRequest('updateOrderStatuses', data);
+      // 2. Кодируем в JSON один раз
+      final bodyString = jsonEncode(payload);
+
+      // 3. Отправляем напрямую
+      final response = await http.post(
+        Uri.parse(_scriptUrl),
+        headers: {'Content-Type': 'text/plain'},
+        body: bodyString,
+      );
+
+      debugPrint('📤 Body: $bodyString');
+      debugPrint('📥 Статус: ${response.statusCode}');
+      debugPrint('📥 Ответ: ${response.body}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> result = jsonDecode(response.body);
-        return result['success'] == true;
+        try {
+          final Map<String, dynamic> responseBody = jsonDecode(response.body);
+
+          // 🔥 ИСПРАВЛЕНО: Ищем success СНАЧАЛА в корне, ПОТОМ в data
+          final dynamic successFlag =
+              responseBody['data']?['success'] ?? responseBody['success'];
+
+          return successFlag == true;
+        } catch (e) {
+          debugPrint('⚠️ Ошибка парсинга ответа: $e');
+        }
       }
       return false;
     } catch (e) {
@@ -1641,25 +1670,6 @@ class ApiService {
       return false;
     } catch (e) {
       debugPrint('❌ Ошибка обновления телефона в заказах: $e');
-      return false;
-    }
-  }
-
-  // 🔥 МАССОВОЕ ОБНОВЛЕНИЕ СТАТУСОВ ЗАКАЗОВ
-  Future<bool> updateOrdersBatch(List<OrderItem> orders) async {
-    try {
-      final ordersData = orders.map((o) => o.toJson()).toList();
-
-      final response =
-          await _makeRequest('updateOrdersBatch', {'orders': ordersData});
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> result = jsonDecode(response.body);
-        return result['success'] == true;
-      }
-      return false;
-    } catch (e) {
-      debugPrint('❌ Ошибка массового обновления заказов: $e');
       return false;
     }
   }

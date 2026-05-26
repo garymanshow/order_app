@@ -31,7 +31,7 @@ class _AdminClientsWithOrdersScreenState
     extends State<AdminClientsWithOrdersScreen> {
   final ApiService _apiService = ApiService();
 
-  String _selectedStatus = 'all';
+  String _selectedStatus = 'оформлен';
   List<OrderItem> _filteredOrders = [];
   Map<String, List<OrderItem>> _groupedOrders = {};
   double _totalAmount = 0.0;
@@ -45,7 +45,7 @@ class _AdminClientsWithOrdersScreenState
 
   Future<void> _loadSavedFilter() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedFilter = prefs.getString('admin_orders_filter') ?? 'all';
+    final savedFilter = prefs.getString('admin_orders_filter') ?? 'оформлен';
     setState(() {
       _selectedStatus = savedFilter;
     });
@@ -71,19 +71,28 @@ class _AdminClientsWithOrdersScreenState
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _loadOrders();
+
+    // 🔥 ПРИНУДИТЕЛЬНЫЙ СБРОС К "ОФОРМЛЕН" ПРИ ОТКРЫТИИ ЭКРАНА
+    final prefs = SharedPreferences.getInstance();
+    prefs.then((prefs) {
+      final savedFilter = prefs.getString('admin_orders_filter');
+      if (savedFilter != null && savedFilter != _selectedStatus) {
+        setState(() {
+          _selectedStatus = 'оформлен';
+        });
+        _loadOrders();
+      } else {
+        _loadSavedFilter();
+      }
+    });
   }
 
   void _loadOrders() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final allOrders = authProvider.clientData?.orders ?? [];
 
-    if (_selectedStatus == 'all') {
-      _filteredOrders = List.from(allOrders);
-    } else {
-      _filteredOrders =
-          allOrders.where((order) => order.status == _selectedStatus).toList();
-    }
+    _filteredOrders =
+        allOrders.where((order) => order.status == _selectedStatus).toList();
 
     _groupedOrders = {};
     for (var order in _filteredOrders) {
@@ -127,8 +136,6 @@ class _AdminClientsWithOrdersScreenState
 
   String _getStatusText(String status) {
     switch (status) {
-      case 'all':
-        return 'Все';
       case 'оформлен':
         return 'Оформлен';
       case 'производство':
@@ -156,23 +163,39 @@ class _AdminClientsWithOrdersScreenState
   // НОВЫЕ МЕТОДЫ ОБНОВЛЕНИЯ СТАТУСОВ
   // ==========================================
 
-  // 1. МАССОВОЕ ОБНОВЛЕНИЕ (Глобальная смена по текущему фильтру)
+  // 1. ГЛОБАЛЬНАЯ СМЕНА ПАРЫ (Из текущего фильтра в следующий шаг воронки)
   Future<void> _updateAllFilteredStatus(String newStatus) async {
     setState(() => _isUpdating = true);
     try {
-      // Используем существующий метод API, передавая старый статус как orderId
+      final oldStatus = _selectedStatus;
+
+      if (oldStatus.isEmpty) {
+        _showSnackBar('Ошибка: не определен текущий статус', Colors.red);
+        setState(() => _isUpdating = false);
+        return;
+      }
+
       final success = await _apiService.updateOrderStatus(
-        orderId: _selectedStatus,
+        oldStatus: oldStatus,
         newStatus: newStatus,
       );
 
       if (success) {
         await _applyStatusChangesLocally(
-          oldStatus: _selectedStatus,
+          oldStatus: oldStatus,
           newStatus: newStatus,
-          targetPhone: null,
+          targetPhone: null, // Меняем у всех клиентов
         );
-        _showSnackBar('Все заказы переведены в "${_getStatusText(newStatus)}"',
+
+        // Меняем текущий фильтр на новый, чтобы администратор сразу увидел результат
+        setState(() {
+          _selectedStatus = newStatus;
+        });
+        _saveFilter(newStatus);
+        _loadOrders(); // Перерисовываем список под новый фильтр
+
+        _showSnackBar(
+            'Всё переведено: "${_getStatusText(oldStatus)} ➜ ${_getStatusText(newStatus)}"',
             Colors.green);
       } else {
         throw Exception('Ошибка на сервере');
@@ -193,32 +216,47 @@ class _AdminClientsWithOrdersScreenState
       if (parts.length < 2) return;
 
       final phone = parts[0];
-      final name =
-          parts.sublist(1).join('-'); // На случай, если в имени есть дефисы
+      final name = parts.sublist(1).join('-');
 
-      final updatePayload = StatusUpdate(
-        client: name,
-        phone: phone,
-        oldStatus: _selectedStatus,
-        newStatus: newStatus,
-      );
+      // У этого клиента могут быть заказы с РАЗНЫМИ статусами (например, 3 оформлено, 2 в производстве)
+      // Мы должны отправить на сервер отдельную команду для КАЖДОГО уникального статуса!
+      final uniqueStatuses = _groupedOrders[clientKey]
+              ?.map((o) => o.status)
+              .toSet()
+              .where((s) => s.isNotEmpty && s != newStatus)
+              .toList() ??
+          [];
 
-      final success = await _apiService.updateOrderStatuses([updatePayload]);
+      if (uniqueStatuses.isEmpty) return;
+
+      final updates = uniqueStatuses.map((oldStatus) {
+        return StatusUpdate(
+          client: name, // Обязательно передаем имя!
+          phone: phone, // Обязательно передаем телефон!
+          oldStatus: oldStatus, // Конкретный старый статус
+          newStatus: newStatus,
+        );
+      }).toList();
+
+      final success = await _apiService.updateOrderStatuses(updates);
 
       if (success) {
-        await _applyStatusChangesLocally(
-          oldStatus: _selectedStatus,
-          newStatus: newStatus,
-          targetPhone: phone,
-        );
+        // Обновляем локально по каждому статусу для этого клиента
+        for (var oldStatus in uniqueStatuses) {
+          await _applyStatusChangesLocally(
+            oldStatus: oldStatus,
+            newStatus: newStatus,
+            targetPhone: phone,
+          );
+        }
         _showSnackBar(
             'Статус изменен на "${_getStatusText(newStatus)}"', Colors.green);
       } else {
-        throw Exception('Не удалось обновить статусы на сервере');
+        throw Exception('Ошибка обновления статусов на сервере');
       }
     } catch (e) {
       debugPrint('❌ Ошибка обновления статусов клиента: $e');
-      _showSnackBar('Ошибка обновления статусов: $e', Colors.red);
+      _showSnackBar('Ошибка обновления: $e', Colors.red);
     } finally {
       setState(() => _isUpdating = false);
     }
@@ -305,8 +343,17 @@ class _AdminClientsWithOrdersScreenState
       },
     );
 
-    // Если пользователь подтвердил
     if (confirm == true) {
+      // Двойная защита от дурака: проверяем текущий статус перед отменой
+      final currentOrders = _groupedOrders[clientKey] ?? [];
+      final hasFormedOrders = currentOrders.any((o) => o.status == 'оформлен');
+
+      if (!hasFormedOrders) {
+        _showSnackBar(
+            'Отменить можно только заказы со статусом "Оформлен"', Colors.red);
+        return;
+      }
+
       _updateClientStatus(clientKey, 'отменен');
     }
   }
@@ -320,7 +367,6 @@ class _AdminClientsWithOrdersScreenState
     }
 
     try {
-      // Запрашиваем разрешение только на Android
       if (!kIsWeb && Platform.isAndroid) {
         final status = await Permission.storage.request();
         if (!status.isGranted) {
@@ -332,7 +378,6 @@ class _AdminClientsWithOrdersScreenState
       final csvContent = _generateCsvContent(orders);
 
       if (kIsWeb) {
-        // ИСПРАВЛЕНО: На Web используем встроенный Blob с указанием кодировки
         final bytes = utf8.encode(csvContent);
         final blob = html.Blob([bytes], 'text/csv;charset=windows-1251');
         final url = html.Url.createObjectUrlFromBlob(blob);
@@ -353,7 +398,6 @@ class _AdminClientsWithOrdersScreenState
 
         _showSnackBar('Файл $fileName готов к скачиванию', Colors.green);
       } else {
-        // Мобильные устройства: используем нативный конвертер
         final cp1251Bytes = await CharsetConverter.encode('cp1251', csvContent);
 
         final directory = await getApplicationDocumentsDirectory();
@@ -507,11 +551,6 @@ class _AdminClientsWithOrdersScreenState
                         itemBuilder: (context) => [
                           const PopupMenuDivider(),
                           const CheckedPopupMenuItem(
-                              value: 'all',
-                              checked: false,
-                              child: Text('👁️ Все заказы')),
-                          const PopupMenuDivider(),
-                          const CheckedPopupMenuItem(
                               value: 'оформлен',
                               checked: false,
                               child: Text('🟦 Оформлен')),
@@ -599,7 +638,6 @@ class _AdminClientsWithOrdersScreenState
                                   builder: (_) =>
                                       const AdminExcludePositionsScreen()),
                             );
-                            // Если экран вернул true (позиции удалены), обновляем список на текущем экране
                             if (result == true) {
                               _loadOrders();
                             }
@@ -716,7 +754,7 @@ class _AdminClientsWithOrdersScreenState
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
-                                          // Кнопка движения ВПЕРЕД
+                                          // 🔥 ЛОГИКА ПАР: "старый ➜ новый"
                                           TextButton(
                                             onPressed: () =>
                                                 _updateClientStatus(
@@ -736,18 +774,24 @@ class _AdminClientsWithOrdersScreenState
                                           ),
 
                                           // Кнопка ОТМЕНЫ (если она доступна в списке)
-                                          if (availableCardStatuses
-                                              .contains('отменен'))
-                                            TextButton(
-                                              onPressed: () =>
-                                                  _showCancelConfirmation(
-                                                      clientKey),
-                                              child: const Text(
-                                                'Отменить',
-                                                style: TextStyle(
-                                                  color: Colors.red,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 12,
+                                          if (availableCardStatuses.first ==
+                                                  'оформлен' &&
+                                              availableCardStatuses
+                                                  .contains('отменен'))
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  bottom: 4),
+                                              child: TextButton(
+                                                onPressed: () =>
+                                                    _showCancelConfirmation(
+                                                        clientKey),
+                                                child: const Text(
+                                                  '❌ Отменить',
+                                                  style: TextStyle(
+                                                    color: Colors.red,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 11,
+                                                  ),
                                                 ),
                                               ),
                                             ),

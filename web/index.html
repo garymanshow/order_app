@@ -53,7 +53,7 @@
   <!-- 🔥 Переменные окружения -->
   <script>
     window.ENV = {
-      APP_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyoWM4cSAAbnL5MbyLE9bYzZ1WT-_ukIX6PwvAWd26j2xkhtuUD6tlscGWkgc2CjPxqLw/exec',
+      APP_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyHyILIruLXBWGATaOradSTvkP1yI1iFLblPQIfleHh5OAeyWdxttSNUvfAnCBpIJ631g/exec',
       SPREADSHEET_ID: '16LQhpJgAduO-g7V5pl9zXNuvPMUzs0vwoHZJlz_FXe8',
       GOOGLE_DRIVE_IMAGES_FOLDER_ID: '1zXLAmW2kxfHUimaXTrbJHjl5MqGtnRX7',
       VAPID_PUBLIC_KEY: 'BMpzIzZ2LhJf5bK62MA6NlOVUCRQP4vz-yVHgv-dmYVeDpiwieph16f2qXvZRfZdDuRsHcUj765dQPN5ExlyY40'
@@ -168,23 +168,24 @@
     // ==========================================
     window.addEventListener('beforeunload', (e) => {
       // Ищем следы активности Flutter (заказы или просто факт авторизации)
-      const hasOrders = localStorage.getItem('flutter.all_orders') || 
-                        localStorage.getItem('flutter.auth_user') ||
-                        localStorage.getItem('flutter.local_storage');
-      
+      const hasOrders = localStorage.getItem('flutter.all_orders') ||
+        localStorage.getItem('flutter.auth_user') ||
+        localStorage.getItem('flutter.local_storage');
+
       if (hasOrders) {
         // 1. Сообщаем Service Worker'у, что происходит экстренное закрытие
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({ action: 'saveDataEmergency' });
         }
-        
+
         // 2. Стандартный трюк браузера: заставляет ОС дать нам 1-2 секунды 
         // на сброс IndexedDB на жесткий диск ПЕРЕД тем, как убить процесс.
         // Без этой строки Windows убьет процесс мгновенно.
         e.preventDefault();
-        e.returnValue = ''; 
+        e.returnValue = '';
       }
     });
   </script>
 </body>
+
 </html>

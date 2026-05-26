@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/order_item.dart';
 import '../../models/client.dart';
+import '../../models/status_update.dart';
 import '../../services/api_service.dart';
 import '../../utils/parsing_utils.dart';
 
@@ -331,8 +332,9 @@ class _AdminClientOrdersScreenState extends State<AdminClientOrdersScreen>
       if (index != -1) {
         final updatedOrder = order.copyWith(status: newStatus);
 
+        // 🔥 ИСПРАВЛЕНО: Используем новое имя параметра oldStatus
         final success = await _apiService.updateOrderStatus(
-          orderId: '${order.clientPhone}_${order.productName}_${order.date}',
+          oldStatus: order.status, // Передаем текущий статус заказа
           newStatus: newStatus,
         );
 
@@ -359,27 +361,42 @@ class _AdminClientOrdersScreenState extends State<AdminClientOrdersScreen>
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentClient = _allClients[_currentClientIndex];
 
-      final clientOrders = authProvider.clientData!.orders
-          .where((o) => o.clientName == _allClients[_currentClientIndex].name)
+      // 1. Собираем уникальные статусы, которые есть у этого клиента в текущем фильтре
+      final uniqueStatuses = _filteredOrders
+          .map((o) => o.status)
+          .toSet()
+          .where((s) => s.isNotEmpty && s != newStatus)
           .toList();
 
-      final updatedOrders = clientOrders.map((order) {
-        return order.copyWith(status: newStatus);
+      if (uniqueStatuses.isEmpty) {
+        _showSnackBar('Нет заказов для обновления', Colors.orange);
+        return;
+      }
+
+      // 2. Формируем список обновлений для API (только для ЭТОГО клиента)
+      final updates = uniqueStatuses.map((oldStatus) {
+        return StatusUpdate(
+          client: currentClient.name ?? 'Неизвестный клиент',
+          phone: currentClient.phone ?? '',
+          oldStatus: oldStatus,
+          newStatus: newStatus,
+        );
       }).toList();
 
-      final success = await _apiService.updateOrdersBatch(updatedOrders);
+      // 3. Отправляем на сервер (сработает handleUpdateOrderStatuses в GAS)
+      final success = await _apiService.updateOrderStatuses(updates);
 
       if (success) {
-        for (int i = 0; i < clientOrders.length; i++) {
-          final oldOrder = clientOrders[i];
-          final index = authProvider.clientData!.orders.indexWhere((o) =>
-              o.clientPhone == oldOrder.clientPhone &&
-              o.productName == oldOrder.productName &&
-              o.date == oldOrder.date);
+        // 4. Обновляем локально (используем логику, аналогичную идеальному методу)
+        for (int i = 0; i < authProvider.clientData!.orders.length; i++) {
+          final order = authProvider.clientData!.orders[i];
 
-          if (index != -1) {
-            authProvider.clientData!.orders[index] = updatedOrders[i];
+          if (order.clientName == currentClient.name &&
+              uniqueStatuses.contains(order.status)) {
+            authProvider.clientData!.orders[i] =
+                order.copyWith(status: newStatus);
           }
         }
 
@@ -387,8 +404,7 @@ class _AdminClientOrdersScreenState extends State<AdminClientOrdersScreen>
         await _saveToPrefs(authProvider);
         _loadOrders();
 
-        _showSnackBar(
-            'Статус всех заказов изменен на "$newStatus"', Colors.green);
+        _showSnackBar('Статус заказов изменен на "$newStatus"', Colors.green);
       } else {
         throw Exception('Ошибка массового обновления на сервере');
       }

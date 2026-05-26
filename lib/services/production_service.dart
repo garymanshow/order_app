@@ -499,7 +499,7 @@ class ProductionService {
 
       // Обновляем статус заказа
       await _apiService.updateOrderStatus(
-        orderId: order.id,
+        oldStatus: order.status, // Передаем текущий статус заказа
         newStatus: 'доставлен',
       );
 
