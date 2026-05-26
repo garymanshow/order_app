@@ -539,22 +539,47 @@ class AuthProvider with ChangeNotifier {
           '🛡️ НАЙДЕНЫ НЕОТПРАВЛЕННЫЕ ЧЕРНОВИКИ: ${unsentDrafts.length} шт. Восстанавливаем...');
 
       if (_clientData != null) {
-        // Убираем дубли на всякий случай (если сервер вдруг узнал о них)
-        _clientData!.orders.removeWhere((existingOrder) => unsentDrafts.any(
+        // 🔥 ФИЛЬТР: Восстанавливаем ТОЛЬКО то, чего НЕТ на сервере!
+        final actualNewDrafts = unsentDrafts.where((draft) {
+          // Ищем такой же заказ в данных, которые только что пришли от GAS
+          final existsOnServer = _clientData!.orders.any((serverOrder) =>
+              serverOrder.clientPhone == draft.clientPhone &&
+              serverOrder.clientName == draft.clientName &&
+              serverOrder.priceListId == draft.priceListId &&
+              serverOrder.status == draft.status);
+
+          // Если на сервере такого НЕТ — значит это реальный потерянный черновик, восстанавливаем
+          // Если на сервере ЕСТЬ — игнорируем (мы его уже отправили, пусть живет как есть)
+          return !existsOnServer;
+        }).toList();
+
+        if (actualNewDrafts.isEmpty) {
+          print('🛡️ Потерянных черновиков нет (все уже на сервере)');
+          await prefs.remove('all_orders'); // Чистим буфер на всякий случай
+          return;
+        }
+
+        print(
+            '🛡️ НАЙДЕНЫ ИСТИННО ПОТЕРЯННЫЕ ЧЕРНОВИКИ: ${actualNewDrafts.length} шт. Восстанавливаем...');
+
+        // Убираем дубли
+        _clientData!.orders.removeWhere((existingOrder) => actualNewDrafts.any(
             (draft) =>
                 draft.clientPhone == existingOrder.clientPhone &&
                 draft.clientName == existingOrder.clientName &&
                 draft.priceListId == existingOrder.priceListId));
 
-        // Добавляем найденные черновики в рабочую базу
-        _clientData!.orders.addAll(unsentDrafts);
+        // Восстанавливаем только истинно новые
+        final restoredOrders = actualNewDrafts.map((draft) {
+          return draft.copyWith(
+            status: 'оформлен',
+            isLocalDraft: true,
+          );
+        }).toList();
 
-        // Сохраняем обновленную базу обратно в Hive
+        _clientData!.orders.addAll(restoredOrders);
         await saveToCache();
-
-        // Очищаем буфер в SharedPreferences, чтобы не восстанавливать их больше
         await prefs.remove('all_orders');
-
         notifyListeners();
         debugPrint('✅ ЧЕРНОВИКИ УСПЕШНО ВОССТАНОВЛЕНЫ В СПИСОК ЗАКАЗОВ');
       }
