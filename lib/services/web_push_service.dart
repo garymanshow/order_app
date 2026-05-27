@@ -169,18 +169,21 @@ class WebPushService {
       if (success) {
         _isSubscribed = true;
 
+        final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('push_subscribed', true);
         await prefs.setString('push_user_id', phone);
         debugPrint('✅ Подписка на уведомления оформлена для $phone');
 
+        // 🔥 УДАЛЯЕМ ЭТОТ БЛОК! Сервер больше не ждет отдельных запросов на сохранение.
+        // Подписка сохранится автоматически при СЛЕДУЮЩЕМ входе (login) через Piggybacking.
+        /*
         try {
-          final subscriptionResult =
-              await pushManager!.getSubscriptionData().toDart;
-          await _sendSubscriptionToServer(
-              phone, 'Клиент', subscriptionResult); // Исправил роль на Клиент
+          final subscriptionResult = await pushManager!.getSubscriptionData().toDart;
+          await _sendSubscriptionToServer(phone, 'Клиент', subscriptionResult);
         } catch (e) {
           debugPrint('⚠️ Не удалось получить данные подписки: $e');
         }
+        */
       }
 
       return success;
@@ -208,6 +211,41 @@ class WebPushService {
       return null;
     } catch (e) {
       debugPrint('❌ Ошибка получения данных подписки: $e');
+      return null;
+    }
+  }
+
+  // 🔥 НОВЫЙ МЕТОД: Берет текущую подписку для "прикрепления" к запросу авторизации
+  // Если подписки нет (отписался или чистил кэш) - вернет null
+  Future<Map<String, dynamic>?> getSubscriptionForAuth() async {
+    if (!kIsWeb || !_isInitialized || pushManager == null) return null;
+
+    try {
+      // Проверяем флаг из памяти
+      if (!_isSubscribed) return null;
+
+      // Берем сырые данные из JS
+      final result = await pushManager!.getSubscriptionData().toDart;
+      final dynamic rawMap = result.dartify();
+
+      if (rawMap is Map) {
+        final Map<String, dynamic> typedMap = {};
+        rawMap.forEach((key, value) {
+          typedMap[key.toString()] = value;
+        });
+
+        // Форматируем ТОЛЬКО то, что нужно серверу
+        return {
+          'endpoint': typedMap['endpoint'],
+          'keys': typedMap['keys'], // GAS сам превратит это в JSON строку
+        };
+      }
+
+      // Если браузер вернул пустоту (подписка сдохла), сбрасываем флаг
+      _isSubscribed = false;
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ Ошибка получения подписки для Auth: $e');
       return null;
     }
   }

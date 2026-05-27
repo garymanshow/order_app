@@ -93,8 +93,18 @@ class _AuthPhoneScreenState extends State<AuthPhoneScreen> {
     } catch (e) {
       // 🔥 4. Обрабатываем ошибки
       if (mounted) {
+        // Очищаем служебное слово "Exception: " для красоты
+        String errorText = e.toString().replaceFirst("Exception: ", "");
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка входа: $e')),
+          SnackBar(
+            content: Text('Ошибка входа: $errorText'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+            showCloseIcon: true,
+            backgroundColor:
+                Colors.redAccent, // Можно сделать красным, т.к. это ошибка
+          ),
         );
       }
     } finally {

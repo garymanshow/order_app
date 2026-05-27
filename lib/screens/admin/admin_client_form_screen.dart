@@ -36,6 +36,9 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
   late TextEditingController _discountController;
   late TextEditingController _minOrderAmountController;
 
+  // 🔥 EMAIL: Добавляем контроллер
+  late TextEditingController _emailController;
+
   late bool _legalEntityValue;
   late bool _deliveryValue;
 
@@ -66,6 +69,10 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
       _minOrderAmountController = TextEditingController(
           text: widget.client!.minOrderAmount?.toString() ?? '');
 
+      // 🔥 EMAIL: Инициализируем существующим значением
+      _emailController =
+          TextEditingController(text: widget.client!.email ?? '');
+
       _legalEntityValue = widget.client!.legalEntity ?? false;
       _deliveryValue = widget.client!.delivery ?? false;
     } else {
@@ -78,6 +85,9 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
       _commentController = TextEditingController();
       _discountController = TextEditingController();
       _minOrderAmountController = TextEditingController();
+
+      // 🔥 EMAIL: Пустой контроллер для нового клиента
+      _emailController = TextEditingController();
 
       _legalEntityValue = false;
       _deliveryValue = false;
@@ -95,8 +105,16 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     _commentController.dispose();
     _discountController.dispose();
     _minOrderAmountController.dispose();
+
+    // 🔥 EMAIL: Освобождаем ресурсы
+    _emailController.dispose();
+
     super.dispose();
   }
+
+  // ... (здесь методы _loadCities, _formatPhone, _onAddressChanged, _validatePhone,
+  // _pastePhoneFromClipboard, _isMobilePlatform, _requestContactPermission,
+  // _pickContact, _updateOrdersPhone остаются без изменений) ...
 
   // 🔥 ЗАГРУЗКА ГОРОДОВ ДЛЯ АВТОДОПОЛНЕНИЯ
   void _loadCities() {
@@ -116,7 +134,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     }
   }
 
-  // 🔥 ФОРМАТИРОВАНИЕ ТЕЛЕФОНА ПРИ ВВОДЕ
   void _formatPhone(String value) {
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return;
@@ -144,7 +161,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     }
   }
 
-  // 🔥 АВТОЗАПОЛНЕНИЕ ГОРОДА ИЗ АДРЕСА
   void _onAddressChanged(String address) {
     if (_cityController.text.isEmpty && address.contains(',')) {
       final parts = address.split(',');
@@ -157,7 +173,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     }
   }
 
-  // Валидация телефона
   String? _validatePhone(String? value) {
     if (value == null || value.trim().isEmpty) return null;
 
@@ -172,7 +187,18 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     return null;
   }
 
-  // Получение телефона из буфера обмена
+  // 🔥 EMAIL: Валидатор для проверки формата email
+  String? _validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty)
+      return null; // Email не обязателен по форме, но обязателен для 2FA (проверка при входе)
+
+    final regex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!regex.hasMatch(value.trim())) {
+      return 'Неверный формат email';
+    }
+    return null;
+  }
+
   Future<void> _pastePhoneFromClipboard() async {
     try {
       final clipboardData = await Clipboard.getData('text/plain');
@@ -189,17 +215,15 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     }
   }
 
-  // Проверка, является ли платформа мобильной
   bool get _isMobilePlatform {
     try {
-      if (kIsWeb) return false; // Если это веб, считаем что это десктоп
+      if (kIsWeb) return false;
       return Platform.isAndroid || Platform.isIOS;
     } catch (e) {
-      return false; // Если платформа не определяется, безопасно возвращаем false
+      return false;
     }
   }
 
-  // Запрос разрешения на контакты
   Future<bool> _requestContactPermission() async {
     var status = await Permission.contacts.status;
     if (status.isDenied) {
@@ -208,7 +232,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     return status.isGranted;
   }
 
-  // Выбор контакта
   Future<void> _pickContact() async {
     if (!_isMobilePlatform) return;
 
@@ -332,7 +355,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     }
   }
 
-  // Обновление заказов при изменении телефона
   Future<void> _updateOrdersPhone(String oldPhone, String newPhone) async {
     if (oldPhone.isEmpty || oldPhone == newPhone) return;
 
@@ -381,6 +403,10 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
             : null,
         discount: double.tryParse(_discountController.text.trim()),
         minOrderAmount: double.tryParse(_minOrderAmountController.text.trim()),
+        // 🔥 EMAIL: Передаем email в модель
+        email: _emailController.text.trim().isNotEmpty
+            ? _emailController.text.trim()
+            : null,
       );
 
       if (widget.client != null) {
@@ -442,7 +468,6 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
     }
   }
 
-  // Сохранение данных в SharedPreferences
   Future<void> _saveClientDataToPrefs(AuthProvider authProvider) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -484,7 +509,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                       decoration: InputDecoration(labelText: 'Почтовый индекс'),
                     ),
 
-                    // 🔥 ТЕЛЕФОН С ФОРМАТИРОВАНИЕМ
+                    // ТЕЛЕФОН С ФОРМАТИРОВАНИЕМ
                     TextFormField(
                       controller: _phoneController,
                       decoration: InputDecoration(
@@ -508,7 +533,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                         ),
                       ),
                       keyboardType: TextInputType.phone,
-                      onChanged: _formatPhone, // 👈 ДОБАВЛЕНО
+                      onChanged: _formatPhone,
                       validator: _validatePhone,
                     ),
 
@@ -522,7 +547,7 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                       },
                     ),
 
-                    // 🔥 ГОРОД С АВТОДОПОЛНЕНИЕМ
+                    // ГОРОД С АВТОДОПОЛНЕНИЕМ
                     _availableCities.isEmpty
                         ? TextFormField(
                             controller: _cityController,
@@ -552,11 +577,11 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                             },
                           ),
 
-                    // 🔥 АДРЕС С АВТОЗАПОЛНЕНИЕМ ГОРОДА
+                    // АДРЕС С АВТОЗАПОЛНЕНИЕМ ГОРОДА
                     TextFormField(
                       controller: _deliveryAddressController,
                       decoration: InputDecoration(labelText: 'Адрес доставки'),
-                      onChanged: _onAddressChanged, // 👈 ДОБАВЛЕНО
+                      onChanged: _onAddressChanged,
                     ),
 
                     CheckboxListTile(
@@ -567,6 +592,21 @@ class _AdminClientFormScreenState extends State<AdminClientFormScreen> {
                           _deliveryValue = value ?? false;
                         });
                       },
+                    ),
+
+                    // 🔥 EMAIL: Добавлено поле ввода email
+                    TextFormField(
+                      controller: _emailController,
+                      decoration: const InputDecoration(
+                        labelText: 'Email для 2FA',
+                        hintText: 'user@example.com',
+                        prefixIcon: Icon(Icons.email_outlined),
+                        // Делаем подсказку, что это важно
+                        helperText: 'Нужен клиенту для входа в приложение',
+                        helperMaxLines: 1,
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: _validateEmail, // Подключили валидатор
                     ),
 
                     TextFormField(

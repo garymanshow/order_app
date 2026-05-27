@@ -1,13 +1,19 @@
-// lib/screens/two_factor_screen.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import '../models/employee.dart';
 
+// 🔥 УБРАЛИ ЗАВИСИМОСТЬ ОТ EMPLOYEE. Теперь экран универсален!
 class TwoFactorScreen extends StatefulWidget {
-  final Employee employee;
+  final String userName;
+  final String requiredEmail;
+  final bool isEmployee;
 
-  const TwoFactorScreen({super.key, required this.employee});
+  const TwoFactorScreen({
+    super.key,
+    required this.userName,
+    required this.requiredEmail,
+    this.isEmployee = false, // По умолчанию считаем, что это клиент
+  });
 
   @override
   _TwoFactorScreenState createState() => _TwoFactorScreenState();
@@ -21,19 +27,19 @@ class _TwoFactorScreenState extends State<TwoFactorScreen> {
 
     try {
       // ✅ РЕШЕНИЕ ДЛЯ ВЕРСИИ 7.x
-      // Используем статический метод authenticate
       final GoogleSignInAccount googleUser =
           await GoogleSignIn.instance.authenticate();
 
       if (googleUser != null) {
         final String googleEmail = googleUser.email;
 
-        if (googleEmail == widget.employee.email) {
+        // Сравниваем email из Google с тем, что пришел из базы/таблицы
+        if (googleEmail == widget.requiredEmail) {
           Navigator.pop(context, true);
         } else {
           _showErrorDialog(
             'Неверный аккаунт',
-            'Используйте корпоративный email ${widget.employee.email}',
+            'Используйте email: ${widget.requiredEmail}',
           );
           await GoogleSignIn.instance.signOut();
         }
@@ -67,7 +73,6 @@ class _TwoFactorScreenState extends State<TwoFactorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ... (ваш код build остается без изменений)
     return Scaffold(
       appBar: AppBar(
         title: const Text('Двухфакторная защита'),
@@ -100,7 +105,10 @@ class _TwoFactorScreenState extends State<TwoFactorScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Для защиты вашего аккаунта требуется дополнительная проверка через корпоративный Google аккаунт',
+              // 🔥 ДИНАМИЧЕСКИЙ ТЕКСТ В ЗАВИСИМОСТИ ОТ ТОГО, КТО ВОШЕЛ
+              widget.isEmployee
+                  ? 'Для защиты вашего аккаунта требуется дополнительная проверка через корпоративный Google аккаунт'
+                  : 'Для защиты вашего профиля потребуется подтвердить вашу учетную запись через Google',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
@@ -119,14 +127,21 @@ class _TwoFactorScreenState extends State<TwoFactorScreen> {
                   children: [
                     ListTile(
                       leading: const Icon(Icons.person),
-                      title: Text(widget.employee.name ?? 'Сотрудник'),
-                      subtitle: const Text('Сотрудник'),
+                      title: Text(widget.userName.isNotEmpty
+                          ? widget.userName
+                          : 'Пользователь'),
+                      // 🔥 ДИНАМИЧЕСКИЙ ПОДЗАГОЛОВОК
+                      subtitle:
+                          Text(widget.isEmployee ? 'Сотрудник' : 'Клиент'),
                     ),
                     const Divider(),
                     ListTile(
                       leading: const Icon(Icons.email),
-                      title: Text(widget.employee.email ?? 'Email не указан'),
-                      subtitle: const Text('Корпоративный email'),
+                      title: Text(widget.requiredEmail),
+                      // 🔥 ДИНАМИЧЕСКИЙ ПОДЗАГОЛОВОК
+                      subtitle: Text(widget.isEmployee
+                          ? 'Корпоративный email'
+                          : 'Email для подтверждения'),
                     ),
                   ],
                 ),

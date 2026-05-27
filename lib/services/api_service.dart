@@ -89,15 +89,17 @@ class ApiService {
     }
   }
 
-  // 🔥 АУТЕНТИФИКАЦИЯ (без FCM)
+  // АУТЕНТИФИКАЦИЯ (с бесшумным обновлением Push)
   Future<Map<String, dynamic>?> authenticate({
     required String phone,
     required Map<String, SheetMetadata> localMetadata,
+    Map<String, dynamic>? pushData, // 🔥 НОВОЕ: Данные подписки (если есть)
   }) async {
     debugPrint('\n🔐 ===== НАЧАЛО АУТЕНТИФИКАЦИИ =====');
     debugPrint('🔐 Телефон: $phone');
     debugPrint('🔐 URL скрипта: $_scriptUrl');
     debugPrint('🔐 Локальные метаданные: ${localMetadata.length} листов');
+    debugPrint('📬 Push данные: ${pushData != null ? "переданы" : "нет"}');
 
     try {
       final data = {
@@ -105,6 +107,8 @@ class ApiService {
         'localMetadata': localMetadata.map(
           (key, value) => MapEntry(key, value.toJson()),
         ),
+        // 🔥 НОВОЕ: Прикрепляем пуш-данные к запросу авторизации
+        if (pushData != null) 'pushData': pushData,
       };
 
       final response = await _makeRequest('authenticate', data);
@@ -112,16 +116,6 @@ class ApiService {
       if (response.statusCode == 200) {
         try {
           final Map<String, dynamic> result = jsonDecode(response.body);
-          debugPrint('🔍 Распарсенный JSON:');
-          debugPrint('🔍 status: ${result['status']}');
-          debugPrint('🔍 success: ${result['success']}');
-          debugPrint('🔍 message: ${result['message']}');
-          debugPrint(
-              '🔍 user: ${result['user'] != null ? 'присутствует' : 'отсутствует'}');
-          debugPrint(
-              '🔍 metadata: ${result['metadata'] != null ? 'присутствует' : 'отсутствует'}');
-          debugPrint(
-              '🔍 data: ${result['data'] != null ? 'присутствует' : 'отсутствует'}');
 
           if (result['success'] == true && result['user'] != null) {
             debugPrint('✅ Аутентификация успешна!');

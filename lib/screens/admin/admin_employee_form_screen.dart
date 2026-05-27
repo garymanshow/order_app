@@ -162,7 +162,8 @@ class _AdminEmployeeFormScreenState extends State<AdminEmployeeFormScreen> {
             : null,
         role: _selectedRole.isNotEmpty ? _selectedRole : null,
         twoFactorAuth: _twoFactorAuth,
-        fcm: widget.employee?.fcm,
+        // 🔥 УДАЛЕНО: fcm: widget.employee?.fcm,
+        // Мы больше не храним FCM токены в профиле, 2FA работает через Google Sign-In
       );
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);

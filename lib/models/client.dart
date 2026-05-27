@@ -1,4 +1,3 @@
-// lib/models/client.dart
 import 'package:flutter/foundation.dart';
 import 'user.dart';
 import 'client_data.dart';
@@ -14,7 +13,9 @@ class Client extends User {
   final String? comment;
   final double? latitude;
   final double? longitude;
-  final String? fcmToken;
+
+  // 🔥 ЗАМЕНА: fcmToken переименован в email
+  final String? email;
 
   Client({
     super.name,
@@ -28,14 +29,12 @@ class Client extends User {
     this.comment,
     this.latitude,
     this.longitude,
-    this.fcmToken,
+    this.email, // 🔥 ЗАМЕНА
     super.discount,
     super.minOrderAmount,
   });
 
-  // 🔥 ГЕТТЕР ДЛЯ СУММЫ АКТИВНЫХ ЗАКАЗОВ
   double getActiveOrdersTotal(ClientData? clientData) {
-    // Убираем избыточные ?.
     final orders = clientData?.orders;
     if (orders == null) return 0.0;
 
@@ -66,7 +65,8 @@ class Client extends User {
       comment: ParsingUtils.safeString(map['Комментарий']),
       latitude: ParsingUtils.parseDouble(map['latitude']),
       longitude: ParsingUtils.parseDouble(map['longitude']),
-      fcmToken: ParsingUtils.safeString(map['FCM']),
+      // 🔥 ЗАМЕНА: Читаем из колонки FCM (в таблице переименовывать не обязательно)
+      email: ParsingUtils.safeString(map['FCM']),
       discount: ParsingUtils.parseDiscount(map['Скидка']),
       minOrderAmount:
           ParsingUtils.parseDouble(map['Сумма миним.заказа']) ?? 3000.0,
@@ -74,80 +74,23 @@ class Client extends User {
   }
 
   factory Client.fromJson(Map<String, dynamic> json) {
-    debugPrint('🔍 name: ${json['name']} (тип: ${json['name'].runtimeType})');
-    debugPrint(
-        '🔍 phone: ${json['phone']} (тип: ${json['phone'].runtimeType})');
-    debugPrint('🔍 firm: ${json['firm']} (тип: ${json['firm'].runtimeType})');
-    debugPrint(
-        '🔍 postalCode: ${json['postalCode']} (тип: ${json['postalCode'].runtimeType})');
-    debugPrint(
-        '🔍 isLegalEntity: ${json['isLegalEntity']} (тип: ${json['isLegalEntity'].runtimeType})');
-    debugPrint('🔍 city: ${json['city']} (тип: ${json['city'].runtimeType})');
-    debugPrint(
-        '🔍 deliveryAddress: ${json['deliveryAddress']} (тип: ${json['deliveryAddress'].runtimeType})');
-    debugPrint(
-        '🔍 hasDelivery: ${json['hasDelivery']} (тип: ${json['hasDelivery'].runtimeType})');
-    debugPrint(
-        '🔍 comment: ${json['comment']} (тип: ${json['comment'].runtimeType})');
-    debugPrint(
-        '🔍 latitude: ${json['latitude']} (тип: ${json['latitude'].runtimeType})');
-    debugPrint(
-        '🔍 longitude: ${json['longitude']} (тип: ${json['longitude'].runtimeType})');
-    debugPrint(
-        '🔍 discount: ${json['discount']} (тип: ${json['discount'].runtimeType})');
-    debugPrint(
-        '🔍 minOrderAmount: ${json['minOrderAmount']} (тип: ${json['minOrderAmount'].runtimeType})');
-    debugPrint(
-        '🔍 fcmToken: ${json['fcmToken']} (тип: ${json['fcmToken'].runtimeType})');
-
-    // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ СТРОКИ
-    String? safeString(dynamic value) {
-      if (value == null) return null;
-      if (value is String) return value.isEmpty ? null : value;
-      return value.toString();
-    }
-
-    // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ ЧИСЛА
-    double? safeDouble(dynamic value) {
-      if (value == null) return null;
-      if (value is double) return value;
-      if (value is int) return value.toDouble();
-      if (value is String) {
-        final trimmed = value.trim();
-        if (trimmed.isEmpty) return null;
-        return double.tryParse(trimmed);
-      }
-      return null;
-    }
-
-    // 🔥 УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ БЕЗОПАСНОГО ПОЛУЧЕНИЯ BOOL
-    bool? safeBool(dynamic value) {
-      if (value == null) return null;
-      if (value is bool) return value;
-      if (value is num) return value == 1;
-      if (value is String) {
-        final str = value.toLowerCase().trim();
-        if (str.isEmpty) return null;
-        return str == 'true' || str == '1' || str == 'да' || str == 'yes';
-      }
-      return null;
-    }
-
     return Client(
-      name: safeString(json['name']),
-      phone: safeString(json['phone']),
-      firm: safeString(json['firm']),
-      postalCode: safeString(json['postalCode']),
-      legalEntity: safeBool(json['isLegalEntity']),
-      city: safeString(json['city']),
-      deliveryAddress: safeString(json['deliveryAddress']),
-      delivery: safeBool(json['hasDelivery']),
-      comment: safeString(json['comment']),
-      latitude: safeDouble(json['latitude']),
-      longitude: safeDouble(json['longitude']),
-      fcmToken: safeString(json['fcmToken']),
-      discount: safeDouble(json['discount']),
-      minOrderAmount: safeDouble(json['minOrderAmount']) ?? 3000.0,
+      name: ParsingUtils.safeString(json['name']),
+      phone: ParsingUtils.safeString(json['phone']),
+      firm: ParsingUtils.safeString(json['firm']),
+      postalCode: ParsingUtils.safeString(json['postalCode']),
+      legalEntity: ParsingUtils.parseBool(json['isLegalEntity']),
+      city: ParsingUtils.safeString(json['city']),
+      deliveryAddress: ParsingUtils.safeString(json['deliveryAddress']),
+      delivery: ParsingUtils.parseBool(json['hasDelivery']),
+      comment: ParsingUtils.safeString(json['comment']),
+      latitude: ParsingUtils.parseDouble(json['latitude']),
+      longitude: ParsingUtils.parseDouble(json['longitude']),
+      // 🔥 ЗАМЕНА
+      email: ParsingUtils.safeString(json['email']),
+      discount: ParsingUtils.parseDouble(json['discount']),
+      minOrderAmount:
+          ParsingUtils.parseDouble(json['minOrderAmount']) ?? 3000.0,
     );
   }
 
@@ -165,13 +108,13 @@ class Client extends User {
       'comment': comment ?? '',
       'latitude': latitude?.toString() ?? '',
       'longitude': longitude?.toString() ?? '',
-      'fcmToken': fcmToken ?? '',
+      // 🔥 ЗАМЕНА
+      'email': email ?? '',
       'discount': discount?.toString() ?? '0',
       'minOrderAmount': minOrderAmount?.toString() ?? '3000',
     };
   }
 
-  // 🔥 ДОБАВЛЕН МЕТОД toMap() для Google Таблиц
   Map<String, dynamic> toMap() {
     return {
       'Клиент': name ?? '',
@@ -187,7 +130,8 @@ class Client extends User {
       'longitude': longitude?.toString() ?? '',
       'Скидка': discount?.toString() ?? '',
       'Сумма миним.заказа': minOrderAmount?.toString() ?? '0',
-      'FCM': fcmToken ?? '', // ← ДОБАВЛЕНО!
+      // 🔥 ЗАМЕНА: Пишем обратно в колонку FCM
+      'FCM': email ?? '',
     };
   }
 }

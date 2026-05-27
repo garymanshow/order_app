@@ -218,9 +218,39 @@ class AuthProvider with ChangeNotifier {
 
       if (hasNetwork) {
         try {
+          // ==========================================
+          // 🔥 NОВОЕ: БЕСШУМНЫЙ СБОР ПУШ-ПОДПИСКИ
+          // Работает за 1 миллисекунду, без запросов к серверу
+          // ==========================================
+          Map<String, dynamic>? currentPushData;
+          if (kIsWeb) {
+            try {
+              final pushService = WebPushService();
+              await pushService.initialize(EnvService.vapidPublicKey);
+
+              // Если подписка есть в браузере — забираем её
+              currentPushData = await pushService.getSubscriptionForAuth();
+
+              if (currentPushData != null) {
+                debugPrint(
+                    '📬 Найдена активная подписка, прикрепляем к запросу');
+              } else {
+                debugPrint(
+                    '📭 Подписка не найдена (пользователь отписан или новый)');
+              }
+            } catch (e) {
+              debugPrint('⚠️ Ошибка проверки пуш-статуса: $e');
+            }
+          }
+
+          // ==========================================
+          // 📤 ОСНОВНОЙ ЗАПРОС АВТОРИЗАЦИИ
+          // Если currentPushData не null, он полетит "в нагрузке"
+          // ==========================================
           authResponse = await _apiService.authenticate(
             phone: normalizedPhone,
             localMetadata: localMetadata,
+            pushData: currentPushData, // <--- ПРИКРЕПЛЯЕМ ПУШ
           );
         } catch (e) {
           debugPrint('⚠️ Ошибка сети: $e');
@@ -230,19 +260,17 @@ class AuthProvider with ChangeNotifier {
 
       if (authResponse != null) {
         // Есть ответ от сервера — обновляем кэш
-        // 🔥 ИСПРАВЛЕНО: Оборачиваем обработку ответа в try-catch
         try {
           await _handleServerResponse(authResponse, normalizedPhone, context);
           _isOffline = false;
         } catch (e) {
           debugPrint('❌ Ошибка обработки ответа сервера: $e');
-          // Если ошибка при парсинге, пробуем кэш
           final hasCache = await _loadCachedData();
           if (hasCache && _currentUser != null) {
             _isOffline = true;
             _showOfflineModeDialog(context);
           } else {
-            rethrow; // Если кэша нет, кидаем ошибку дальше
+            rethrow;
           }
         }
       } else {
@@ -256,26 +284,24 @@ class AuthProvider with ChangeNotifier {
         }
       }
 
-      // 🔥 ВАЖНО: Если мы здесь, значит авторизация прошла успешно (либо онлайн, либо из кэша)
       // Убеждаемся, что isLoading false перед тем как идти дальше
       _isLoading = false;
       notifyListeners();
 
-      // 🔥 PUSH ПОДПИСКА: Запускаем отдельно, чтобы ошибки не ломали вход
-      if (kIsWeb && _currentUser != null) {
-        // Запускаем без await, чтобы не блокировать UI, и ловим все ошибки внутри
-        _handlePushSubscriptionSafe(_currentUser!.phone!);
-      }
+      // ==========================================
+      // 🗑️ УДАЛЕНО: ВЕСЬ БЛОК ФОНОВОЙ ПОДПИСКИ (_handlePushSubscriptionSafe)
+      // Сервер уже получил подписку (если она была) в запросе authenticate.
+      // Отдельные запросы больше не нужны!
+      // ==========================================
     } catch (e) {
       debugPrint('❌ Критическая ошибка входа: $e');
       _currentUser = null;
       _clientData = null;
       _metadata = null;
-      _isLoading = false; // Убеждаемся что ложим спиннер при ошибке
+      _isLoading = false;
       notifyListeners();
       rethrow;
     }
-    // finally убран, так как мы управляем _isLoading явно в успешном пути и в catch
   }
 
   // ================== ТИХАЯ СИНХРОНИЗАЦИЯ ==================
@@ -363,9 +389,40 @@ class AuthProvider with ChangeNotifier {
       }
     }
 
-    // 🔥 ПРОВЕРКА 2FA ДЛЯ СОТРУДНИКОВ
-    if (_currentUser is Employee && (_currentUser as Employee).twoFactorAuth) {
-      await _handleTwoFactorAuth(context);
+    // 🔥 ПРОВЕРКА 2FA ДЛЯ ВСЕХ (С ИСКЛЮЧЕНИЕМ DEBUG)
+    if (!kDebugMode) {
+      if (_currentUser is Employee) {
+        final employee = _currentUser as Employee;
+        if (employee.twoFactorAuth) {
+          if (employee.email == null || employee.email!.isEmpty) {
+            throw Exception(
+                'Ошибка учетной записи: обратитесь к администратору для корректировки ваших данных.');
+          }
+          await _handleTwoFactorAuth(
+            context,
+            email: employee.email,
+            name: employee.name,
+            isEmployee: true,
+          );
+        }
+      } else if (_currentUser is Client) {
+        final client = _currentUser as Client;
+
+        // 👇 ОБРАБОТКА ПУСТОГО EMAIL У КЛИЕНТА
+        if (client.email == null || client.email!.isEmpty) {
+          throw Exception(
+              'Ваш профиль не настроен для безопасного входа. Обратитесь к администратору для корректировки ваших учетных данных.');
+        }
+
+        await _handleTwoFactorAuth(
+          context,
+          email: client.email,
+          name: client.name ?? client.firm,
+          isEmployee: false,
+        );
+      }
+    } else {
+      debugPrint('🛑 Режим DEBUG: 2FA отключена!');
     }
 
     // Сохраняем данные в кэш
@@ -400,17 +457,25 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _handleTwoFactorAuth(BuildContext context) async {
-    final employee = _currentUser as Employee;
-
-    if (!employee.canUseTwoFactor) {
-      throw Exception('Для сотрудника с 2FA не указан email');
+  Future<void> _handleTwoFactorAuth(
+    BuildContext context, {
+    required String? email,
+    String? name,
+    bool isEmployee = false,
+  }) async {
+    if (email == null || email.isEmpty) {
+      throw Exception('Для прохождения 2FA не указан email');
     }
 
     final twoFactorResult = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) => TwoFactorScreen(employee: employee),
+        // 🔥 Теперь передаем чистые данные, экран сам разберется
+        builder: (context) => TwoFactorScreen(
+          userName: name ?? 'Пользователь',
+          requiredEmail: email,
+          isEmployee: isEmployee,
+        ),
       ),
     );
 
