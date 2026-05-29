@@ -1,40 +1,7 @@
 {
   "version": "2.0.0",
   "tasks": [
-    {
-      "label": "flutter: clean, get, run (Linux)",
-      "type": "shell",
-      "command": "flutter clean && rm -rf build/ && rm -f pubspec.lock && flutter pub get && flutter run -d linux",
-      "problemMatcher": [],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "new",
-        "showReuseMessage": false,
-        "clear": true
-      },
-      "icon": {
-        "id": "device-desktop",
-        "color": "terminal.ansiBlue"
-      }
-    },
-    {
-      "label": "flutter: run (Linux)",
-      "type": "shell",
-      "command": "flutter run -d linux",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "new"
-      },
-      "icon": {
-        "id": "play",
-        "color": "terminal.ansiGreen"
-      }
-    },
+    // ==================== 🧹 FLUTTER: CLEAN & SETUP ====================
     {
       "label": "flutter: clean",
       "type": "shell",
@@ -47,7 +14,8 @@
       "icon": {
         "id": "trash",
         "color": "terminal.ansiRed"
-      }
+      },
+      "group": "clean"
     },
     {
       "label": "flutter: pub get",
@@ -74,88 +42,46 @@
       "presentation": {
         "reveal": "silent",
         "panel": "shared"
-      }
+      },
+      "group": "clean"
     },
     {
-      "label": "flutter: build web",
+      "label": "flutter: clean, get, run -d (Linux)",
       "type": "shell",
-      "command": "flutter build web --release",
+      "command": "flutter clean && rm -rf build/ && rm -f pubspec.lock && flutter pub get && flutter run -d linux",
       "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
       "presentation": {
         "reveal": "always",
-        "panel": "shared",
+        "panel": "new",
+        "showReuseMessage": false,
         "clear": true
       },
       "icon": {
-        "id": "globe",
+        "id": "device-desktop",
         "color": "terminal.ansiBlue"
       }
     },
+    // ==================== ▶️ FLUTTER: RUN ====================
     {
-      "label": "serve: copy config",
+      "label": "flutter: run -d (Linux)",
       "type": "shell",
-      "command": "cp serve.json build/web/",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "silent",
-        "panel": "shared"
-      },
-      "icon": {
-        "id": "copy",
-        "color": "terminal.ansiYellow"
-      }
-    },
-    {
-      "label": "serve: start",
-      "type": "shell",
-      "command": "npx serve -s build/web -p 3000 --cors",
+      "command": "flutter run -d linux",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
         "panel": "new"
       },
       "icon": {
-        "id": "server",
-        "color": "terminal.ansiGreen"
-      },
-      "isBackground": true
-    },
-    {
-      "label": "web: build",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "flutter: build web",
-        "serve: copy config"
-      ],
-      "problemMatcher": [],
-      "group": "build",
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": true
-      }
-    },
-    {
-      "label": "web: build and serve",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "flutter: build web",
-        "serve: copy config",
-        "serve: start"
-      ],
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": true
-      },
-      "icon": {
-        "id": "rocket",
+        "id": "play",
         "color": "terminal.ansiGreen"
       }
     },
     {
-      "label": "flutter: run (Chrome)",
+      "label": "flutter: run -d (Chrome)",
       "type": "shell",
       "command": "flutter run -d chrome",
       "problemMatcher": [],
@@ -182,6 +108,39 @@
         "color": "terminal.ansiCyan"
       }
     },
+    // ==================== 🌐 FLUTTER: WEB ====================
+    {
+      "label": "flutter: build web",
+      "type": "shell",
+      "command": "flutter build web --release",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "icon": {
+        "id": "globe",
+        "color": "terminal.ansiBlue"
+      },
+      "group": "build"
+    },
+    {
+      "label": "web: build",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "flutter: build web",
+        "serve: copy config"
+      ],
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    // ==================== 🚀 PWA ====================
     {
       "label": "pwa: rebuild",
       "type": "shell",
@@ -213,21 +172,6 @@
       }
     },
     {
-      "label": "pwa: clean build + serve",
-      "type": "shell",
-      "command": "flutter clean && rm -rf build/ && rm -f pubspec.lock && flutter pub get && flutter build web --release && cp serve.json build/web/ && npx serve -s build/web -p 3000 --cors",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "new",
-        "clear": true
-      },
-      "icon": {
-        "id": "rocket",
-        "color": "terminal.ansiGreen"
-      }
-    },
-    {
       "label": "pwa: watch and build",
       "type": "shell",
       "command": "while true; do inotifywait -r -e modify,create,delete lib/ 2>/dev/null; echo '🔄 Rebuilding...'; flutter build web --release && cp serve.json build/web/ && echo '✅ Done!'; done",
@@ -242,155 +186,7 @@
       },
       "isBackground": true
     },
-    {
-      "label": "flutter: doctor",
-      "type": "shell",
-      "command": "flutter doctor -v",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "new"
-      },
-      "icon": {
-        "id": "info",
-        "color": "terminal.ansiCyan"
-      }
-    },
-    {
-      "label": "flutter: devices",
-      "type": "shell",
-      "command": "flutter devices",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      }
-    },
-    {
-      "label": "git: show latest tag",
-      "type": "shell",
-      "command": "git describe --tags --abbrev=0 2>/dev/null || echo 'No tags found'",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": false
-      },
-      "icon": {
-        "id": "tag",
-        "color": "terminal.ansiCyan"
-      }
-    },
-    {
-      "label": "git: increment patch tag",
-      "type": "shell",
-      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null || echo \"v0.0.0\"); clean_latest=$(echo $latest | sed \"s/^v//\"); IFS=\".\" read -r major minor patch <<< \"$clean_latest\"; new_patch=$((patch + 1)); new=\"v$major.$minor.$new_patch\"; echo \"📌 Latest tag: $latest\"; echo \"🏷️  New tag: $new\"; read -p \"Create and push tag $new? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"; else echo \"❌ Cancelled\"; fi'",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": false
-      },
-      "icon": {
-        "id": "tag-add",
-        "color": "terminal.ansiGreen"
-      }
-    },
-    {
-      "label": "git: increment minor tag",
-      "type": "shell",
-      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null || echo \"v0.0.0\"); clean_latest=$(echo $latest | sed \"s/^v//\"); IFS=\".\" read -r major minor patch <<< \"$clean_latest\"; new_minor=$((minor + 1)); new=\"v$major.$new_minor.0\"; echo \"📌 Latest tag: $latest\"; echo \"🏷️  New tag: $new\"; read -p \"Create and push tag $new? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"; else echo \"❌ Cancelled\"; fi'",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": false
-      },
-      "icon": {
-        "id": "tag-add",
-        "color": "terminal.ansiYellow"
-      }
-    },
-    {
-      "label": "git: increment major tag",
-      "type": "shell",
-      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null || echo \"v0.0.0\"); clean_latest=$(echo $latest | sed \"s/^v//\"); IFS=\".\" read -r major minor patch <<< \"$clean_latest\"; new_major=$((major + 1)); new=\"v$new_major.0.0\"; echo \"📌 Latest tag: $latest\"; echo \"🏷️  New tag: $new\"; read -p \"Create and push tag $new? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"; else echo \"❌ Cancelled\"; fi'",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": false
-      },
-      "icon": {
-        "id": "tag-add",
-        "color": "terminal.ansiRed"
-      }
-    },
-    {
-      "label": "git: create custom tag",
-      "type": "shell",
-      "command": "bash -c 'read -p \"Enter tag name (e.g., v1.0.0): \" tag; echo \"Creating tag: $tag\"; read -p \"Push to origin? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag $tag && git push origin $tag && echo \"✅ Tag $tag created and pushed!\"; else echo \"❌ Cancelled\"; fi'",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": false
-      },
-      "icon": {
-        "id": "tag",
-        "color": "terminal.ansiBlue"
-      }
-    },
-    {
-      "label": "git: list all tags",
-      "type": "shell",
-      "command": "git tag -l --sort=-v:refname",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": false
-      },
-      "icon": {
-        "id": "list-unordered",
-        "color": "terminal.ansiCyan"
-      }
-    },
-    {
-      "label": "git: delete last tag",
-      "type": "shell",
-      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null); if [ -z \"$latest\" ]; then echo \"No tags found\"; exit 1; fi; echo \"Last tag: $latest\"; read -p \"Delete tag $latest locally and remotely? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag -d $latest && git push origin --delete $latest && echo \"✅ Tag $latest deleted!\"; else echo \"❌ Cancelled\"; fi'",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": false
-      },
-      "icon": {
-        "id": "trash",
-        "color": "terminal.ansiRed"
-      }
-    },
-    {
-      "label": "git: release (patch + push + build)",
-      "type": "shell",
-      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null || echo \"v.0.0.0\"); new=$(echo $latest | awk -F. \"{print \\$1\\\".\\\"\\$2\\\".\\\"\\$3+1}\"); echo \"📌 Creating release: $new\"; git tag $new && git push origin $new && echo \"✅ Release $new created!\"'",
-      "problemMatcher": [],
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "flutter: clean build web",
-        "git: increment patch tag"
-      ],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": true
-      },
-      "icon": {
-        "id": "rocket",
-        "color": "terminal.ansiGreen"
-      }
-    },
+    // ==================== 🏗️ BUILD RUNNER & DOCS ====================
     {
       "type": "flutter",
       "command": "dart",
@@ -417,6 +213,219 @@
       "problemMatcher": [],
       "label": "dart: dart doc .",
       "detail": ""
+    },
+    {
+      "type": "flutter",
+      "command": "flutter",
+      "args": [
+        "build",
+        "web"
+      ],
+      "group": "build",
+      "problemMatcher": [],
+      "label": "flutter: flutter build web",
+      "detail": ""
+    },
+    // ==================== 🌍 SERVE ====================
+    {
+      "label": "serve: copy config",
+      "type": "shell",
+      "command": "cp serve.json build/web/",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "icon": {
+        "id": "copy",
+        "color": "terminal.ansiYellow"
+      }
+    },
+    {
+      "label": "serve: start",
+      "type": "shell",
+      "command": "npx serve -s build/web -p 3000 --cors",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "icon": {
+        "id": "server",
+        "color": "terminal.ansiGreen"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "web: build and serve",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "flutter: build web",
+        "serve: copy config",
+        "serve: start"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "icon": {
+        "id": "rocket",
+        "color": "terminal.ansiGreen"
+      }
+    },
+    // ==================== 🩺 FLUTTER: INFO ====================
+    {
+      "label": "flutter: doctor",
+      "type": "shell",
+      "command": "flutter doctor -v",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "icon": {
+        "id": "info",
+        "color": "terminal.ansiCyan"
+      }
+    },
+    {
+      "label": "flutter: devices",
+      "type": "shell",
+      "command": "flutter devices",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    // ==================== 🏷️ GIT: TAGS ====================
+    {
+      "label": "git: show latest tag",
+      "type": "shell",
+      "command": "git describe --tags --abbrev=0 2>/dev/null || echo 'No tags found'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag",
+        "color": "terminal.ansiCyan"
+      }
+    },
+    {
+      "label": "git: list all tags",
+      "type": "shell",
+      "command": "git tag -l --sort=-v:refname",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "list-unordered",
+        "color": "terminal.ansiCyan"
+      }
+    },
+    {
+      "label": "git: create custom tag",
+      "type": "shell",
+      "command": "bash -c 'read -p \"Enter tag name (e.g., v1.0.0): \" tag; echo \"Creating tag: $tag\"; read -p \"Push to origin? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag $tag && git push origin $tag && echo \"✅ Tag $tag created and pushed!\"; else echo \"❌ Cancelled\"; fi'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag",
+        "color": "terminal.ansiBlue"
+      }
+    },
+    {
+      "label": "git: increment minor tag (safe)",
+      "type": "shell",
+      "command": "bash -c '\n# Находим последний валидный тег (начинается с v и имеет 3 цифровые секции)\nlatest=$(git tag -l | grep -E \"^v[0-9]+\\.[0-9]+\\.[0-9]+$\" | sort -V | tail -n1)\nif [ -z \"$latest\" ]; then\n  echo \"⚠️  No valid tags found (format: vX.Y.Z)\"\n  echo \"📝 Creating first tag: v1.0.0\"\n  latest=\"v0.0.0\"\nfi\n\nclean_latest=$(echo $latest | sed \"s/^v//\")\nIFS=\".\" read -r major minor patch <<< \"$clean_latest\"\nnew_minor=$((minor + 1))\nnew=\"v$major.$new_minor.0\"\n\necho \"📌 Latest valid tag: $latest\"\necho \"🏷️  New tag: $new\"\nread -p \"Create and push tag $new? (y/n): \" -n 1 -r\necho\nif [[ $REPLY =~ ^[Yy]$ ]]; then\n  git tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"\nelse\n  echo \"❌ Cancelled\"\nfi\n'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag-add",
+        "color": "terminal.ansiYellow"
+      }
+    },
+    {
+      "label": "git: increment patch tag (safe)",
+      "type": "shell",
+      "command": "bash -c '\n# Находим последний валидный тег\nlatest=$(git tag -l | grep -E \"^v[0-9]+\\.[0-9]+\\.[0-9]+$\" | sort -V | tail -n1)\nif [ -z \"$latest\" ]; then\n  echo \"⚠️  No valid tags found (format: vX.Y.Z)\"\n  echo \"📝 Creating first tag: v1.0.0\"\n  latest=\"v0.0.0\"\nfi\n\nclean_latest=$(echo $latest | sed \"s/^v//\")\nIFS=\".\" read -r major minor patch <<< \"$clean_latest\"\nnew_patch=$((patch + 1))\nnew=\"v$major.$minor.$new_patch\"\n\necho \"📌 Latest valid tag: $latest\"\necho \"🏷️  New tag: $new\"\nread -p \"Create and push tag $new? (y/n): \" -n 1 -r\necho\nif [[ $REPLY =~ ^[Yy]$ ]]; then\n  git tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"\nelse\n  echo \"❌ Cancelled\"\nfi\n'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag-add",
+        "color": "terminal.ansiGreen"
+      }
+    },
+    {
+      "label": "git: increment major tag (safe)",
+      "type": "shell",
+      "command": "bash -c '\n# Находим последний валидный тег\nlatest=$(git tag -l | grep -E \"^v[0-9]+\\.[0-9]+\\.[0-9]+$\" | sort -V | tail -n1)\nif [ -z \"$latest\" ]; then\n  echo \"⚠️  No valid tags found (format: vX.Y.Z)\"\n  echo \"📝 Creating first tag: v1.0.0\"\n  latest=\"v0.0.0\"\nfi\n\nclean_latest=$(echo $latest | sed \"s/^v//\")\nIFS=\".\" read -r major minor patch <<< \"$clean_latest\"\nnew_major=$((major + 1))\nnew=\"v$new_major.0.0\"\n\necho \"📌 Latest valid tag: $latest\"\necho \"🏷️  New tag: $new\"\nread -p \"Create and push tag $new? (y/n): \" -n 1 -r\necho\nif [[ $REPLY =~ ^[Yy]$ ]]; then\n  git tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"\nelse\n  echo \"❌ Cancelled\"\nfi\n'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "tag-add",
+        "color": "terminal.ansiRed"
+      }
+    },
+    {
+      "label": "git: delete last tag",
+      "type": "shell",
+      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null); if [ -z \"$latest\" ]; then echo \"No tags found\"; exit 1; fi; echo \"Last tag: $latest\"; read -p \"Delete tag $latest locally and remotely? (y/n): \" -n 1 -r; echo; if [[ $REPLY =~ ^[Yy]$ ]]; then git tag -d $latest && git push origin --delete $latest && echo \"✅ Tag $latest deleted!\"; else echo \"❌ Cancelled\"; fi'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "icon": {
+        "id": "trash",
+        "color": "terminal.ansiRed"
+      }
+    },
+    // ==================== ⚙️ GIT: RELEASE ====================
+    {
+      "label": "git: release (patch + push + build)",
+      "type": "shell",
+      "command": "bash -c 'latest=$(git describe --tags --abbrev=0 2>/dev/null || echo \"v.0.0.0\"); new=$(echo $latest | awk -F. \"{print \\$1\\\".\\\"\\$2\\\".\\\"\\$3+1}\"); echo \"📌 Creating release: $new\"; git tag $new && git push origin $new && echo \"✅ Release $new created!\"'",
+      "problemMatcher": [],
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "flutter: clean build web",
+        "git: increment patch tag"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "icon": {
+        "id": "rocket",
+        "color": "terminal.ansiGreen"
+      }
     }
   ]
 }
