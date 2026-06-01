@@ -65,8 +65,9 @@ class Client extends User {
       comment: ParsingUtils.safeString(map['Комментарий']),
       latitude: ParsingUtils.parseDouble(map['latitude']),
       longitude: ParsingUtils.parseDouble(map['longitude']),
-      // 🔥 ЗАМЕНА: Читаем из колонки FCM (в таблице переименовывать не обязательно)
-      email: ParsingUtils.safeString(map['FCM']),
+      // 🔥 УНИВЕРСАЛЬНОЕ ЧТЕНИЕ: Ищем в 'FCM' (из таблицы) ИЛИ в 'fcmToken' (от функции getUserData в GAS)
+      email: ParsingUtils.safeString(map['FCM']) ??
+          ParsingUtils.safeString(map['fcmToken']),
       discount: ParsingUtils.parseDiscount(map['Скидка']),
       minOrderAmount:
           ParsingUtils.parseDouble(map['Сумма миним.заказа']) ?? 3000.0,

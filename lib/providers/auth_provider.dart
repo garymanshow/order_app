@@ -391,38 +391,45 @@ class AuthProvider with ChangeNotifier {
 
     // 🔥 ПРОВЕРКА 2FA ДЛЯ ВСЕХ (С ИСКЛЮЧЕНИЕМ DEBUG)
     if (!kDebugMode) {
+      String? missingEmailRole;
+
       if (_currentUser is Employee) {
         final employee = _currentUser as Employee;
-        if (employee.twoFactorAuth) {
-          if (employee.email == null || employee.email!.isEmpty) {
-            throw Exception(
-                'Ошибка учетной записи: обратитесь к администратору для корректировки ваших данных.');
-          }
-          await _handleTwoFactorAuth(
-            context,
-            email: employee.email,
-            name: employee.name,
-            isEmployee: true,
-          );
+        debugPrint('🔐 [2FA CHECK] Тип: СОТРУДНИК, Email: ${employee.email}');
+
+        if (employee.twoFactorAuth &&
+            (employee.email == null || employee.email!.isEmpty)) {
+          missingEmailRole = 'сотрудника';
+        } else if (employee.twoFactorAuth) {
+          await _handleTwoFactorAuth(context,
+              email: employee.email, name: employee.name, isEmployee: true);
         }
       } else if (_currentUser is Client) {
         final client = _currentUser as Client;
+        debugPrint('🔐 [2FA CHECK] Тип: КЛИЕНТ, Email: ${client.email}');
 
-        // 👇 ОБРАБОТКА ПУСТОГО EMAIL У КЛИЕНТА
         if (client.email == null || client.email!.isEmpty) {
-          throw Exception(
-              'Ваш профиль не настроен для безопасного входа. Обратитесь к администратору для корректировки ваших учетных данных.');
+          missingEmailRole = 'клиента';
+        } else {
+          await _handleTwoFactorAuth(context,
+              email: client.email,
+              name: client.name ?? client.firm,
+              isEmployee: false);
         }
+      }
 
-        await _handleTwoFactorAuth(
-          context,
-          email: client.email,
-          name: client.name ?? client.firm,
-          isEmployee: false,
-        );
+      // 🔥 НОВОЕ: Если обнаружен пустой Email — показываем диалог-барьер
+      if (missingEmailRole != null) {
+        final adminPhone = _adminPhone ?? 'не указан';
+        final adminText = adminPhone != 'не указан' ? adminPhone : '';
+
+        await _showNoEmailDialog(context, missingEmailRole, adminText);
+
+        // После закрытия диалога всё равно выбрасываем ошибку, чтобы не пускать внутрь
+        throw Exception('Профиль $missingEmailRole не настроен для 2FA');
       }
     } else {
-      debugPrint('🛑 Режим DEBUG: 2FA отключена!');
+      debugPrint('🛑 [2FA CHECK] Режим DEBUG: Проверка 2FA ОТКЛЮЧЕНА!');
     }
 
     // Сохраняем данные в кэш
@@ -669,6 +676,101 @@ class AuthProvider with ChangeNotifier {
         backgroundColor: Colors.orange,
         duration: Duration(seconds: 4),
       ),
+    );
+  }
+
+  // 🔥 ДИАЛОГ: ОТСУТСТВИЕ EMAIL ДЛЯ 2FA
+  Future<void> _showNoEmailDialog(
+      BuildContext context, String role, String adminPhone) async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false, // Нельзя закрыть кликом по фону
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: const [
+              Icon(Icons.admin_panel_settings, color: Colors.orange, size: 28),
+              SizedBox(width: 10),
+              Text('Профиль не настроен', style: TextStyle(fontSize: 20)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Ваш профиль не настроен для безопасного входа.',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Обратитесь к администратору для корректировки ваших учетных данных.',
+                style: TextStyle(fontSize: 16, color: Colors.black54),
+              ),
+              if (adminPhone.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.phone, color: Colors.blue, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(
+                                fontSize: 15, color: Colors.black87),
+                            children: [
+                              const TextSpan(text: 'Телефон администратора: '),
+                              TextSpan(
+                                text: adminPhone,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              const Text(
+                'Спасибо за понимание, мы заботимся о безопасности ваших данных.',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                    color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text('Понятно', style: TextStyle(fontSize: 16)),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1119,6 +1221,21 @@ class AuthProvider with ChangeNotifier {
     if (!kDebugMode) return;
     await _cacheService.clearAll();
     debugPrint('🧹 Весь кэш очищен');
+  }
+
+  // 🔥 ПОЛУЧЕНИЕ ТЕЛЕФОНА АДМИНА ИЗ ЗАГРУЖЕННЫХ ДАННЫХ
+  String? get _adminPhone {
+    try {
+      // Ищем первого сотрудника с ролью "Администратор"
+      final admin = _clientData?.clients.whereType<Employee>().firstWhere(
+            (e) => e.role?.toLowerCase() == 'администратор',
+            orElse: () => throw StateError('Not found'),
+          );
+      return admin?.phone;
+    } catch (e) {
+      // Если список пуст или админа нет
+      return null;
+    }
   }
 
   @override
