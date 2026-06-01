@@ -88,7 +88,9 @@ class Client extends User {
       latitude: ParsingUtils.parseDouble(json['latitude']),
       longitude: ParsingUtils.parseDouble(json['longitude']),
       // 🔥 ЗАМЕНА
-      email: ParsingUtils.safeString(json['email']),
+      // 🔥 ИСПРАВЛЕНО: Ищем и 'email' (на будущее) и 'fcmToken' (то, что сейчас отдает сервер)
+      email: ParsingUtils.safeString(json['email']) ??
+          ParsingUtils.safeString(json['fcmToken']),
       discount: ParsingUtils.parseDouble(json['discount']),
       minOrderAmount:
           ParsingUtils.parseDouble(json['minOrderAmount']) ?? 3000.0,
