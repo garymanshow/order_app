@@ -406,6 +406,55 @@
         "color": "terminal.ansiRed"
       }
     },
+    // ==================== 🚀 RELEASE: BUILD & PUSH & TAG ====================
+    {
+      "label": "git: push (auto)",
+      "type": "shell",
+      "command": "git push",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "icon": {
+        "id": "repo-push",
+        "color": "terminal.ansiBlue"
+      }
+    },
+    {
+      "label": "git: increment patch tag (silent)",
+      "type": "shell",
+      "command": "bash -c '\nlatest=$(git tag -l | grep -E \"^v[0-9]+\\.[0-9]+\\.[0-9]+$\" | sort -V | tail -n1)\nif [ -z \"$latest\" ]; then\n  latest=\"v0.0.0\"\nfi\n\nclean_latest=$(echo $latest | sed \"s/^v//\")\nIFS=\".\" read -r major minor patch <<< \"$clean_latest\"\nnew_patch=$((patch + 1))\nnew=\"v$major.$minor.$new_patch\"\n\necho \"📌 Previous tag: $latest\"\necho \"🏷️  New tag: $new\"\ngit tag $new && git push origin $new && echo \"✅ Tag $new created and pushed!\"'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "icon": {
+        "id": "tag-add",
+        "color": "terminal.ansiGreen"
+      }
+    },
+    {
+      "label": "release: build --release, push, tag increment",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "flutter: build web",
+        "git: push (auto)",
+        "git: increment patch tag (silent)"
+      ],
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "icon": {
+        "id": "rocket",
+        "color": "terminal.ansiMagenta"
+      }
+    },
     // ==================== ⚙️ GIT: RELEASE ====================
     {
       "label": "git: release (patch + push + build)",
