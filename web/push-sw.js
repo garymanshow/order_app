@@ -14,7 +14,7 @@ self.addEventListener('activate', (event) => {
 // Обработка входящих push-уведомлений
 self.addEventListener('push', (event) => {
   console.log('📬 Получено push-уведомление', event);
-  
+
   if (!event.data) {
     console.log('⚠️ Пустое уведомление');
     return;
@@ -26,8 +26,8 @@ self.addEventListener('push', (event) => {
 
     const options = {
       body: data.body || 'Новое уведомление',
-      icon: data.icon || '/icons/Icon-192.png',
-      badge: '/icons/Icon-192.png',
+      icon: data.icon || '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
       vibrate: data.vibrate || [200, 100, 200],
       data: data.data || {},
       actions: data.actions || [],
@@ -50,12 +50,12 @@ self.addEventListener('push', (event) => {
     );
   } catch (error) {
     console.error('❌ Ошибка парсинга уведомления:', error);
-    
+
     // Fallback для простых текстовых уведомлений
     event.waitUntil(
       self.registration.showNotification('Вкусные моменты', {
         body: event.data.text(),
-        icon: '/icons/Icon-192.png'
+        icon: '/icons/icon-192.png'
       })
     );
   }
@@ -64,16 +64,16 @@ self.addEventListener('push', (event) => {
 // Обработка кликов по уведомлениям
 self.addEventListener('notificationclick', (event) => {
   console.log('👆 Клик по уведомлению', event);
-  
+
   event.notification.close();
-  
+
   const action = event.action;
   const data = event.notification.data || {};
-  
+
   console.log('📋 Действие:', action, 'Данные:', data);
-  
+
   let url = '/';
-  
+
   // Определяем URL на основе действия
   if (action === 'view_order' && data.orderId) {
     url = `/orders/${data.orderId}`;
@@ -86,9 +86,9 @@ self.addEventListener('notificationclick', (event) => {
   } else if (data.url) {
     url = data.url;
   }
-  
+
   console.log('🔗 Открываем URL:', url);
-  
+
   // Открываем или фокусируем существующее окно
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })

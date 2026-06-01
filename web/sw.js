@@ -17,8 +17,8 @@ const STATIC_RESOURCES = [
   '/assets/FontManifest.json',
   '/assets/assets/images/products/',
   '/assets/assets/images/auth/',
-  '/icons/Icon-192.png',
-  '/icons/Icon-512.png'
+  '/icons/icon-192.png',
+  '/icons/icon-512.png'
 ];
 
 // 🔥 Флаг для предотвращения повторных обновлений
@@ -57,7 +57,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  
+
   // 🔥 API запросы — Network First (не кэшируем)
   if (url.hostname.includes('google') || url.pathname.includes('exec')) {
     event.respondWith(
@@ -72,7 +72,7 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-  
+
   // Остальное — Cache First
   event.respondWith(
     caches.match(event.request).then((response) => {
@@ -101,7 +101,7 @@ self.addEventListener('message', (event) => {
   // 2. НОВОЕ: Запрос на экстренное сохранение данных от Flutter
   if (event.data && event.data.action === 'saveDataEmergency') {
     if (isSavingData) return; // Не начинаем сохранение повторно
-    
+
     isSavingData = true;
     console.log('🚨 SW: Получен сигнал экстренного сохранения! Пытаюсь удержать данные...');
 

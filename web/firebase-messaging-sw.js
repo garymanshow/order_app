@@ -23,13 +23,13 @@ const messaging = firebase.messaging();
 // Опционально: кастомизируем уведомления
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message', payload);
-  
+
   const notificationTitle = payload.notification?.title || 'Новый заказ';
   const notificationOptions = {
     body: payload.notification?.body || 'Поступил новый заказ',
-    icon: '/icons/Icon-192.png',
-    badge: '/icons/Icon-192.png'
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png'
   };
-  
+
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
