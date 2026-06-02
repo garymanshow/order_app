@@ -20,7 +20,7 @@ import '../models/user.dart';
 import '../models/sheet_metadata.dart';
 import '../models/storage_condition.dart';
 import '../models/transport_condition.dart';
-import '../screens/two_factor_screen.dart';
+// 🔥 2FA TOKEN: Удален импорт TwoFactorScreen, он больше не нужен
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
 import '../services/silent_sync_service.dart';
@@ -213,30 +213,24 @@ class AuthProvider with ChangeNotifier {
       final localMetadata = _cacheService.getMetadata();
 
       // Пытаемся получить данные с сервера
-      Map<String, dynamic>? authResponse;
       bool hasNetwork = await _checkNetwork();
 
       if (hasNetwork) {
         try {
           // ==========================================
           // 🔥 NОВОЕ: БЕСШУМНЫЙ СБОР ПУШ-ПОДПИСКИ
-          // Работает за 1 миллисекунду, без запросов к серверу
           // ==========================================
           Map<String, dynamic>? currentPushData;
           if (kIsWeb) {
             try {
               final pushService = WebPushService();
               await pushService.initialize(EnvService.vapidPublicKey);
-
-              // Если подписка есть в браузере — забираем её
               currentPushData = await pushService.getSubscriptionForAuth();
-
               if (currentPushData != null) {
                 debugPrint(
                     '📬 Найдена активная подписка, прикрепляем к запросу');
               } else {
-                debugPrint(
-                    '📭 Подписка не найдена (пользователь отписан или новый)');
+                debugPrint('📭 Подписка не найдена');
               }
             } catch (e) {
               debugPrint('⚠️ Ошибка проверки пуш-статуса: $e');
@@ -244,55 +238,107 @@ class AuthProvider with ChangeNotifier {
           }
 
           // ==========================================
-          // 📤 ОСНОВНОЙ ЗАПРОС АВТОРИЗАЦИИ
-          // Если currentPushData не null, он полетит "в нагрузке"
+          // 🔥 2FA TOKEN: Получаем токен устройства
           // ==========================================
-          authResponse = await _apiService.authenticate(
+          final prefs = await SharedPreferences.getInstance();
+          final String? deviceToken =
+              prefs.getString('device_token_$normalizedPhone');
+
+          // 📤 ОСНОВНОЙ ЗАПРОС АВТОРИЗАЦИИ
+          final authResponse = await _apiService.authenticate(
             phone: normalizedPhone,
             localMetadata: localMetadata,
-            pushData: currentPushData, // <--- ПРИКРЕПЛЯЕМ ПУШ
+            pushData: currentPushData,
+            deviceToken: deviceToken, // <--- ПРИКРЕПЛЯЕМ ТОКЕН
           );
-        } catch (e) {
-          debugPrint('⚠️ Ошибка сети: $e');
-          authResponse = null;
-        }
-      }
 
-      if (authResponse != null) {
-        // Есть ответ от сервера — обновляем кэш
-        try {
-          await _handleServerResponse(authResponse, normalizedPhone, context);
-          _isOffline = false;
+          // ==========================================
+          // 🔥 2FA TOKEN: ОБРАБОТКА ОТВЕТОВ 2FA
+          // ==========================================
+          if (authResponse != null &&
+              authResponse['status'] == '2fa_required') {
+            debugPrint('🔐 2FA: Требуется код подтверждения');
+            _isLoading = false;
+            notifyListeners();
+
+            final code = await _show2FACodeDialog(
+                context, authResponse['email'] ?? 'вашу почту');
+
+            if (code == null || code.isEmpty) {
+              throw Exception('Вход отменен');
+            }
+
+            _isLoading = true;
+            notifyListeners();
+
+            // Повторяем запрос С КОДОМ
+            final verifyResponse = await _apiService.authenticate(
+              phone: normalizedPhone,
+              localMetadata: localMetadata,
+              pushData: currentPushData,
+              code: code, // <--- ПРИКРЕПЛЯЕМ КОД
+            );
+
+            if (verifyResponse != null &&
+                verifyResponse['status'] == '2fa_success') {
+              // Сохраняем новый токен устройства
+              await prefs.setString('device_token_$normalizedPhone',
+                  verifyResponse['newDeviceToken']);
+              debugPrint('✅ 2FA: Устройство доверено, токен сохранен');
+
+              // Финальный запрос за данными (пройдет по сценарию БИНГО)
+              final finalResponse = await _apiService.authenticate(
+                phone: normalizedPhone,
+                localMetadata: localMetadata,
+                pushData: currentPushData,
+                deviceToken: verifyResponse['newDeviceToken'],
+              );
+
+              if (finalResponse != null &&
+                  finalResponse['status'] == 'success') {
+                await _handleServerResponse(
+                    finalResponse, normalizedPhone, context);
+                _isOffline = false;
+              } else {
+                throw Exception('Ошибка финальной авторизации');
+              }
+            } else {
+              throw Exception(
+                  verifyResponse?['message'] ?? 'Ошибка проверки кода');
+            }
+          }
+          // ==========================================
+          // КОНЕЦ БЛОКА 2FA
+          // ==========================================
+          else if (authResponse != null) {
+            // Если 2fa_required не пришло, значит это либо success, либо ошибка (обрабатывается в _handleServerResponse)
+            await _handleServerResponse(authResponse, normalizedPhone, context);
+            _isOffline = false;
+          } else {
+            throw Exception('Пустой ответ от сервера');
+          }
         } catch (e) {
-          debugPrint('❌ Ошибка обработки ответа сервера: $e');
+          debugPrint('⚠️ Ошибка сети или 2FA: $e');
           final hasCache = await _loadCachedData();
           if (hasCache && _currentUser != null) {
             _isOffline = true;
-            _showOfflineModeDialog(context);
+            if (context.mounted) _showOfflineModeDialog(context);
           } else {
             rethrow;
           }
         }
       } else {
-        // Нет сети — пытаемся загрузить из кэша
         final hasCache = await _loadCachedData();
         if (hasCache && _currentUser != null) {
           _isOffline = true;
-          _showOfflineModeDialog(context);
+          if (context.mounted) _showOfflineModeDialog(context);
         } else {
           throw Exception('Нет интернета и нет кэшированных данных');
         }
       }
 
-      // Убеждаемся, что isLoading false перед тем как идти дальше
       _isLoading = false;
       notifyListeners();
-
-      // ==========================================
-      // 🗑️ УДАЛЕНО: ВЕСЬ БЛОК ФОНОВОЙ ПОДПИСКИ (_handlePushSubscriptionSafe)
-      // Сервер уже получил подписку (если она была) в запросе authenticate.
-      // Отдельные запросы больше не нужны!
-      // ==========================================
     } catch (e) {
       debugPrint('❌ Критическая ошибка входа: $e');
       _currentUser = null;
@@ -304,37 +350,105 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // 🔥 2FA TOKEN: ДИАЛОГ ВВОДА КОДА
+  Future<String?> _show2FACodeDialog(BuildContext context, String email) async {
+    final TextEditingController codeController = TextEditingController();
+    String? errorMessage;
+
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.lock_outline, color: Colors.blue, size: 28),
+                  SizedBox(width: 10),
+                  Text('Подтверждение входа', style: TextStyle(fontSize: 20)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                      'Для безопасности введите 6-значный код, отправленный на:'),
+                  const SizedBox(height: 8),
+                  Text(email,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.blue)),
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: codeController,
+                    textAlign: TextAlign.center,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    style: const TextStyle(fontSize: 28, letterSpacing: 10),
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      counterText: "",
+                      border: const OutlineInputBorder(),
+                      errorText: errorMessage,
+                    ),
+                    onChanged: (val) {
+                      if (errorMessage != null) {
+                        setDialogState(() => errorMessage = null);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(null),
+                  child: const Text('Отмена'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (codeController.text.length == 6) {
+                      Navigator.of(dialogContext).pop(codeController.text);
+                    } else {
+                      setDialogState(() => errorMessage = 'Введите 6 цифр');
+                    }
+                  },
+                  child: const Text('Подтвердить'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ================== ТИХАЯ СИНХРОНИЗАЦИЯ ==================
 
-  /// 🔥 Установить сервис синхронизации (вызывается из main)
   void setSilentSync(SilentSyncService service) {
     _silentSync = service;
   }
 
-  /// 🔥 Обновить статус ожидающих обновлений
   void setHasPendingUpdates(bool value, List<String> sheets) {
     _hasPendingUpdates = value;
     _pendingSheets = sheets;
-    notifyListeners(); // 🔥 UI обновится автоматически
+    notifyListeners();
   }
 
-  /// 🔥 Проверка обновлений (вызывается при старте / resume)
   Future<void> checkForUpdates() async {
     await _silentSync?.checkIfNeeded();
   }
 
-  /// 🔥 Принудительная синхронизация (по тапу на иконку)
   Future<void> syncNow() async {
     await _silentSync?.syncNow();
   }
 
-  // 🔥 БЕЗОПАСНАЯ ОБЕРТКА ДЛЯ PUSH
   Future<void> _handlePushSubscriptionSafe(String phone) async {
     try {
       await _handlePushSubscription(phone);
     } catch (e) {
       debugPrint('⚠️ PUSH ошибка (безопасный режим): $e');
-      // Ошибка здесь никак не повлияет на состояние авторизации
     }
   }
 
@@ -348,32 +462,23 @@ class AuthProvider with ChangeNotifier {
     final metadata = authResponse['metadata'];
 
     if (userData == null) {
+      // Если сервер вернул ошибку (например, пользователь не найден), выбрасываем её
+      if (authResponse.containsKey('status') &&
+          authResponse['status'] == 'error') {
+        throw Exception(authResponse['message'] ?? 'Ошибка авторизации');
+      }
       throw Exception('Сервер не вернул данные пользователя');
     }
 
-    // 🔥 ЛОГ 1: Проверяем сырые данные от сервера
     debugPrint('📡 ШАГ 1: Проверка ответа сервера...');
     if (data != null && data is Map<String, dynamic>) {
       final rawCategories = data['priceCategories'];
-      debugPrint(
-          '📡 ШАГ 1: Ключ priceCategories найден? ${rawCategories != null}');
-
-      if (rawCategories is List) {
-        debugPrint(
-            '📡 ШАГ 1: Количество категорий в JSON: ${rawCategories.length}');
-        if (rawCategories.isNotEmpty) {
-          // Выведем первую категорию целиком, чтобы увидеть ключи
-          debugPrint('📡 ШАГ 1: Пример первой категории: ${rawCategories[0]}');
-        }
-      } else {
-        debugPrint(
-            '⚠️ ШАГ 1: priceCategories не является списком! Тип: ${rawCategories.runtimeType}');
+      if (rawCategories is List && rawCategories.isNotEmpty) {
+        debugPrint('📡 ШАГ 1: Пример первой категории: ${rawCategories[0]}');
       }
-    } else {
-      debugPrint('❌ ШАГ 1: Объект data пуст или отсутствует!');
     }
 
-    // Десериализуем пользователя (ваш существующий код)
+    // Десериализуем пользователя
     if (userData is List) {
       _availableRoles = userData
           .map((item) => Employee.fromJson(item as Map<String, dynamic>))
@@ -389,105 +494,23 @@ class AuthProvider with ChangeNotifier {
       }
     }
 
-    // 🔥 ПРОВЕРКА 2FA ДЛЯ ВСЕХ (С ИСКЛЮЧЕНИЕМ DEBUG)
-    if (!kDebugMode) {
-      String? missingEmailRole;
-
-      if (_currentUser is Employee) {
-        final employee = _currentUser as Employee;
-        debugPrint('🔐 [2FA CHECK] Тип: СОТРУДНИК, Email: ${employee.email}');
-
-        if (employee.twoFactorAuth &&
-            (employee.email == null || employee.email!.isEmpty)) {
-          missingEmailRole = 'сотрудника';
-        } else if (employee.twoFactorAuth) {
-          await _handleTwoFactorAuth(context,
-              email: employee.email, name: employee.name, isEmployee: true);
-        }
-      } else if (_currentUser is Client) {
-        final client = _currentUser as Client;
-        debugPrint('🔐 [2FA CHECK] Тип: КЛИЕНТ, Email: ${client.email}');
-
-        if (client.email == null || client.email!.isEmpty) {
-          missingEmailRole = 'клиента';
-        } else {
-          await _handleTwoFactorAuth(context,
-              email: client.email,
-              name: client.name ?? client.firm,
-              isEmployee: false);
-        }
-      }
-
-      // 🔥 НОВОЕ: Если обнаружен пустой Email — показываем диалог-барьер
-      if (missingEmailRole != null) {
-        final adminPhone = _adminPhone ?? 'не указан';
-        final adminText = adminPhone != 'не указан' ? adminPhone : '';
-
-        await _showNoEmailDialog(context, missingEmailRole, adminText);
-
-        // После закрытия диалога всё равно выбрасываем ошибку, чтобы не пускать внутрь
-        throw Exception('Профиль $missingEmailRole не настроен для 2FA');
-      }
-    } else {
-      debugPrint('🛑 [2FA CHECK] Режим DEBUG: Проверка 2FA ОТКЛЮЧЕНА!');
-    }
-
     // Сохраняем данные в кэш
     if (data != null && metadata != null) {
-      // 🔥 ЛОГ 2: Перед парсингом
       debugPrint('💾 ШАГ 2: Начинаем десериализацию ClientData...');
 
       _clientData = _deserializeClientData(data);
       _metadata = _deserializeMetadata(metadata);
 
-      // 🔥 ЛОГ 3: После парсинга
       debugPrint(
           '💾 ШАГ 3: Результат парсинга. Категорий в объекте: ${_clientData?.priceCategories.length ?? 0}');
-      if (_clientData?.priceCategories.isNotEmpty == true) {
-        debugPrint(
-            '💾 ШАГ 3: Первая категория после парсинга: "${_clientData!.priceCategories[0].name}" (ID: ${_clientData!.priceCategories[0].id})');
-      } else {
-        debugPrint('❌ ШАГ 3: Список категорий ПОСЛЕ парсинга ПУСТ!');
-      }
 
-      // Сохраняем в Hive
       await saveToCache();
-
-      // вызов восстановления черновиков
       await _restoreUnsentDrafts();
 
-      // Сохраняем в SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           'auth_user', jsonEncode(_currentUser?.toJson() ?? {}));
       await prefs.setString('auth_timestamp', DateTime.now().toIso8601String());
-    }
-  }
-
-  Future<void> _handleTwoFactorAuth(
-    BuildContext context, {
-    required String? email,
-    String? name,
-    bool isEmployee = false,
-  }) async {
-    if (email == null || email.isEmpty) {
-      throw Exception('Для прохождения 2FA не указан email');
-    }
-
-    final twoFactorResult = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        // 🔥 Теперь передаем чистые данные, экран сам разберется
-        builder: (context) => TwoFactorScreen(
-          userName: name ?? 'Пользователь',
-          requiredEmail: email,
-          isEmployee: isEmployee,
-        ),
-      ),
-    );
-
-    if (twoFactorResult != true) {
-      throw Exception('2FA не пройдена');
     }
   }
 
@@ -499,7 +522,6 @@ class AuthProvider with ChangeNotifier {
     await _cacheService.saveFillings(_clientData!.fillings);
     await _cacheService.saveCompositions(_clientData!.compositions);
 
-    // === НОВОЕ: Сохранение условий с логами ===
     debugPrint(
         '🧊 ШАГ 3: Сохраняем условий хранения: ${_clientData!.storageConditions.length}');
     await _cacheService.saveStorageConditions(_clientData!.storageConditions);
@@ -508,7 +530,6 @@ class AuthProvider with ChangeNotifier {
         '🚚 ШАГ 3: Сохраняем условий транспортировки: ${_clientData!.transportConditions.length}');
     await _cacheService
         .saveTransportConditions(_clientData!.transportConditions);
-    // ========================================
 
     debugPrint(
         '📦 ШАГ 3: Сохраняем в Hive категорий: ${_clientData!.priceCategories.length}');
@@ -524,23 +545,19 @@ class AuthProvider with ChangeNotifier {
     debugPrint('✅ Данные сохранены в Hive кэш');
   }
 
-  // 🔥 МЕТОД ДЛЯ СИНХРОНИЗАЦИИ ОФЛАЙН-ЗАКАЗОВ С ИНТЕРФЕЙСОМ
   Future<void> refreshOrdersFromCache() async {
     try {
       final freshOrders = _cacheService.getOrders();
       if (_clientData != null) {
         _clientData!.orders = freshOrders;
-        notifyListeners(); // Заставляет экраны пересобраться с новыми данными
-        debugPrint(
-            '🔄 Заказы в интерфейсе обновлены из кэша (после офлайн-отправки)');
+        notifyListeners();
+        debugPrint('🔄 Заказы в интерфейсе обновлены из кэша');
       }
     } catch (e) {
       debugPrint('❌ Ошибка обновления заказов из кэша: $e');
     }
   }
 
-  // 🔥 МЕТОД СИНХРОНИЗАЦИИ: Обновляет глобальный список заказов
-  // чтобы экраны выбора клиентов и прайс-листа видели актуальные суммы
   void updateGlobalOrders(List<OrderItem> updatedOrders) {
     if (_clientData != null) {
       _clientData!.orders = updatedOrders;
@@ -552,42 +569,32 @@ class AuthProvider with ChangeNotifier {
   // ЗАЩИТА ОТ ЗАБЫВЧИВОСТИ МЕНЕДЖЕРА
   // ==========================================
 
-  /// Меняем статус локальных заказов на "Отправлено на сервер"
   void markOrdersAsSent(List<OrderItem> sentOrders) {
     if (_clientData == null) return;
 
-    // Фильтруем только валидные заказы (у которых есть ID и Имя)
     final validSentOrders = sentOrders
         .where((o) => o.clientName.isNotEmpty && o.priceListId.isNotEmpty)
         .toList();
 
     if (validSentOrders.isEmpty) return;
 
-    // 🔥 МАГИЯ: Мы НЕ УДАЛЯЕМ заказы. Мы просто меняем у них флаг!
     for (int i = 0; i < _clientData!.orders.length; i++) {
       final localOrder = _clientData!.orders[i];
 
-      // Ищем этот заказ в списке успешно отправленных
       final wasSent = validSentOrders.any((sentOrder) =>
           localOrder.clientPhone == sentOrder.clientPhone &&
           localOrder.clientName == sentOrder.clientName &&
           localOrder.priceListId == sentOrder.priceListId);
 
       if (wasSent) {
-        // Меняем флаг на false (больше не черновик)
         _clientData!.orders[i] = localOrder.copyWith(isLocalDraft: false);
       }
     }
 
-    // Сохраняем обновленное состояние в кэш
     saveToCache();
-
-    // Заставляем главный экран перерисоваться (появятся синие кнопки)
     notifyListeners();
   }
 
-  /// Срабатывает при авторизации. Ищет в глубоком кэше (Prefs) незаконченные заказы
-  /// и возвращает их в рабочую базу, чтобы менеджер не потерял накликанное.
   Future<void> _restoreUnsentDrafts() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -596,10 +603,8 @@ class AuthProvider with ChangeNotifier {
       if (draftJsonString == null || draftJsonString.isEmpty) return;
 
       final List<dynamic> draftList = jsonDecode(draftJsonString);
-
       if (draftList.isEmpty) return;
 
-      // Ищем только настоящие черновики (isLocalDraft == true)
       final unsentDrafts = draftList
           .map((item) => OrderItem.fromJson(item as Map<String, dynamic>))
           .where((order) => order.isLocalDraft && order.quantity > 0)
@@ -608,52 +613,38 @@ class AuthProvider with ChangeNotifier {
       if (unsentDrafts.isEmpty) return;
 
       debugPrint(
-          '🛡️ НАЙДЕНЫ НЕОТПРАВЛЕННЫЕ ЧЕРНОВИКИ: ${unsentDrafts.length} шт. Восстанавливаем...');
+          '🛡️ НАЙДЕНЫ НЕОТПРАВЛЕННЫЕ ЧЕРНОВИКИ: ${unsentDrafts.length} шт.');
 
       if (_clientData != null) {
-        // 🔥 ФИЛЬТР: Восстанавливаем ТОЛЬКО то, чего НЕТ на сервере!
         final actualNewDrafts = unsentDrafts.where((draft) {
-          // Ищем такой же заказ в данных, которые только что пришли от GAS
           final existsOnServer = _clientData!.orders.any((serverOrder) =>
               serverOrder.clientPhone == draft.clientPhone &&
               serverOrder.clientName == draft.clientName &&
               serverOrder.priceListId == draft.priceListId &&
               serverOrder.status == draft.status);
-
-          // Если на сервере такого НЕТ — значит это реальный потерянный черновик, восстанавливаем
-          // Если на сервере ЕСТЬ — игнорируем (мы его уже отправили, пусть живет как есть)
           return !existsOnServer;
         }).toList();
 
         if (actualNewDrafts.isEmpty) {
-          print('🛡️ Потерянных черновиков нет (все уже на сервере)');
-          await prefs.remove('all_orders'); // Чистим буфер на всякий случай
+          await prefs.remove('all_orders');
           return;
         }
 
-        print(
-            '🛡️ НАЙДЕНЫ ИСТИННО ПОТЕРЯННЫЕ ЧЕРНОВИКИ: ${actualNewDrafts.length} шт. Восстанавливаем...');
-
-        // Убираем дубли
         _clientData!.orders.removeWhere((existingOrder) => actualNewDrafts.any(
             (draft) =>
                 draft.clientPhone == existingOrder.clientPhone &&
                 draft.clientName == existingOrder.clientName &&
                 draft.priceListId == existingOrder.priceListId));
 
-        // Восстанавливаем только истинно новые
         final restoredOrders = actualNewDrafts.map((draft) {
-          return draft.copyWith(
-            status: 'оформлен',
-            isLocalDraft: true,
-          );
+          return draft.copyWith(status: 'оформлен', isLocalDraft: true);
         }).toList();
 
         _clientData!.orders.addAll(restoredOrders);
         await saveToCache();
         await prefs.remove('all_orders');
         notifyListeners();
-        debugPrint('✅ ЧЕРНОВИКИ УСПЕШНО ВОССТАНОВЛЕНЫ В СПИСОК ЗАКАЗОВ');
+        debugPrint('✅ ЧЕРНОВИКИ УСПЕШНО ВОССТАНОВЛЕНЫ');
       }
     } catch (e) {
       debugPrint('⚠️ Ошибка восстановления черновиков: $e');
@@ -662,8 +653,7 @@ class AuthProvider with ChangeNotifier {
 
   Future<bool> _checkNetwork() async {
     try {
-      final result = await _apiService.testConnection();
-      return result;
+      return await _apiService.testConnection();
     } catch (e) {
       return false;
     }
@@ -679,19 +669,18 @@ class AuthProvider with ChangeNotifier {
     );
   }
 
-  // 🔥 ДИАЛОГ: ОТСУТСТВИЕ EMAIL ДЛЯ 2FA
+  // 🔥 ДИАЛОГ: ОТСУТСТВИЕ EMAIL ДЛЯ 2FA (Оставлен на случай, если понадобится для других проверок)
   Future<void> _showNoEmailDialog(
       BuildContext context, String role, String adminPhone) async {
     return showDialog(
       context: context,
-      barrierDismissible: false, // Нельзя закрыть кликом по фону
+      barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: const [
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
               Icon(Icons.admin_panel_settings, color: Colors.orange, size: 28),
               SizedBox(width: 10),
               Text('Профиль не настроен', style: TextStyle(fontSize: 20)),
@@ -701,15 +690,12 @@ class AuthProvider with ChangeNotifier {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Ваш профиль не настроен для безопасного входа.',
-                style: TextStyle(fontSize: 16),
-              ),
+              const Text('Ваш профиль не настроен для безопасного входа.',
+                  style: TextStyle(fontSize: 16)),
               const SizedBox(height: 8),
               const Text(
-                'Обратитесь к администратору для корректировки ваших учетных данных.',
-                style: TextStyle(fontSize: 16, color: Colors.black54),
-              ),
+                  'Обратитесь к администратору для корректировки ваших учетных данных.',
+                  style: TextStyle(fontSize: 16, color: Colors.black54)),
               if (adminPhone.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 Container(
@@ -731,11 +717,10 @@ class AuthProvider with ChangeNotifier {
                             children: [
                               const TextSpan(text: 'Телефон администратора: '),
                               TextSpan(
-                                text: adminPhone,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue),
-                              ),
+                                  text: adminPhone,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue)),
                             ],
                           ),
                         ),
@@ -746,12 +731,11 @@ class AuthProvider with ChangeNotifier {
               ],
               const SizedBox(height: 16),
               const Text(
-                'Спасибо за понимание, мы заботимся о безопасности ваших данных.',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                    color: Colors.grey),
-              ),
+                  'Спасибо за понимание, мы заботимся о безопасности ваших данных.',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey)),
             ],
           ),
           actions: [
@@ -760,11 +744,9 @@ class AuthProvider with ChangeNotifier {
               child: ElevatedButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
+                    backgroundColor: Colors.orange,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8))),
                 child: const Text('Понятно', style: TextStyle(fontSize: 16)),
               ),
             ),
@@ -799,32 +781,23 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД ДЛЯ СОТРУДНИКОВ
   Future<void> _handleEmployeePushSubscription(
       WebPushService pushService) async {
-    // Если диалог открыт, не проверяем подписку и не зовем оформить
     if (_isPushDialogShowing) return;
-
     bool subscribed = await pushService.subscribe();
     if (!subscribed) {
       _startPushReminders();
     }
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД ДЛЯ КЛИЕНТОВ
   Future<void> _handleClientPushSubscription(WebPushService pushService) async {
-    // Если уже подписан или диалог открыт — выходим
     if (pushService.isSubscribed || _isPushDialogShowing) return;
 
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('push_offer_declined') == true) return;
 
-    // 👇 СТАВИМ БЛОКИРОВКУ ПЕРЕД SHOWDIALOG
     _isPushDialogShowing = true;
-
     final shouldSubscribe = await _showPushOfferDialog();
-
-    // 👇 СНИМАЕМ БЛОКИРОВКУ ПОСЛЕ ЗАКРЫТИЯ
     _isPushDialogShowing = false;
 
     if (shouldSubscribe) {
@@ -842,7 +815,7 @@ class AuthProvider with ChangeNotifier {
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            title: Row(
+            title: const Row(
               children: [
                 Icon(Icons.notifications_active, color: Colors.blue, size: 28),
                 SizedBox(width: 8),
@@ -853,9 +826,9 @@ class AuthProvider with ChangeNotifier {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Мы будем присылать уведомления, когда:',
+                const Text('Мы будем присылать уведомления, когда:',
                     style: TextStyle(fontWeight: FontWeight.bold)),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 _buildBenefitItem(
                     Icons.check_circle, '✅ Заказ принят в обработку'),
                 _buildBenefitItem(
@@ -864,16 +837,15 @@ class AuthProvider with ChangeNotifier {
                     Icons.check_circle, '🍰 Заказ готов к выдаче'),
                 _buildBenefitItem(
                     Icons.local_shipping, '🚚 Статус доставки изменился'),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 Container(
-                  padding: EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8)),
+                  child: const Row(
                     children: [
-                      Icon(Icons.info, color: Colors.blue.shade700),
+                      Icon(Icons.info, color: Colors.blue),
                       SizedBox(width: 8),
                       Expanded(
                           child:
@@ -885,15 +857,14 @@ class AuthProvider with ChangeNotifier {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child:
-                    Text('Нет, спасибо', style: TextStyle(color: Colors.grey)),
-              ),
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Нет, спасибо',
+                      style: TextStyle(color: Colors.grey))),
               ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child: Text('✅ Да, хочу быть в курсе!'),
-              ),
+                  onPressed: () => Navigator.pop(context, true),
+                  style:
+                      ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  child: const Text('✅ Да, хочу быть в курсе!')),
             ],
           ),
         ) ??
@@ -902,12 +873,12 @@ class AuthProvider with ChangeNotifier {
 
   Widget _buildBenefitItem(IconData icon, String text) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
           Icon(icon, size: 20, color: Colors.green),
-          SizedBox(width: 8),
-          Expanded(child: Text(text)),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text))
         ],
       ),
     );
@@ -915,19 +886,15 @@ class AuthProvider with ChangeNotifier {
 
   void _startPushReminders() {
     if (_pushReminderTimer != null) return;
-
-    Future.delayed(Duration(seconds: 5), () => _checkSubscriptionAndRemind());
-    _pushReminderTimer = Timer.periodic(Duration(minutes: 2), (timer) {
+    Future.delayed(
+        const Duration(seconds: 5), () => _checkSubscriptionAndRemind());
+    _pushReminderTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
       _checkSubscriptionAndRemind();
     });
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД НАПОМИНАНИЯ
   Future<void> _checkSubscriptionAndRemind() async {
-    if (!kIsWeb) return;
-
-    // 👇 ГЛАВНАЯ ПРОВЕРКА: Если диалог уже открыт, просто выходим
-    if (_isPushDialogShowing) return;
+    if (!kIsWeb || _isPushDialogShowing) return;
 
     final pushService = WebPushService();
     await pushService.initialize(EnvService.vapidPublicKey);
@@ -937,36 +904,27 @@ class AuthProvider with ChangeNotifier {
       _pushReminderTimer = null;
       return;
     }
-
     _showPushReminder();
   }
 
-  // 🔥 ИСПРАВЛЕННЫЙ МЕТОД ПОКАЗА ДИАЛОГА-НАПОМИНАНИЯ
   void _showPushReminder() {
     final context = navigatorKey.currentContext;
-    if (context == null) return;
+    if (context == null || _isPushDialogShowing) return;
 
-    // 👇 ДВОЙНАЯ ПРОВЕРКА ПЕРЕД ПОКАЗОМ
-    if (_isPushDialogShowing) return;
-
-    // Включаем блокировку
     _isPushDialogShowing = true;
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('🔔 Не забудьте включить уведомления'),
-        content: Text(
-            'Для быстрого реагирования на заказы необходимо разрешить уведомления.\n\n'
-            'Нажмите "Разрешить" в следующем диалоге браузера.'),
+        title: const Text('🔔 Не забудьте включить уведомления'),
+        content: const Text(
+            'Для быстрого реагирования на заказы необходимо разрешить уведомления.\n\nНажмите "Разрешить" в следующем диалоге браузера.'),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              // Снимаем блокировку при закрытии
               _isPushDialogShowing = false;
             },
-            child: Text('Напомнить позже'),
+            child: const Text('Напомнить позже'),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -978,88 +936,65 @@ class AuthProvider with ChangeNotifier {
                 _pushReminderTimer?.cancel();
                 _pushReminderTimer = null;
               }
-              // Снимаем блокировку после действия
               _isPushDialogShowing = false;
             },
-            child: Text('Попробовать сейчас'),
+            child: const Text('Попробовать сейчас'),
           ),
         ],
       ),
-    ).then((_) {
-      // 👇 СТРАХОВКА: Снимаем блокировку, если диалог закрыли свайпом или кнопкой "назад"
-      _isPushDialogShowing = false;
-    });
+    ).then((_) => _isPushDialogShowing = false);
   }
 
   // ================== ДЕСЕРИАЛИЗАЦИЯ ==================
   ClientData _deserializeClientData(dynamic data) {
-    if (data == null || data is! Map<String, dynamic>) {
-      return ClientData();
-    }
+    if (data == null || data is! Map<String, dynamic>) return ClientData();
 
     final clientData = ClientData();
     final clientDataMap = data;
 
-    // === 1. ПРОДУКТЫ ===
     final rawProducts =
         clientDataMap['products'] ?? clientDataMap['Прайс-лист'];
     if (rawProducts is List) {
       clientData.products = rawProducts
           .map((item) => Product.fromMap(item as Map<String, dynamic>))
           .toList();
-      debugPrint('📦 Распарсено продуктов: ${clientData.products.length}');
     }
 
-    // === 2. КАТЕГОРИИ ===
     final rawCategories =
         clientDataMap['priceCategories'] ?? clientDataMap['Категории прайса'];
     if (rawCategories is List) {
       clientData.priceCategories = rawCategories
           .map((item) => PriceCategory.fromJson(item as Map<String, dynamic>))
           .toList();
-      debugPrint(
-          '📂 Распарсено категорий: ${clientData.priceCategories.length}');
     }
 
-    // === 3. ЗАКАЗЫ ===
     if (clientDataMap['orders'] is List) {
       final Map<String, String> productDisplayNames = {};
       for (var p in clientData.products) {
         productDisplayNames[p.id] = p.displayName;
       }
       clientData.orders = (clientDataMap['orders'] as List)
-          .map((item) => OrderItem.fromMap(
-                item as Map<String, dynamic>,
-                productDisplayNames: productDisplayNames,
-              ))
+          .map((item) => OrderItem.fromMap(item as Map<String, dynamic>,
+              productDisplayNames: productDisplayNames))
           .toList();
     }
 
-    // === 4. СОСТАВ (Composition) ===
-    // ИспользуемComposition.fromJson, так как модель универсальная
     final rawCompositions =
         clientDataMap['compositions'] ?? clientDataMap['Состав'];
     if (rawCompositions is List) {
       clientData.compositions = rawCompositions
           .map((item) => Composition.fromJson(item as Map<String, dynamic>))
           .toList();
-      debugPrint(
-          '📝 Распарсено Composition: ${clientData.compositions.length}');
     }
 
-    // === 5. НАЧИНКИ (Filling / Composition) ===
-    // Начинки парсим как Composition, чтобы они попали в общие списки
     final rawFillings = clientDataMap['fillings'] ?? clientDataMap['Начинки'];
     if (rawFillings is List) {
       final fillingsList = rawFillings
           .map((item) => Composition.fromJson(item as Map<String, dynamic>))
           .toList();
       clientData.compositions.addAll(fillingsList);
-      debugPrint('🧩 Распарсено Начинок: ${fillingsList.length}');
     }
 
-    // === 6. УСЛОВИЯ ХРАНЕНИЯ (StorageCondition) ===
-    // ИСПРАВЛЕНО: Проверяем правильный ключ 'Условия хранения'
     final rawStorage =
         clientDataMap['storageConditions'] ?? clientDataMap['Условия хранения'];
     if (rawStorage is List) {
@@ -1067,28 +1002,18 @@ class AuthProvider with ChangeNotifier {
           .map(
               (item) => StorageCondition.fromJson(item as Map<String, dynamic>))
           .toList();
-      debugPrint(
-          '🧊 Распарсено StorageCondition: ${clientData.storageConditions.length}');
-      // Добавляем в общий список Composition для универсального доступа
-      // clientData.compositions.addAll(clientData.storageConditions.map((s) => s.toComposition()));
     }
 
-    // === 7. УСЛОВИЯ ТРАНСПОРТИРОВКИ (TransportCondition) ===
-    // ИСПРАВЛЕНО: Ключ в JSON от GAS идет слитно: "условиятранспортировки"
     final rawTransport = clientDataMap['transportConditions'] ??
         clientDataMap['Условия транспортировки'] ??
-        clientDataMap['условиятранспортировки']; // <-- ВОТ ОН!
-
+        clientDataMap['условиятранспортировки'];
     if (rawTransport is List) {
       clientData.transportConditions = rawTransport
           .map((item) =>
               TransportCondition.fromJson(item as Map<String, dynamic>))
           .toList();
-      debugPrint(
-          '🚚 Распарсено TransportCondition: ${clientData.transportConditions.length}');
     }
 
-    // === 8. Остальное ===
     if (clientDataMap['nutritionInfos'] is List) {
       clientData.nutritionInfos = (clientDataMap['nutritionInfos'] as List)
           .map((item) => NutritionInfo.fromJson(item as Map<String, dynamic>))
@@ -1116,17 +1041,13 @@ class AuthProvider with ChangeNotifier {
     }
 
     clientData.buildIndexes();
-    debugPrint('✅ Десериализация ClientData завершена');
     return clientData;
   }
 
   Map<String, SheetMetadata> _deserializeMetadata(dynamic metadata) {
-    if (metadata == null || metadata is! Map<String, dynamic>) {
-      return {};
-    }
+    if (metadata == null || metadata is! Map<String, dynamic>) return {};
 
     final result = <String, SheetMetadata>{};
-
     for (final entry in metadata.entries) {
       final value = entry.value;
       if (value is Map<String, dynamic>) {
@@ -1136,9 +1057,6 @@ class AuthProvider with ChangeNotifier {
           debugPrint(
               '⚠️ Ошибка десериализации метаданных для ${entry.key}: $e');
         }
-      } else if (value is SheetMetadata) {
-        // Если уже SheetMetadata, просто добавляем
-        result[entry.key] = value;
       }
     }
     return result;
@@ -1158,13 +1076,11 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // 🔥 СБРОС ВЫБРАННОГО КЛИЕНТА (при возврате к списку)
   void resetClientSelection() {
     _clientSelected = false;
     notifyListeners();
   }
 
-  // 🔥 ВЫБОР КЛИЕНТА (при входе в прайс-лист)
   void selectClient(Client client) {
     _currentUser = client;
     _clientSelected = true;
@@ -1183,13 +1099,10 @@ class AuthProvider with ChangeNotifier {
     _availableRoles = null;
     _isOffline = false;
 
-    // 🔥 НОВОЕ: Очищаем корзину из памяти при выходе
-    // Нам нужно получить контекст, чтобы найти CartProvider
     final context = navigatorKey.currentContext;
     if (context != null) {
       try {
         final cartProvider = Provider.of<CartProvider>(context, listen: false);
-        // Вызываем жесткий сброс (обнуляем всё, включая _allOrders)
         cartProvider.hardReset();
       } catch (e) {
         debugPrint('⚠️ Не удалось сбросить корзину при выходе: $e');
@@ -1208,9 +1121,7 @@ class AuthProvider with ChangeNotifier {
       await prefs.remove('current_user_phone');
       await prefs.remove('push_offer_declined');
 
-      // Очищаем Hive
       await _cacheService.clearAll();
-
       debugPrint('✅ Все данные очищены при выходе');
     } catch (e) {
       debugPrint('❌ Ошибка при выходе: $e');
@@ -1223,17 +1134,14 @@ class AuthProvider with ChangeNotifier {
     debugPrint('🧹 Весь кэш очищен');
   }
 
-  // 🔥 ПОЛУЧЕНИЕ ТЕЛЕФОНА АДМИНА ИЗ ЗАГРУЖЕННЫХ ДАННЫХ
   String? get _adminPhone {
     try {
-      // Ищем первого сотрудника с ролью "Администратор"
       final admin = _clientData?.clients.whereType<Employee>().firstWhere(
             (e) => e.role?.toLowerCase() == 'администратор',
             orElse: () => throw StateError('Not found'),
           );
       return admin?.phone;
     } catch (e) {
-      // Если список пуст или админа нет
       return null;
     }
   }

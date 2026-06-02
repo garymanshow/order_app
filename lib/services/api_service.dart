@@ -89,17 +89,21 @@ class ApiService {
     }
   }
 
-  // АУТЕНТИФИКАЦИЯ (с бесшумным обновлением Push)
+  // АУТЕНТИФИКАЦИЯ (с бесшумным обновлением Push и поддержкой 2FA)
   Future<Map<String, dynamic>?> authenticate({
     required String phone,
     required Map<String, SheetMetadata> localMetadata,
-    Map<String, dynamic>? pushData, // 🔥 НОВОЕ: Данные подписки (если есть)
+    Map<String, dynamic>? pushData,
+    String? deviceToken, // Токен доверенного устройства
+    String? code, // 🔥 Код из письма (если запрашивали)
   }) async {
     debugPrint('\n🔐 ===== НАЧАЛО АУТЕНТИФИКАЦИИ =====');
     debugPrint('🔐 Телефон: $phone');
     debugPrint('🔐 URL скрипта: $_scriptUrl');
     debugPrint('🔐 Локальные метаданные: ${localMetadata.length} листов');
     debugPrint('📬 Push данные: ${pushData != null ? "переданы" : "нет"}');
+    debugPrint('🔑 Device Token: ${deviceToken != null ? "передан" : "нет"}');
+    debugPrint('✉️ 2FA Code: ${code != null ? "передан" : "нет"}');
 
     try {
       final data = {
@@ -107,8 +111,9 @@ class ApiService {
         'localMetadata': localMetadata.map(
           (key, value) => MapEntry(key, value.toJson()),
         ),
-        // 🔥 НОВОЕ: Прикрепляем пуш-данные к запросу авторизации
         if (pushData != null) 'pushData': pushData,
+        if (deviceToken != null) 'deviceToken': deviceToken,
+        if (code != null) 'code': code,
       };
 
       final response = await _makeRequest('authenticate', data);
@@ -117,19 +122,40 @@ class ApiService {
         try {
           final Map<String, dynamic> result = jsonDecode(response.body);
 
+          // 🔥 ИСПРАВЛЕНО: Проверяем статус 2FA ДО проверки на success
+          if (result['status'] == '2fa_required') {
+            debugPrint('🛑 Сервер требует 2FA');
+            debugPrint('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ТРЕБУЕТСЯ 2FA) =====\n');
+            // Возвращаем весь ответ, чтобы AuthProvider достал email
+            return result;
+          }
+
+          if (result['status'] == '2fa_success') {
+            debugPrint('✅ 2FA пройдена, выдан новый токен');
+            debugPrint('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (2FA SUCCESS) =====\n');
+            // Возвращаем весь ответ, чтобы AuthProvider достал newDeviceToken
+            return result;
+          }
+
+          // Стандартная успешная авторизация (Гость или доверенное устройство)
           if (result['success'] == true && result['user'] != null) {
             debugPrint('✅ Аутентификация успешна!');
             debugPrint('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ =====\n');
 
             return {
+              'status': 'success', // 🔥 Добавляем статус для единообразия
               'user': result['user'],
               'data': result['data'] ?? {},
               'metadata': result['metadata'] ?? {},
             };
-          } else {
+          }
+
+          // Обработка ошибок (пользователь не найден, неверный код и т.д.)
+          else {
             debugPrint('⚠️ Аутентификация не удалась: ${result['message']}');
             debugPrint('🔐 ===== КОНЕЦ АУТЕНТИФИКАЦИИ (ОШИБКА) =====\n');
-            return null;
+            // Возвращаем ошибку как есть, чтобы показать пользователю
+            return result;
           }
         } catch (e) {
           debugPrint('❌ Ошибка парсинга JSON: $e');
