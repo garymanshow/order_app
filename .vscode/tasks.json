@@ -439,7 +439,6 @@
       "label": "release: build --release, push, tag increment",
       "dependsOrder": "sequence",
       "dependsOn": [
-        "flutter: build web",
         "git: push (auto)",
         "git: increment patch tag (silent)"
       ],
